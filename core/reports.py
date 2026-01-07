@@ -120,8 +120,6 @@ def gerar_relatorio_investimentos_pdf(
         df_l["Valor"] = df_l["Valor"].apply(_fmt_brl)
 
     story.append(_df_to_table(df_l, max_rows=5000))
-    story.append(Spacer(1, 6))
-    story.append(Paragraph("<i>Obs.: se houver muitos lançamentos, o PDF traz apenas as primeiras linhas.</i>", styles["BodyText"]))
 
     doc.build(story)
     pdf_bytes = buffer.getvalue()
