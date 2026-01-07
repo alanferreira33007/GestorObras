@@ -58,6 +58,7 @@ st.markdown("""
 def conectar_google_sheets():
     try:
         scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
+        # strict=False essencial para evitar erros de formatação no segredo
         json_creds = json.loads(st.secrets["gcp_service_account"]["json_content"], strict=False)
         creds = ServiceAccountCredentials.from_json_keyfile_dict(json_creds, scope)
         client = gspread.authorize(creds)
@@ -135,7 +136,12 @@ if menu == "📊 Dashboard Executivo":
     if not df_obras.empty:
         # CÁLCULOS DE KPI
         total_contratos = df_obras["Valor Total"].sum()
-        total_gasto = df_financeiro[df_financeiro['Tipo'] == 'Saída']['Valor'].sum() if not df_financeiro.empty else 0
+        # Soma segura para financeiro (evita erro se estiver vazio)
+        if not df_financeiro.empty and 'Tipo' in df_financeiro.columns:
+            total_gasto = df_financeiro[df_financeiro['Tipo'].str.contains('Saída', case=False, na=False)]['Valor'].sum()
+        else:
+            total_gasto = 0
+            
         lucro_estimado = total_contratos - total_gasto
         
         # DEFINIÇÃO DE CORES SEMÂNTICAS
@@ -171,4 +177,14 @@ if menu == "📊 Dashboard Executivo":
                     title="Valor dos Contratos por Cliente"
                 )
                 fig_bar.update_layout(plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)")
-                st.
+                st.plotly_chart(fig_bar, use_container_width=True)
+        
+        with g2:
+            st.subheader("Status dos Projetos")
+            status_counts = df_obras['Status'].value_counts()
+            fig_pie = px.donut(
+                values=status_counts.values, 
+                names=status_counts.index, 
+                color=status_counts.index,
+                color_discrete_map=cores_status,
+                hole
