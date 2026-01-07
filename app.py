@@ -28,7 +28,7 @@ st.markdown("""
             color: #2c3e50;
         }
         
-        /* BARRA LATERAL (CORRIGIDA: Fundo Branco para Alto Contraste) */
+        /* BARRA LATERAL (Fundo Branco para Alto Contraste) */
         section[data-testid="stSidebar"] {
             background-color: #ffffff;
             border-right: 1px solid #e0e0e0;
@@ -105,7 +105,6 @@ def salvar_dado(sheet, aba, linha):
 sheet, df_obras, df_financeiro = carregar_dados()
 
 with st.sidebar:
-    st.image("https://cdn-icons-png.flaticon.com/512/2666/2666505.png", width=50)
     st.markdown("## Gestor **PRO**")
     st.markdown("---")
     menu = st.radio("MENU PRINCIPAL", ["📊 Dashboard", "📁 Obras", "💸 Financeiro", "⚙️ Config"])
@@ -126,4 +125,88 @@ if menu == "📊 Dashboard":
         c1, c2, c3 = st.columns(3)
         c1.metric("Faturamento", f"R$ {total_contratos:,.2f}")
         c2.metric("Despesas", f"R$ {total_gasto:,.2f}")
-        c3.
+        c3.metric("Saldo Líquido", f"R$ {total_contratos - total_gasto:,.2f}")
+        
+        st.markdown("---")
+        
+        # Gráficos
+        col_g1, col_g2 = st.columns([2,1])
+        with col_g1:
+            st.subheader("Contratos por Cliente")
+            st.plotly_chart(px.bar(df_obras, x='Cliente', y='Valor Total', color='Status', title="Volume Financeiro"), use_container_width=True)
+        with col_g2:
+            st.subheader("Status dos Projetos")
+            st.plotly_chart(px.pie(df_obras, names='Status', hole=0.5), use_container_width=True)
+    else:
+        st.info("Cadastre sua primeira obra no menu lateral para ativar o Dashboard.")
+
+elif menu == "📁 Obras":
+    st.markdown("### 📁 Gestão de Contratos")
+    tab1, tab2 = st.tabs(["📝 Novo Cadastro", "🔍 Base de Dados"])
+    
+    with tab1:
+        with st.container(border=True):
+            with st.form("form_obra"):
+                c1, c2 = st.columns(2)
+                cliente = c1.text_input("Cliente / Obra")
+                endereco = c1.text_input("Endereço")
+                data_ini = c1.date_input("Início", datetime.now())
+                valor = c2.number_input("Valor do Contrato (R$)", step=1000.0)
+                status = c2.selectbox("Status", ["Planejamento", "Em Andamento", "Concluída", "Paralisada"])
+                prazo = c2.text_input("Prazo Estimado")
+                
+                if st.form_submit_button("💾 Salvar Obra", type="primary"):
+                    salvar_dado(sheet, "Obras", {
+                        "ID": len(df_obras)+1, "Cliente": cliente, "Endereço": endereco,
+                        "Status": status, "Valor Total": valor, "Data Início": str(data_ini), "Prazo": prazo
+                    })
+                    st.toast("Obra cadastrada com sucesso!")
+                    st.markdown('<meta http-equiv="refresh" content="1">', unsafe_allow_html=True)
+    
+    with tab2:
+        if not df_obras.empty:
+            st.dataframe(
+                df_obras, use_container_width=True, hide_index=True,
+                column_config={
+                    "Valor Total": st.column_config.NumberColumn("Valor Total", format="R$ %.2f"),
+                    "Status": st.column_config.SelectboxColumn("Status", options=["Em Andamento", "Concluída", "Paralisada"], disabled=True)
+                }
+            )
+
+elif menu == "💸 Financeiro":
+    st.markdown("### 💸 Fluxo de Caixa")
+    c1, c2 = st.columns([1,2])
+    with c1:
+        st.markdown("**Novo Lançamento**")
+        with st.container(border=True):
+            with st.form("fin_form"):
+                tipo = st.selectbox("Tipo", ["Saída (Despesa)", "Entrada (Receita)"])
+                obra = st.selectbox("Vinculado à Obra", ["Geral"] + (df_obras['Cliente'].tolist() if not df_obras.empty else []))
+                desc = st.text_input("Descrição (Ex: Tijolos)")
+                val = st.number_input("Valor (R$)", step=50.0)
+                data = st.date_input("Data", datetime.now())
+                
+                if st.form_submit_button("💾 Lançar"):
+                    salvar_dado(sheet, "Financeiro", {
+                        "Data": str(data), "Tipo": tipo, "Categoria": "Geral", 
+                        "Descrição": desc, "Valor": val, "Obra Vinculada": obra
+                    })
+                    st.toast("Lançamento registrado!")
+                    st.markdown('<meta http-equiv="refresh" content="1">', unsafe_allow_html=True)
+    
+    with c2:
+        st.markdown("**Histórico Recente**")
+        if not df_financeiro.empty:
+            st.dataframe(
+                df_financeiro, 
+                use_container_width=True, 
+                hide_index=True,
+                column_config={
+                    "Valor": st.column_config.NumberColumn("Valor", format="R$ %.2f"),
+                    "Data": st.column_config.DateColumn("Data", format="DD/MM/YYYY")
+                }
+            )
+
+elif menu == "⚙️ Config":
+    st.info("Sistema v3.4 (Visual Clean) | Desenvolvido para Alta Performance")
+    if sheet: st.write(f"[🔗 Acessar Planilha Google]({sheet.url})")
