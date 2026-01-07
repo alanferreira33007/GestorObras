@@ -9,9 +9,9 @@ from datetime import datetime, date
 from streamlit_option_menu import option_menu
 
 # --- 1. CONFIGURAÇÃO ---
-st.set_page_config(page_title="GESTOR PRO | Investment Analysis", layout="wide")
+st.set_page_config(page_title="GESTOR PRO | BR Format", layout="wide")
 
-# --- 2. CSS CORPORATIVO REFINADO ---
+# --- 2. CSS CORPORATIVO ---
 st.markdown("""
     <style>
         .stApp { background-color: #F8F9FA; color: #1A1C1E; font-family: 'Inter', sans-serif; }
@@ -37,7 +37,7 @@ if not st.session_state["authenticated"]:
                     st.session_state["authenticated"] = True
                     st.rerun()
 else:
-    # --- 4. BACKEND (CORRIGIDO) ---
+    # --- 4. BACKEND ---
     def obter_conector():
         creds_json = json.loads(st.secrets["gcp_service_account"]["json_content"], strict=False)
         scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
@@ -45,21 +45,26 @@ else:
         return gspread.authorize(creds)
 
     @st.cache_data(ttl=60)
-    def carregar_dados_v15():
+    def carregar_dados_v16():
         try:
             client = obter_conector()
             db = client.open("GestorObras_DB")
             df_o = pd.DataFrame(db.worksheet("Obras").get_all_records())
             df_f = pd.DataFrame(db.worksheet("Financeiro").get_all_records())
+            
             df_o['Valor Total'] = pd.to_numeric(df_o['Valor Total'], errors='coerce').fillna(0)
             df_f['Valor'] = pd.to_numeric(df_f['Valor'], errors='coerce').fillna(0)
-            df_f['Data'] = pd.to_datetime(df_f['Data'], errors='coerce').dt.date
+            
+            # Converter para datetime e depois formatar para String BR apenas na exibição
+            df_f['Data_Processamento'] = pd.to_datetime(df_f['Data'], errors='coerce')
+            df_f['Data_Exibicao'] = df_f['Data_Processamento'].dt.strftime('%d/%m/%Y')
+            
             return df_o, df_f
         except Exception as e:
             st.error(f"Erro ao carregar dados: {e}")
             return pd.DataFrame(), pd.DataFrame()
 
-    df_obras, df_fin = carregar_dados_v15()
+    df_obras, df_fin = carregar_dados_v16()
 
     # --- 5. MENU ---
     with st.sidebar:
@@ -73,22 +78,18 @@ else:
 
     # --- 6. TELAS ---
     if sel == "Investimentos":
-        st.markdown("### 📊 Performance e ROI por Obra")
+        st.markdown("### 📊 Performance e ROI")
         if not df_obras.empty:
-            escolha = st.selectbox("Selecione a Casa para Analisar", df_obras['Cliente'].tolist())
+            escolha = st.selectbox("Selecione a Casa", df_obras['Cliente'].tolist())
             
-            # Filtros e Cálculos
             dados_obra = df_obras[df_obras['Cliente'] == escolha].iloc[0]
-            vgv = dados_obra['Valor Total'] # Valor Estimado de Venda
+            vgv = dados_obra['Valor Total']
             
             fin_obra = df_fin[df_fin['Obra Vinculada'] == escolha]
             custos = fin_obra[fin_obra['Tipo'].str.contains('Saída', na=False)]['Valor'].sum()
-            entradas = fin_obra[fin_obra['Tipo'].str.contains('Entrada', na=False)]['Valor'].sum()
-            
             lucro_estimado = vgv - custos
             roi = (lucro_estimado / custos * 100) if custos > 0 else 0
             
-            # Cards de ROI
             c1, c2, c3, c4 = st.columns(4)
             c1.metric("VGV (Venda)", f"R$ {vgv:,.2f}")
             c2.metric("Custo Total", f"R$ {custos:,.2f}", delta=f"{(custos/vgv*100 if vgv>0 else 0):.1f}% do VGV", delta_color="inverse")
@@ -99,7 +100,11 @@ else:
             col_a, col_b = st.columns([2, 1])
             with col_a:
                 st.markdown("**Evolução de Gastos**")
-                fig = px.line(fin_obra[fin_obra['Tipo'].str.contains('Saída')], x='Data', y='Valor', markers=True, color_discrete_sequence=['#E63946'])
+                df_grafico = fin_obra[fin_obra['Tipo'].str.contains('Saída')].sort_values('Data_Processamento')
+                # No gráfico, usamos a data de processamento para ordem cronológica correta
+                fig = px.line(df_grafico, x='Data_Processamento', y='Valor', markers=True, 
+                              color_discrete_sequence=['#E63946'], labels={'Data_Processamento': 'Data'})
+                fig.update_layout(xaxis_tickformat='%d/%m/%Y')
                 st.plotly_chart(fig, use_container_width=True)
             with col_b:
                 st.markdown("**Margem de Lucro (%)**")
@@ -110,33 +115,35 @@ else:
                 st.plotly_chart(fig_gauge, use_container_width=True)
 
     elif sel == "Projetos":
-        st.markdown("### 📁 Cadastro de Obras para Venda")
-        with st.form("form_obra_fix", clear_on_submit=True):
+        st.title("📁 Cadastro de Obras")
+        with st.form("form_obra"):
             col1, col2 = st.columns(2)
-            nome_casa = col1.text_input("Identificação da Casa/Lote (Ex: Casa 01 - Sul)")
-            vgv_venda = col2.number_input("Valor Estimado de Venda (VGV)", min_value=0.0, step=1000.0)
-            if st.form_submit_button("CADASTRAR EMPREENDIMENTO"):
-                if nome_casa:
-                    client = obter_conector()
-                    client.open("GestorObras_DB").worksheet("Obras").append_row([
-                        len(df_obras)+1, nome_casa, "", "Construção", vgv_venda, str(date.today()), ""
-                    ])
-                    st.cache_data.clear()
-                    st.success("Obra cadastrada!")
-                    st.rerun()
+            nome = col1.text_input("Nome da Casa")
+            valor = col2.number_input("Valor de Venda (VGV)", step=1000.0)
+            if st.form_submit_button("CADASTRAR"):
+                obter_conector().open("GestorObras_DB").worksheet("Obras").append_row([
+                    len(df_obras)+1, nome, "", "Construção", valor, datetime.now().strftime('%Y-%m-%d'), ""
+                ])
+                st.cache_data.clear()
+                st.rerun()
+        st.dataframe(df_obras[['Cliente', 'Status', 'Valor Total']], use_container_width=True)
 
     elif sel == "Caixa":
-        st.markdown("### 💸 Lançamento Financeiro")
-        with st.form("form_fin_fix", clear_on_submit=True):
+        st.title("💸 Lançamento Financeiro")
+        with st.form("form_caixa"):
             c1, c2, c3 = st.columns(3)
             tp = c1.selectbox("Tipo", ["Saída (Despesa)", "Entrada"])
-            ob = c2.selectbox("Obra", df_obras['Cliente'].tolist() if not df_obras.empty else ["Geral"])
-            vl = c3.number_input("Valor R$", min_value=0.0)
-            ds = st.text_input("Descrição (Ex: Mão de Obra, Material, Terreno)")
-            if st.form_submit_button("CONFIRMAR LANÇAMENTO"):
-                client = obter_conector()
-                client.open("GestorObras_DB").worksheet("Financeiro").append_row([str(date.today()), tp, "Geral", ds, vl, ob])
+            ob = c2.selectbox("Vincular à Casa", df_obras['Cliente'].tolist())
+            vl = c3.number_input("Valor R$", step=100.0)
+            ds = st.text_input("Descrição")
+            if st.form_submit_button("LANÇAR"):
+                obter_conector().open("GestorObras_DB").worksheet("Financeiro").append_row([
+                    datetime.now().strftime('%Y-%m-%d'), tp, "Geral", ds, vl, ob
+                ])
                 st.cache_data.clear()
-                st.success("Lançamento efetuado!")
                 st.rerun()
-        st.dataframe(df_fin.sort_values('Data', ascending=False), use_container_width=True, hide_index=True)
+        
+        # Exibição da tabela com data em formato BR
+        df_exibir = df_fin[['Data_Exibicao', 'Tipo', 'Descrição', 'Valor', 'Obra Vinculada']].copy()
+        df_exibir.columns = ['Data', 'Tipo', 'Descrição', 'Valor', 'Obra']
+        st.dataframe(df_exibir.sort_values('Data', ascending=False), use_container_width=True, hide_index=True)
