@@ -1,5 +1,5 @@
 import streamlit as st
-import pandas as pd
+import pd as pd
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 import json
@@ -8,10 +8,9 @@ import plotly.graph_objects as go
 from datetime import datetime, date
 from streamlit_option_menu import option_menu
 
-# --- 1. CONFIGURAÇÃO ---
-st.set_page_config(page_title="GESTOR PRO | Monitor Completo", layout="wide")
+# --- 1. CONFIGURAÇÃO DE UI ---
+st.set_page_config(page_title="GESTOR PRO | Master", layout="wide")
 
-# --- 2. CSS CORPORATIVO ---
 st.markdown("""
     <style>
         .stApp { background-color: #F8F9FA; color: #1A1C1E; font-family: 'Inter', sans-serif; }
@@ -21,6 +20,16 @@ st.markdown("""
         header, footer, #MainMenu {visibility: hidden;}
     </style>
 """, unsafe_allow_html=True)
+
+# --- 2. FUNÇÕES DE SUPORTE ---
+def fmt_moeda(valor):
+    """Formata número para R$ 0,00"""
+    return f"R$ {valor:,.2f}".replace(',', 'X').replace('.', ',').replace('X', '.')
+
+def obter_conector():
+    creds_json = json.loads(st.secrets["gcp_service_account"]["json_content"], strict=False)
+    scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
+    return gspread.authorize(ServiceAccountCredentials.from_json_keyfile_dict(creds_json, scope))
 
 # --- 3. AUTENTICAÇÃO ---
 if "authenticated" not in st.session_state:
@@ -39,19 +48,15 @@ if not st.session_state["authenticated"]:
                     st.rerun()
                 else: st.error("Senha incorreta.")
 else:
-    # --- 4. BACKEND ---
-    def obter_conector():
-        creds_json = json.loads(st.secrets["gcp_service_account"]["json_content"], strict=False)
-        scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
-        return gspread.authorize(ServiceAccountCredentials.from_json_keyfile_dict(creds_json, scope))
-
-    @st.cache_data(ttl=30)
-    def carregar_dados_v24():
+    # --- 4. CARREGAMENTO DE DADOS ---
+    @st.cache_data(ttl=10)
+    def carregar_dados_v25():
         try:
             client = obter_conector()
             db = client.open("GestorObras_DB")
             df_o = pd.DataFrame(db.worksheet("Obras").get_all_records())
             df_f = pd.DataFrame(db.worksheet("Financeiro").get_all_records())
+            
             df_o['Valor Total'] = pd.to_numeric(df_o['Valor Total'], errors='coerce').fillna(0)
             df_f['Valor'] = pd.to_numeric(df_f['Valor'], errors='coerce').fillna(0)
             df_f['Data_DT'] = pd.to_datetime(df_f['Data'], errors='coerce')
@@ -59,92 +64,84 @@ else:
             return df_o, df_f
         except: return pd.DataFrame(), pd.DataFrame()
 
-    df_obras, df_fin = carregar_dados_v24()
+    df_obras, df_fin = carregar_dados_v25()
 
-    # --- 5. FUNÇÃO DE FORMATAÇÃO R$ ---
-    def fmt_moeda(valor):
-        return f"R$ {valor:,.2f}".replace(',', 'X').replace('.', ',').replace('X', '.')
-
-    # --- 6. MENU LATERAL ---
+    # --- 5. MENU LATERAL ---
     with st.sidebar:
-        st.markdown("<h3 style='text-align:center; color:#2D6A4F;'>GESTOR PRO</h3>", unsafe_allow_html=True)
-        sel = option_menu(None, ["Investimentos", "Caixa", "Insumos", "Projetos"], 
-            icons=['graph-up-arrow', 'wallet2', 'cart-check', 'building'], default_index=0,
-            styles={"nav-link-selected": {"background-color": "#E9F5EE", "color": "#2D6A4F"}})
+        sel = option_menu("GESTOR PRO", ["Investimentos", "Caixa", "Insumos", "Projetos"], 
+            icons=['graph-up-arrow', 'wallet2', 'cart-check', 'building'], default_index=0)
         if st.button("Sair"):
             st.session_state["authenticated"] = False
             st.rerun()
 
-    # --- 7. TELAS ---
+    # --- 6. TELAS ---
     if sel == "Investimentos":
         st.markdown("### 📊 Performance e ROI")
         if not df_obras.empty:
-            lista_obras = df_obras['Cliente'].tolist()
-            escolha = option_menu(menu_title=None, options=lista_obras, orientation="horizontal", icons=["house"] * len(lista_obras))
+            lista = df_obras['Cliente'].tolist()
+            escolha = option_menu(None, options=lista, orientation="horizontal", icons=["house"]*len(lista))
             
-            dados_obra = df_obras[df_obras['Cliente'] == escolha].iloc[0]
-            vgv = dados_obra['Valor Total']
-            fin_obra = df_fin[df_fin['Obra Vinculada'] == escolha] if not df_fin.empty else pd.DataFrame()
-            custos = fin_obra[fin_obra['Tipo'].str.contains('Saída', na=False)]['Valor'].sum()
+            obra_row = df_obras[df_obras['Cliente'] == escolha].iloc[0]
+            vgv = obra_row['Valor Total']
+            df_v = df_fin[df_fin['Obra Vinculada'] == escolha] if not df_fin.empty else pd.DataFrame()
+            
+            custos = df_v[df_v['Tipo'].str.contains('Saída', na=False)]['Valor'].sum()
             lucro = vgv - custos
             roi = (lucro / custos * 100) if custos > 0 else 0
             
             c1, c2, c3, c4 = st.columns(4)
-            c1.metric("VGV", fmt_moeda(vgv))
-            c2.metric("Custo Acumulado", fmt_moeda(custos))
+            c1.metric("VGV Venda", fmt_moeda(vgv))
+            c2.metric("Custo Total", fmt_moeda(custos))
             c3.metric("Lucro Estimado", fmt_moeda(lucro))
             c4.metric("ROI", f"{roi:.1f}%")
             
-            if not fin_obra.empty and custos > 0:
-                df_ev = fin_obra[fin_obra['Tipo'].str.contains('Saída')].sort_values('Data_DT')
-                st.plotly_chart(px.line(df_ev, x='Data_DT', y='Valor', title="Evolução de Gastos"), use_container_width=True)
+            if not df_v.empty and custos > 0:
+                fig = px.line(df_v[df_v['Tipo'].str.contains('Saída')].sort_values('Data_DT'), x='Data_DT', y='Valor', markers=True)
+                fig.update_layout(xaxis_tickformat='%d/%m/%Y', plot_bgcolor='white')
+                st.plotly_chart(fig, use_container_width=True)
 
     elif sel == "Caixa":
         st.markdown("### 💸 Lançamento Financeiro")
         with st.form("f_caixa", clear_on_submit=True):
-            c1, c2 = st.columns(2); dt = c1.date_input("Data", value=date.today()); tp = c2.selectbox("Tipo", ["Saída (Despesa)", "Entrada"])
-            c3, c4 = st.columns(2); ob = c3.selectbox("Obra", df_obras['Cliente'].tolist()); vl = c4.number_input("Valor", step=0.01)
+            c1, c2 = st.columns(2); dt = c1.date_input("Data da Compra", value=date.today()); tp = c2.selectbox("Tipo", ["Saída (Despesa)", "Entrada"])
+            c3, c4 = st.columns(2); ob = c3.selectbox("Obra", df_obras['Cliente'].tolist()); vl = c4.number_input("Valor", format="%.2f")
             ds = st.text_input("Descrição (Insumo: Detalhe)")
             if st.form_submit_button("LANÇAR"):
                 obter_conector().open("GestorObras_DB").worksheet("Financeiro").append_row([dt.strftime('%Y-%m-%d'), tp, "Geral", ds, vl, ob])
                 st.cache_data.clear(); st.rerun()
         
         if not df_fin.empty:
-            df_c = df_fin[['Data_BR', 'Tipo', 'Descrição', 'Valor', 'Obra Vinculada']].sort_values('Data_DT', ascending=False)
-            df_c['Valor'] = df_c['Valor'].apply(fmt_moeda)
-            st.dataframe(df_c, use_container_width=True, hide_index=True)
+            df_disp = df_fin[['Data_BR', 'Tipo', 'Descrição', 'Valor', 'Obra Vinculada']].copy()
+            # Ordenamos por Data_DT que criamos no carregamento para evitar o KeyError do print
+            df_disp['Data_DT_Temp'] = df_fin['Data_DT']
+            df_disp = df_disp.sort_values('Data_DT_Temp', ascending=False).drop(columns=['Data_DT_Temp'])
+            df_disp['Valor'] = df_disp['Valor'].apply(fmt_moeda)
+            st.dataframe(df_disp, use_container_width=True, hide_index=True)
 
     elif sel == "Insumos":
         st.markdown("### 🛒 Monitor de Preços")
-        df_gastos = df_fin[df_fin['Tipo'].str.contains('Saída', na=False)].copy()
-        if not df_gastos.empty:
-            df_gastos['Insumo'] = df_gastos['Descrição'].apply(lambda x: x.split(':')[0].strip() if ':' in x else x.strip())
-            alertas_found = False
-            for insumo in df_gastos['Insumo'].unique():
-                compras = df_gastos[df_gastos['Insumo'] == insumo].sort_values('Data_DT')
-                if len(compras) >= 2:
-                    u = compras.iloc[-1]; p = compras.iloc[-2]
+        df_g = df_fin[df_fin['Tipo'].str.contains('Saída', na=False)].copy()
+        if not df_g.empty:
+            df_g['Insumo'] = df_g['Descrição'].apply(lambda x: x.split(':')[0].strip() if ':' in x else x.strip())
+            for insumo in df_g['Insumo'].unique():
+                cps = df_g[df_g['Insumo'] == insumo].sort_values('Data_DT')
+                if len(cps) >= 2:
+                    u = cps.iloc[-1]; p = cps.iloc[-2]
                     if u['Valor'] > p['Valor']:
-                        alertas_found = True
                         var = ((u['Valor']/p['Valor'])-1)*100
-                        st.markdown(f"""
-                        <div class='alert-card'>
-                            <h4 style='margin:0;'>{insumo} <span style='color:#E63946; float:right;'>+{var:.1f}%</span></h4>
-                            <p style='margin:10px 0 0 0; font-size:14px; color:#666;'>
-                                Anterior: {fmt_moeda(p['Valor'])} ({p['Data_DT'].strftime('%d/%m/%Y')})<br>
-                                <strong>Atual: {fmt_moeda(u['Valor'])} ({u['Data_DT'].strftime('%d/%m/%Y')})</strong>
-                            </p>
-                        </div>""", unsafe_allow_html=True)
-            if not alertas_found: st.success("Nenhum aumento detectado nos insumos monitorados.")
-        else: st.info("Lance despesas no Caixa para monitorar preços.")
+                        st.markdown(f"""<div class='alert-card'><h4>{insumo} <span style='color:#E63946; float:right;'>+{var:.1f}%</span></h4>
+                        <p style='font-size:14px;'>Anterior: {fmt_moeda(p['Valor'])} ({p['Data_DT'].strftime('%d/%m/%Y')})<br>
+                        <strong>Atual: {fmt_moeda(u['Valor'])} ({u['Data_DT'].strftime('%d/%m/%Y')})</strong></p></div>""", unsafe_allow_html=True)
+        else: st.info("Sem dados para análise.")
 
     elif sel == "Projetos":
-        st.title("📁 Gestão de Obras")
+        st.markdown("### 📁 Gestão de Obras")
         with st.form("f_obra"):
-            n = st.text_input("Nome"); v = st.number_input("VGV", step=1000.0)
-            if st.form_submit_button("SALVAR"):
+            n = st.text_input("Nome da Casa"); v = st.number_input("VGV", format="%.2f")
+            if st.form_submit_button("SALVAR OBRA"):
                 obter_conector().open("GestorObras_DB").worksheet("Obras").append_row([len(df_obras)+1, n, "", "Construção", v, date.today().strftime('%Y-%m-%d'), ""])
                 st.cache_data.clear(); st.rerun()
-        df_o_ex = df_obras[['Cliente', 'Status', 'Valor Total']].copy()
-        df_o_ex['Valor Total'] = df_o_ex['Valor Total'].apply(fmt_moeda)
-        st.dataframe(df_o_ex, use_container_width=True, hide_index=True)
+        if not df_obras.empty:
+            df_o_ex = df_obras[['Cliente', 'Status', 'Valor Total']].copy()
+            df_o_ex['Valor Total'] = df_o_ex['Valor Total'].apply(fmt_moeda)
+            st.dataframe(df_o_ex, use_container_width=True, hide_index=True)
