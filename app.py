@@ -17,54 +17,32 @@ st.set_page_config(
 # --- 2. CSS CUSTOMIZADO (VISUAL PROFISSIONAL) ---
 st.markdown("""
     <style>
-        /* Fundo geral e fontes */
-        .main {
-            background-color: #f8f9fa;
-        }
-        h1, h2, h3 {
-            font-family: 'Segoe UI', sans-serif;
-            color: #2c3e50;
-        }
-        
-        /* Cards de Métricas (KPIs) com sombra e borda arredondada */
+        .main { background-color: #f8f9fa; }
+        h1, h2, h3 { font-family: 'Segoe UI', sans-serif; color: #2c3e50; }
         div[data-testid="stMetric"] {
             background-color: #ffffff;
             border: 1px solid #e0e0e0;
             padding: 15px;
             border-radius: 10px;
             box-shadow: 0 4px 6px rgba(0,0,0,0.05);
-            transition: transform 0.2s;
         }
-        div[data-testid="stMetric"]:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 6px 8px rgba(0,0,0,0.1);
-        }
-
-        /* Ajuste do Menu Lateral */
-        section[data-testid="stSidebar"] {
-            background-color: #262730;
-        }
-        
-        /* Remover elementos desnecessários do Streamlit */
+        section[data-testid="stSidebar"] { background-color: #262730; }
         #MainMenu {visibility: hidden;}
         footer {visibility: hidden;}
-        header {visibility: hidden;}
     </style>
 """, unsafe_allow_html=True)
 
-# --- 3. BACKEND ROBUSTO (CONEXÃO E CACHE) ---
+# --- 3. BACKEND (CONEXÃO) ---
 @st.cache_resource
 def conectar_google_sheets():
     try:
         scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
-        # strict=False essencial para evitar erros de formatação no segredo
         json_creds = json.loads(st.secrets["gcp_service_account"]["json_content"], strict=False)
         creds = ServiceAccountCredentials.from_json_keyfile_dict(json_creds, scope)
         client = gspread.authorize(creds)
-        sheet = client.open("GestorObras_DB")
-        return sheet
+        return client.open("GestorObras_DB")
     except Exception as e:
-        st.error(f"⚠️ Falha Crítica na Nuvem: {e}")
+        st.error(f"⚠️ Erro de Conexão: {e}")
         return None
 
 def carregar_dados():
@@ -73,7 +51,7 @@ def carregar_dados():
         return None, pd.DataFrame(), pd.DataFrame()
 
     try:
-        # Carregar Obras
+        # Aba Obras
         try:
             ws_obras = sheet.worksheet("Obras")
         except:
@@ -81,11 +59,10 @@ def carregar_dados():
             ws_obras.append_row(["ID", "Cliente", "Endereço", "Status", "Valor Total", "Data Início", "Prazo"])
         
         df_obras = pd.DataFrame(ws_obras.get_all_records())
-        # Limpeza de dados numéricos
         if not df_obras.empty:
             df_obras['Valor Total'] = pd.to_numeric(df_obras['Valor Total'], errors='coerce').fillna(0)
 
-        # Carregar Financeiro
+        # Aba Financeiro
         try:
             ws_fin = sheet.worksheet("Financeiro")
         except:
@@ -100,123 +77,107 @@ def carregar_dados():
         return sheet, df_obras, df_financeiro
 
     except Exception as e:
-        st.error(f"Erro no Processamento de Dados: {e}")
+        st.error(f"Erro ao ler dados: {e}")
         return sheet, pd.DataFrame(), pd.DataFrame()
 
-def salvar_dado(sheet, aba, nova_linha_dict):
+def salvar_dado(sheet, aba, linha):
     ws = sheet.worksheet(aba)
-    ws.append_row(list(nova_linha_dict.values()))
+    ws.append_row(list(linha.values()))
 
-# --- 4. INTERFACE (FRONTEND) ---
+# --- 4. INTERFACE ---
 sheet, df_obras, df_financeiro = carregar_dados()
 
-# Sidebar de Navegação Premium
 with st.sidebar:
     st.markdown("## 🏗️ Gestor **PRO**")
-    st.caption("Sistema Integrado de Gestão")
     st.markdown("---")
-    
-    menu = st.radio(
-        "MENU PRINCIPAL", 
-        ["📊 Dashboard Executivo", "📁 Gestão de Obras", "💸 Fluxo de Caixa", "⚙️ Configurações"],
-    )
-    
+    menu = st.radio("MENU", ["📊 Dashboard", "📁 Obras", "💸 Financeiro", "⚙️ Config"])
     st.markdown("---")
-    if sheet:
-        st.success("✅ Banco de Dados: Online")
-    else:
-        st.error("❌ Banco de Dados: Offline")
+    if sheet: st.success("Online ✅")
 
-# --- LÓGICA DAS PÁGINAS ---
-
-if menu == "📊 Dashboard Executivo":
+# --- LÓGICA ---
+if menu == "📊 Dashboard":
     st.markdown("### 📊 Visão Estratégica")
-    
     if not df_obras.empty:
-        # CÁLCULOS DE KPI
         total_contratos = df_obras["Valor Total"].sum()
         
-        # --- CORREÇÃO AQUI (Adicionado o :) ---
         if not df_financeiro.empty and 'Tipo' in df_financeiro.columns:
             total_gasto = df_financeiro[df_financeiro['Tipo'].str.contains('Saída', case=False, na=False)]['Valor'].sum()
         else:
             total_gasto = 0
             
-        lucro_estimado = total_contratos - total_gasto
+        c1, c2, c3 = st.columns(3)
+        c1.metric("Faturamento", f"R$ {total_contratos:,.2f}")
+        c2.metric("Despesas", f"R$ {total_gasto:,.2f}")
+        c3.metric("Saldo", f"R$ {total_contratos - total_gasto:,.2f}")
         
-        # DEFINIÇÃO DE CORES SEMÂNTICAS
-        cores_status = {
-            "Concluída": "#2ecc71",      # Verde
-            "Em Andamento": "#f1c40f",   # Amarelo
-            "Planejamento": "#3498db",   # Azul
-            "Paralisada": "#e74c3c"      # Vermelho
-        }
-
-        # KPI CARDS
-        c1, c2, c3, c4 = st.columns(4)
-        c1.metric("Faturamento Contratado", f"R$ {total_contratos:,.2f}", delta="Total Obras")
-        c2.metric("Despesas Totais", f"R$ {total_gasto:,.2f}", delta="- Saídas", delta_color="inverse")
-        c3.metric("Saldo de Caixa", f"R$ {lucro_estimado:,.2f}", delta="Margem")
-        c4.metric("Obras Ativas", len(df_obras[df_obras['Status'] == 'Em Andamento']), "Projetos")
-
         st.markdown("---")
-
-        # GRÁFICOS AVANÇADOS
-        g1, g2 = st.columns([2, 1])
         
-        with g1:
-            st.subheader("Evolução Financeira por Obra")
-            if not df_obras.empty:
-                fig_bar = px.bar(
-                    df_obras, 
-                    x='Cliente', 
-                    y='Valor Total', 
-                    color='Status',
-                    color_discrete_map=cores_status,
-                    text_auto='.2s',
-                    title="Valor dos Contratos por Cliente"
-                )
-                fig_bar.update_layout(plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)")
-                st.plotly_chart(fig_bar, use_container_width=True)
-        
-        with g2:
-            st.subheader("Status dos Projetos")
-            status_counts = df_obras['Status'].value_counts()
-            
-            # Gráfico de Rosca
-            fig_pie = px.pie(
-                values=status_counts.values, 
-                names=status_counts.index, 
-                color=status_counts.index,
-                color_discrete_map=cores_status,
-                hole=0.6
-            )
-            fig_pie.update_layout(showlegend=False, plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)")
-            st.plotly_chart(fig_pie, use_container_width=True)
-
+        # Gráficos
+        col_g1, col_g2 = st.columns([2,1])
+        with col_g1:
+            st.subheader("Contratos por Cliente")
+            st.plotly_chart(px.bar(df_obras, x='Cliente', y='Valor Total', color='Status'), use_container_width=True)
+        with col_g2:
+            st.subheader("Status")
+            # Correção do gráfico de rosca
+            st.plotly_chart(px.pie(df_obras, names='Status', hole=0.5), use_container_width=True)
     else:
-        st.info("👋 Bem-vindo! Comece cadastrando sua primeira obra no menu lateral.")
+        st.info("Cadastre sua primeira obra no menu lateral.")
 
-elif menu == "📁 Gestão de Obras":
-    tab1, tab2 = st.tabs(["📝 Novo Cadastro", "🔍 Consultar Base"])
-    
+elif menu == "📁 Obras":
+    tab1, tab2 = st.tabs(["📝 Novo", "🔍 Lista"])
     with tab1:
-        st.markdown("#### Cadastrar Nova Obra")
-        with st.form("form_obra_pro", clear_on_submit=True):
-            col_a, col_b = st.columns(2)
-            with col_a:
-                cliente = st.text_input("Nome do Cliente / Projeto")
-                endereco = st.text_input("Localização")
-                data_ini = st.date_input("Data de Início", datetime.now())
-            with col_b:
-                valor = st.number_input("Valor do Contrato (R$)", min_value=0.0, step=1000.0)
-                status = st.selectbox("Status", ["Planejamento", "Em Andamento", "Concluída", "Paralisada"])
-                prazo = st.text_input("Prazo de Entrega")
+        with st.form("form_obra"):
+            c1, c2 = st.columns(2)
+            cliente = c1.text_input("Cliente")
+            endereco = c1.text_input("Endereço")
+            data_ini = c1.date_input("Início", datetime.now())
+            valor = c2.number_input("Valor R$", step=1000.0)
+            status = c2.selectbox("Status", ["Planejamento", "Em Andamento", "Concluída"])
+            prazo = c2.text_input("Prazo")
             
-            if st.form_submit_button("🚀 Lançar Projeto no Sistema", type="primary"):
-                nova_obra = {
-                    "ID": len(df_obras) + 1,
-                    "Cliente": cliente,
-                    "Endereço": endereco,
-                    "Status": status,
-                    "Valor Total
+            if st.form_submit_button("Salvar Obra", type="primary"):
+                salvar_dado(sheet, "Obras", {
+                    "ID": len(df_obras)+1, "Cliente": cliente, "Endereço": endereco,
+                    "Status": status, "Valor Total": valor, "Data Início": str(data_ini), "Prazo": prazo
+                })
+                st.toast("Salvo!")
+                st.markdown('<meta http-equiv="refresh" content="1">', unsafe_allow_html=True)
+    
+    with tab2:
+        if not df_obras.empty:
+            # AQUI ESTAVA O ERRO - Corrigido
+            st.dataframe(
+                df_obras, use_container_width=True, hide_index=True,
+                column_config={
+                    "Valor Total": st.column_config.NumberColumn("Valor Total", format="R$ %.2f"),
+                    "Status": st.column_config.SelectboxColumn("Status", options=["Em Andamento", "Concluída"], disabled=True)
+                }
+            )
+
+elif menu == "💸 Financeiro":
+    st.markdown("### 💸 Caixa")
+    c1, c2 = st.columns([1,2])
+    with c1:
+        with st.form("fin_form"):
+            tipo = st.selectbox("Tipo", ["Saída (Despesa)", "Entrada"])
+            obra = st.selectbox("Obra", ["Geral"] + (df_obras['Cliente'].tolist() if not df_obras.empty else []))
+            desc = st.text_input("Descrição")
+            val = st.number_input("Valor R$", step=50.0)
+            data = st.date_input("Data", datetime.now())
+            
+            if st.form_submit_button("Lançar"):
+                salvar_dado(sheet, "Financeiro", {
+                    "Data": str(data), "Tipo": tipo, "Categoria": "Geral", 
+                    "Descrição": desc, "Valor": val, "Obra Vinculada": obra
+                })
+                st.toast("Lançado!")
+                st.markdown('<meta http-equiv="refresh" content="1">', unsafe_allow_html=True)
+    
+    with c2:
+        if not df_financeiro.empty:
+            st.dataframe(df_financeiro, use_container_width=True, hide_index=True)
+
+elif menu == "⚙️ Config":
+    st.info("Sistema v3.3 - Stable Enterprise")
+    if sheet: st.write(f"[Acessar Planilha Google]({sheet.url})")
