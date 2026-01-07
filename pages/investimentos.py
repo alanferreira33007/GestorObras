@@ -85,12 +85,15 @@ def render(df_obras: pd.DataFrame, df_fin: pd.DataFrame, lista_obras: list[str])
     custos = df_saida["Valor"].sum()
     lucro = vgv - custos
     roi = (lucro / custos * 100) if custos > 0 else 0.0
+    perc_vgv = (custos / vgv * 100) if vgv > 0 else 0.0
 
     c1, c2, c3, c4 = st.columns(4)
     c1.metric("VGV Venda", fmt_moeda(vgv))
     c2.metric("Custo (no período)", fmt_moeda(custos))
     c3.metric("Lucro Estimado", fmt_moeda(lucro))
     c4.metric("ROI (no período)", f"{roi:.1f}%")
+
+    st.caption(f"📌 Percentual do VGV já gasto no período: **{perc_vgv:.2f}%**")
 
     # -----------------------------
     # CUSTO POR CATEGORIA (BARRAS)
@@ -122,6 +125,7 @@ def render(df_obras: pd.DataFrame, df_fin: pd.DataFrame, lista_obras: list[str])
 
     # -----------------------------
     # GRÁFICO: CUSTO ACUMULADO + LINHA VGV
+    # (com ZOOM automático no eixo Y)
     # -----------------------------
     st.markdown("#### 📈 Evolução do custo (acumulado)")
 
@@ -129,6 +133,7 @@ def render(df_obras: pd.DataFrame, df_fin: pd.DataFrame, lista_obras: list[str])
 
     if not df_plot.empty:
         df_plot["Custo Acumulado"] = df_plot["Valor"].cumsum()
+
         fig = px.line(df_plot, x="Data_DT", y="Custo Acumulado", markers=True)
 
         # Linha horizontal do VGV (meta de venda)
@@ -137,11 +142,16 @@ def render(df_obras: pd.DataFrame, df_fin: pd.DataFrame, lista_obras: list[str])
         except Exception:
             pass
 
+        # Zoom automático para o custo ficar legível mesmo com VGV alto
+        y_max = max(df_plot["Custo Acumulado"].max() * 1.15, 1)
+
         fig.update_layout(
             plot_bgcolor="white",
             xaxis_title="Data",
             yaxis_title="Custo acumulado (R$)",
+            yaxis=dict(range=[0, y_max]),
         )
+
         st.plotly_chart(fig, use_container_width=True)
     else:
         st.info("Sem despesas (Saída) no período para gerar a evolução do custo.")
