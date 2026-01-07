@@ -1,9 +1,11 @@
+import base64
 import streamlit as st
+import streamlit.components.v1 as components
 import plotly.express as px
 import pandas as pd
 
 from core.formatters import fmt_moeda
-from core.reports import gerar_relatorio_investimentos_pdf  # <- PDF
+from core.reports import gerar_relatorio_investimentos_pdf
 
 
 MESES = [
@@ -76,7 +78,7 @@ def render(df_obras: pd.DataFrame, df_fin: pd.DataFrame, lista_obras: list[str])
     df_v = df_fin[df_fin["Obra Vinculada"].astype(str).str.strip() == str(obra_sel).strip()].copy()
 
     # -----------------------------
-    # FILTRO DE PERÍODO (Ano/Mês)
+    # FILTRO (Ano/Mês)
     # -----------------------------
     df_temp = df_v.dropna(subset=["Data_DT"]).copy()
     anos = sorted(df_temp["Data_DT"].dt.year.dropna().astype(int).unique().tolist())
@@ -85,8 +87,8 @@ def render(df_obras: pd.DataFrame, df_fin: pd.DataFrame, lista_obras: list[str])
     with st.expander("📅 Filtros (Ano/Mês)", expanded=False):
         f1, f2 = st.columns(2)
         ano_sel = f1.selectbox("Ano", op_anos, index=0)
-        mes_label = f2.selectbox("Mês", [m[1] for m in MESES], index=0)
 
+        mes_label = f2.selectbox("Mês", [m[1] for m in MESES], index=0)
         mes_sel = "Todos"
         for num, lab in MESES:
             if lab == mes_label:
@@ -113,7 +115,7 @@ def render(df_obras: pd.DataFrame, df_fin: pd.DataFrame, lista_obras: list[str])
     st.caption(f"📌 Percentual do VGV já gasto no período: **{perc_vgv:.2f}%**")
 
     # -----------------------------
-    # PREPARA df_cat (mesmo que vazio)
+    # df_cat (sempre definido, mesmo vazio)
     # -----------------------------
     if df_saida.empty:
         df_cat = pd.DataFrame(columns=["Categoria", "Valor"])
@@ -127,15 +129,11 @@ def render(df_obras: pd.DataFrame, df_fin: pd.DataFrame, lista_obras: list[str])
         )
 
     # -----------------------------
-    # ✅ EXPORTAR PDF (BOTÃO SEMPRE APARECE AQUI)
+    # PDF (1 clique: gera + baixa automático)
     # -----------------------------
-    st.markdown("#### 📄 Relatório em PDF")
     periodo_txt = f"Ano: {ano_sel} | Mês: {mes_label}"
 
-    col_pdf1, col_pdf2 = st.columns([1, 2])
-    gerar = col_pdf1.button("📄 Gerar PDF do relatório")
-
-    if gerar:
+    if st.button("⬇️ Baixar PDF"):
         pdf_bytes = gerar_relatorio_investimentos_pdf(
             obra=str(obra_sel),
             periodo=periodo_txt,
@@ -147,15 +145,18 @@ def render(df_obras: pd.DataFrame, df_fin: pd.DataFrame, lista_obras: list[str])
             df_categorias=df_cat[["Categoria", "Valor"]].copy() if not df_cat.empty else df_cat,
             df_lancamentos=df_saida.copy(),
         )
-        st.session_state["pdf_investimentos_bytes"] = pdf_bytes
 
-    if "pdf_investimentos_bytes" in st.session_state:
-        col_pdf2.download_button(
-            "⬇️ Baixar PDF",
-            data=st.session_state["pdf_investimentos_bytes"],
-            file_name=f"relatorio_investimentos_{str(obra_sel).replace(' ', '_')}.pdf",
-            mime="application/pdf",
-        )
+        filename = f"relatorio_investimentos_{str(obra_sel).replace(' ', '_')}.pdf"
+        b64 = base64.b64encode(pdf_bytes).decode()
+
+        html = f"""
+        <a id="dl" href="data:application/pdf;base64,{b64}" download="{filename}"></a>
+        <script>
+          const a = document.getElementById("dl");
+          a.click();
+        </script>
+        """
+        components.html(html, height=0)
 
     # -----------------------------
     # CUSTO POR CATEGORIA (BARRAS + PIZZA)
