@@ -1,205 +1,137 @@
 import streamlit as st
 import pandas as pd
+import gspread
+from oauth2client.service_account import ServiceAccountCredentials
+import json
 import plotly.express as px
-import os
-from datetime import date
+from datetime import datetime
 
-# --- 1. CONFIGURAÇÃO INICIAL (Obrigatório ser a primeira linha) ---
-st.set_page_config(page_title="Gestor Construtivo Pro", layout="wide", page_icon="🔒")
+# --- CONFIGURAÇÃO DA PÁGINA ---
+st.set_page_config(page_title="Gestor de Obras", layout="wide")
 
-# --- 2. SISTEMA DE LOGIN (A TRAVA DE SEGURANÇA) ---
+# --- CONEXÃO COM GOOGLE SHEETS ---
+def conectar_google_sheets():
+    try:
+        scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
+        json_creds = json.loads(st.secrets["gcp_service_account"]["json_content"])
+        creds = ServiceAccountCredentials.from_json_keyfile_dict(json_creds, scope)
+        client = gspread.authorize(creds)
+        sheet = client.open("GestorObras_DB")
+        return sheet
+    except Exception as e:
+        st.error(f"⚠️ Erro na conexão: {e}")
+        return None
+
+# --- CARREGAR DADOS ---
+def carregar_dados():
+    sheet = conectar_google_sheets()
+    if sheet is None:
+        return None, pd.DataFrame(), pd.DataFrame()
+
+    try:
+        # Tenta abrir abas, se não existir cria
+        try:
+            ws_obras = sheet.worksheet("Obras")
+        except:
+            ws_obras = sheet.add_worksheet(title="Obras", rows="100", cols="20")
+            ws_obras.append_row(["ID", "Cliente", "Endereço", "Status", "Valor Total", "Data Início", "Prazo"])
+
+        try:
+            ws_fin = sheet.worksheet("Financeiro")
+        except:
+            ws_fin = sheet.add_worksheet(title="Financeiro", rows="100", cols="20")
+            ws_fin.append_row(["ID", "Obra ID", "Descrição", "Tipo", "Valor", "Data", "Comprovante"])
+
+        obras = pd.DataFrame(ws_obras.get_all_records())
+        financeiro = pd.DataFrame(ws_fin.get_all_records())
+        return sheet, obras, financeiro
+    except Exception as e:
+        st.error(f"Erro ao ler dados: {e}")
+        return sheet, pd.DataFrame(), pd.DataFrame()
+
+# --- SALVAR DADOS ---
+def salvar_obra(sheet, nova_obra):
+    ws = sheet.worksheet("Obras")
+    ws.append_row(list(nova_obra.values()))
+
+def salvar_financeiro(sheet, nova_mov):
+    ws = sheet.worksheet("Financeiro")
+    ws.append_row(list(nova_mov.values()))
+
+# --- LOGIN ---
 def check_password():
-    """Retorna True se o usuário acertar a senha."""
-    # Se a chave 'logado' não existe na memória, cria ela como Falso
-    if 'logado' not in st.session_state:
-        st.session_state['logado'] = False
-
-    # Se já estiver logado, libera o acesso
-    if st.session_state['logado']:
-        return True
-
-    # --- TELA DE LOGIN ---
-    st.markdown("## 🔒 Sistema Fechado")
-    st.markdown("Este painel financeiro é restrito.")
-    
-    col1, col2 = st.columns([1, 2])
-    with col1:
-        senha_digitada = st.text_input("Digite a Senha:", type="password")
-        
-        if st.button("Entrar no Sistema"):
-            # === SUA SENHA ESTÁ AQUI ===
-            if senha_digitada == "admin123":
-                st.session_state['logado'] = True
-                st.rerun() # Recarrega a página para entrar
+    if "password_correct" not in st.session_state:
+        st.session_state.password_correct = False
+    if not st.session_state.password_correct:
+        st.markdown("### 🔒 Acesso Restrito")
+        senha = st.text_input("Senha", type="password")
+        if st.button("Entrar"):
+            if senha == "admin123":
+                st.session_state.password_correct = True
+                st.rerun()
             else:
-                st.error("🚫 Senha Incorreta!")
-    
-    return False
+                st.error("Senha incorreta")
+        return False
+    return True
 
-# SE A SENHA NÃO FOR CORRETA, O CÓDIGO PARA AQUI
 if not check_password():
     st.stop()
 
-# =========================================================
-# DAQUI PARA BAIXO, SÓ CARREGA SE TIVER A SENHA CORRETA
-# =========================================================
+# --- APP PRINCIPAL ---
+sheet, df_obras, df_financeiro = carregar_dados()
 
-# --- Estado da Mensagem ---
-if 'msg_sucesso' not in st.session_state:
-    st.session_state['msg_sucesso'] = None
+st.title("🏗️ Gestor de Obras (Google Sheets)")
 
-# Arquivos
-FILE_FINANCEIRO = 'dados_financeiro.csv'
-FILE_OBRAS = 'dados_obras.csv'
-
-# --- Funções ---
-def carregar_dados():
-    # OBRAS
-    if os.path.exists(FILE_OBRAS):
-        df_obras = pd.read_csv(FILE_OBRAS)
-        if 'Valor Venda' not in df_obras.columns:
-            df_obras['Valor Venda'] = 0.0
-    else:
-        df_obras = pd.DataFrame(columns=['Nome da Obra', 'Orçamento Previsto', 'Valor Venda', 'Área (m2)', 'Status'])
-    
-    # FINANCEIRO
-    if os.path.exists(FILE_FINANCEIRO):
-        df_fin = pd.read_csv(FILE_FINANCEIRO)
-        if not df_fin.empty:
-            df_fin['Data'] = pd.to_datetime(df_fin['Data']).dt.date
-    else:
-        df_fin = pd.DataFrame(columns=['Data', 'Obra', 'Tipo', 'Fase', 'Descrição', 'Valor', 'Fornecedor'])
-        
-    return df_obras, df_fin
-
-def salvar_dados(df_obras, df_fin):
-    df_obras.to_csv(FILE_OBRAS, index=False)
-    df_fin.to_csv(FILE_FINANCEIRO, index=False)
-
-df_obras, df_fin = carregar_dados()
-
-# --- SIDEBAR (Só aparece se logado) ---
-with st.sidebar:
-    st.title("Gestor Construtivo")
-    st.success("✅ Acesso Liberado")
-    
-    if st.button("Sair (Logout)"):
-        st.session_state['logado'] = False
-        st.rerun()
-        
+# LINK MÁGICO PARA A PLANILHA
+if sheet is not None:
+    st.markdown(f"👉 **[CLIQUE AQUI PARA ABRIR SUA PLANILHA NO GOOGLE]({sheet.url})**")
     st.markdown("---")
-    st.header("📂 Exportar Relatórios")
-    if df_fin.empty:
-        st.info("Sem dados.")
+
+# Menu Lateral
+menu = st.sidebar.radio("Navegação", ["Dashboard", "Cadastrar Obra", "Financeiro", "Consultar Obras"])
+
+if menu == "Dashboard":
+    st.header("📊 Visão Geral")
+    if not df_obras.empty:
+        col1, col2 = st.columns(2)
+        col1.metric("Total de Obras", len(df_obras))
+        
+        # Gráfico
+        status_contagem = df_obras['Status'].value_counts()
+        fig = px.pie(values=status_contagem.values, names=status_contagem.index, title="Obras por Status")
+        st.plotly_chart(fig)
     else:
-        tipo = st.radio("Relatório:", ["Geral", "Por Obra"])
-        df_exp = df_fin
-        nome = "geral.csv"
+        st.info("Nenhuma obra cadastrada. Vá no menu 'Cadastrar Obra'.")
+
+elif menu == "Cadastrar Obra":
+    st.header("📝 Nova Obra")
+    with st.form("form_obra"):
+        cliente = st.text_input("Nome do Cliente")
+        endereco = st.text_input("Endereço")
+        valor = st.number_input("Valor do Contrato", min_value=0.0)
+        status = st.selectbox("Status", ["Planejamento", "Em Andamento", "Concluída"])
         
-        if tipo == "Por Obra":
-            lista = df_obras['Nome da Obra'].unique()
-            sel = st.selectbox("Escolha:", lista)
-            df_exp = df_fin[df_fin['Obra'] == sel]
-            nome = f"fin_{sel}.csv"
-            
-        csv = df_exp.to_csv(index=False).encode('utf-8-sig')
-        st.download_button("⬇️ Baixar CSV", csv, nome, 'text/csv')
+        if st.form_submit_button("Salvar Obra"):
+            nova_obra = {
+                "ID": len(df_obras) + 1,
+                "Cliente": cliente,
+                "Endereço": endereco,
+                "Status": status,
+                "Valor Total": valor,
+                "Data Início": str(datetime.now().date()),
+                "Prazo": "A definir"
+            }
+            salvar_obra(sheet, nova_obra)
+            st.success("✅ Obra salva no Google Sheets com sucesso!")
+            st.balloons()
+            st.rerun() # Atualiza a página
 
-# --- Título ---
-st.title("🏗️ Painel de Controle de Obras")
+elif menu == "Consultar Obras":
+    st.header("📂 Base de Dados")
+    st.dataframe(df_obras)
 
-tab1, tab2, tab3, tab4 = st.tabs(["📊 Dashboard", "💰 Lançamentos", "📝 Tabelas", "⚙️ Cadastrar Obras"])
-
-# ABA 4
-with tab4:
-    st.header("Gestão de Obras")
-    c1, c2 = st.columns([1, 2])
-    with c1:
-        st.subheader("Nova Obra")
-        with st.form("form_obra"):
-            nome = st.text_input("Nome")
-            status = st.selectbox("Status", ["Planejamento", "Fundação", "Estrutura", "Acabamento", "Venda", "Concluída"])
-            orcamento = st.number_input("Orçamento (R$)", step=1000.0)
-            venda = st.number_input("Venda Est. (R$)", step=5000.0)
-            area = st.number_input("Área (m2)", step=10.0)
-            if st.form_submit_button("Salvar"):
-                if nome and nome not in df_obras['Nome da Obra'].values:
-                    nova = pd.DataFrame({'Nome da Obra': [nome], 'Orçamento Previsto': [orcamento], 'Valor Venda': [venda], 'Área (m2)': [area], 'Status': [status]})
-                    df_obras = pd.concat([df_obras, nova], ignore_index=True)
-                    salvar_dados(df_obras, df_fin)
-                    st.success("Salvo!")
-                    st.rerun()
-                else: st.error("Erro no nome.")
-    with c2: 
-        if not df_obras.empty: st.dataframe(df_obras, use_container_width=True)
-
-# ABA 2
-with tab2:
-    if st.session_state['msg_sucesso']:
-        st.success(st.session_state['msg_sucesso']); st.toast("Salvo!", icon="✅"); st.session_state['msg_sucesso'] = None
-    
-    lista = df_obras['Nome da Obra'].tolist()
-    if not lista: st.warning("Cadastre obra antes.")
-    else:
-        st.subheader("Lançamento")
-        with st.form("cx"):
-            c1, c2, c3 = st.columns(3)
-            dt = c1.date_input("Data", date.today())
-            ob = c2.selectbox("Obra", lista)
-            tp = c3.radio("Tipo", ["Despesa", "Receita"], horizontal=True)
-            c4, c5, c6 = st.columns(3)
-            fases = ["Admin", "Projetos", "Terreno", "Fundação", "Estrutura", "Instalações", "Acabamento", "Pintura", "Comissão"]
-            fz = "Venda" if tp == "Receita" else c4.selectbox("Fase", fases)
-            vl = c5.number_input("Valor", min_value=0.01)
-            fr = c6.text_input("Fornecedor")
-            dc = st.text_input("Descrição")
-            if st.form_submit_button("Registrar"):
-                vf = -vl if tp == "Despesa" else vl
-                nv = pd.DataFrame({'Data': [dt], 'Obra': [ob], 'Tipo': [tp], 'Fase': [fz], 'Descrição': [dc], 'Valor': [vf], 'Fornecedor': [fr]})
-                df_fin = pd.concat([df_fin, nv], ignore_index=True)
-                salvar_dados(df_obras, df_fin)
-                st.session_state['msg_sucesso'] = f"✅ {dc} - R$ {vl}"
-                st.rerun()
-
-# ABA 3
-with tab3:
-    if not df_fin.empty:
-        df_ed = st.data_editor(df_fin, num_rows="dynamic", use_container_width=True, key='ed')
-        if st.button("Salvar Tabela"):
-            df_fin = df_ed; salvar_dados(df_obras, df_fin); st.rerun()
-
-# ABA 1
-with tab1:
-    if not lista: st.info("Sem obras.")
-    else:
-        sel = st.selectbox("Filtrar:", ["Visão Geral"] + lista)
-        if sel == "Visão Geral":
-            df_d = df_fin.copy(); ve = df_obras['Valor Venda'].sum(); cp = df_obras['Orçamento Previsto'].sum()
-        else:
-            df_d = df_fin[df_fin['Obra'] == sel].copy()
-            dd = df_obras[df_obras['Nome da Obra'] == sel].iloc[0]
-            ve = dd['Valor Venda']; cp = dd['Orçamento Previsto']
-        
-        g = df_d[df_d['Valor'] < 0]['Valor'].sum() if not df_d.empty else 0
-        r = df_d[df_d['Valor'] > 0]['Valor'].sum() if not df_d.empty else 0
-        
-        k1, k2, k3, k4 = st.columns(4)
-        k1.metric("Saldo", f"R$ {g+r:,.2f}")
-        k2.metric("Gasto", f"R$ {g:,.2f}", delta_color="inverse")
-        k3.metric("Orçamento", f"R$ {cp:,.2f}")
-        pc = (abs(g)/cp) if cp > 0 else 0
-        k4.progress(min(pc, 1.0)); k4.metric("% Gasto", f"{pc*100:.0f}%")
-        
-        st.divider()
-        if ve > 0:
-            lc = ve - cp
-            c1, c2 = st.columns(2)
-            c1.metric("Venda Esperada", f"R$ {ve:,.2f}")
-            c2.metric("Lucro Est.", f"R$ {lc:,.2f}", delta=f"{(lc/ve*100):.1f}%")
-            
-        g1, g2 = st.columns(2)
-        if not df_d.empty and g < 0:
-            pp = df_d[df_d['Valor'] < 0].copy(); pp['Valor'] = pp['Valor'].abs()
-            with g1: st.plotly_chart(px.pie(pp, values='Valor', names='Fase', title="Custos", hole=0.4))
-        if not df_d.empty:
-            with g2: st.plotly_chart(px.line(df_d.sort_values('Data'), x='Data', y=df_d.sort_values('Data')['Valor'].cumsum(), title="Fluxo"))
+elif menu == "Financeiro":
+    st.header("💰 Financeiro")
+    st.info("Cadastre obras primeiro para lançar gastos.")
+      
+  
