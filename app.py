@@ -4,7 +4,6 @@ import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 import json
 import plotly.express as px
-import plotly.graph_objects as go
 from datetime import datetime
 
 # --- 1. CONFIGURAÇÃO DE ALTO NÍVEL ---
@@ -137,4 +136,87 @@ if menu == "📊 Dashboard Executivo":
         # CÁLCULOS DE KPI
         total_contratos = df_obras["Valor Total"].sum()
         
-        if not df_financeiro.empty and 'Tipo' in df_financeiro.columns
+        # --- CORREÇÃO AQUI (Adicionado o :) ---
+        if not df_financeiro.empty and 'Tipo' in df_financeiro.columns:
+            total_gasto = df_financeiro[df_financeiro['Tipo'].str.contains('Saída', case=False, na=False)]['Valor'].sum()
+        else:
+            total_gasto = 0
+            
+        lucro_estimado = total_contratos - total_gasto
+        
+        # DEFINIÇÃO DE CORES SEMÂNTICAS
+        cores_status = {
+            "Concluída": "#2ecc71",      # Verde
+            "Em Andamento": "#f1c40f",   # Amarelo
+            "Planejamento": "#3498db",   # Azul
+            "Paralisada": "#e74c3c"      # Vermelho
+        }
+
+        # KPI CARDS
+        c1, c2, c3, c4 = st.columns(4)
+        c1.metric("Faturamento Contratado", f"R$ {total_contratos:,.2f}", delta="Total Obras")
+        c2.metric("Despesas Totais", f"R$ {total_gasto:,.2f}", delta="- Saídas", delta_color="inverse")
+        c3.metric("Saldo de Caixa", f"R$ {lucro_estimado:,.2f}", delta="Margem")
+        c4.metric("Obras Ativas", len(df_obras[df_obras['Status'] == 'Em Andamento']), "Projetos")
+
+        st.markdown("---")
+
+        # GRÁFICOS AVANÇADOS
+        g1, g2 = st.columns([2, 1])
+        
+        with g1:
+            st.subheader("Evolução Financeira por Obra")
+            if not df_obras.empty:
+                fig_bar = px.bar(
+                    df_obras, 
+                    x='Cliente', 
+                    y='Valor Total', 
+                    color='Status',
+                    color_discrete_map=cores_status,
+                    text_auto='.2s',
+                    title="Valor dos Contratos por Cliente"
+                )
+                fig_bar.update_layout(plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)")
+                st.plotly_chart(fig_bar, use_container_width=True)
+        
+        with g2:
+            st.subheader("Status dos Projetos")
+            status_counts = df_obras['Status'].value_counts()
+            
+            # Gráfico de Rosca
+            fig_pie = px.pie(
+                values=status_counts.values, 
+                names=status_counts.index, 
+                color=status_counts.index,
+                color_discrete_map=cores_status,
+                hole=0.6
+            )
+            fig_pie.update_layout(showlegend=False, plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)")
+            st.plotly_chart(fig_pie, use_container_width=True)
+
+    else:
+        st.info("👋 Bem-vindo! Comece cadastrando sua primeira obra no menu lateral.")
+
+elif menu == "📁 Gestão de Obras":
+    tab1, tab2 = st.tabs(["📝 Novo Cadastro", "🔍 Consultar Base"])
+    
+    with tab1:
+        st.markdown("#### Cadastrar Nova Obra")
+        with st.form("form_obra_pro", clear_on_submit=True):
+            col_a, col_b = st.columns(2)
+            with col_a:
+                cliente = st.text_input("Nome do Cliente / Projeto")
+                endereco = st.text_input("Localização")
+                data_ini = st.date_input("Data de Início", datetime.now())
+            with col_b:
+                valor = st.number_input("Valor do Contrato (R$)", min_value=0.0, step=1000.0)
+                status = st.selectbox("Status", ["Planejamento", "Em Andamento", "Concluída", "Paralisada"])
+                prazo = st.text_input("Prazo de Entrega")
+            
+            if st.form_submit_button("🚀 Lançar Projeto no Sistema", type="primary"):
+                nova_obra = {
+                    "ID": len(df_obras) + 1,
+                    "Cliente": cliente,
+                    "Endereço": endereco,
+                    "Status": status,
+                    "Valor Total
