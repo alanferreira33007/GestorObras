@@ -7,71 +7,20 @@ import plotly.express as px
 from datetime import datetime, date
 from streamlit_option_menu import option_menu
 
-# --- 1. CONFIGURAÇÃO DE UI CORPORATIVA ---
-st.set_page_config(page_title="GESTOR PRO | Enterprise", layout="wide", initial_sidebar_state="expanded")
+# --- CONFIGURAÇÃO ---
+st.set_page_config(page_title="GESTOR PRO | Investimentos", layout="wide")
 
-# --- 2. CSS CORPORATIVO (LIMPO E PROFISSIONAL) ---
+# --- CSS CORPORATIVO (MANTIDO) ---
 st.markdown("""
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
-        
-        /* Fundo Limpo */
-        .stApp {
-            background-color: #F8F9FA;
-            color: #1A1C1E;
-            font-family: 'Inter', sans-serif;
-        }
-
-        /* Sidebar Profissional */
-        [data-testid="stSidebar"] {
-            background-color: #FFFFFF !important;
-            border-right: 1px solid #E9ECEF;
-        }
-
-        /* Cards de Métricas (Estilo Dashboard Financeiro) */
-        div[data-testid="stMetric"] {
-            background-color: #FFFFFF;
-            border: 1px solid #E9ECEF;
-            border-radius: 12px;
-            padding: 20px !important;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.02);
-        }
-
-        /* Botão de Ação (Verde Corporativo - Estilo Excel/WhatsApp) */
-        div.stButton > button, div[data-testid="stForm"] button {
-            background-color: #2D6A4F !important;
-            color: white !important;
-            border: none !important;
-            border-radius: 6px !important;
-            font-weight: 600 !important;
-            height: 42px;
-            width: 100%;
-            transition: 0.2s;
-        }
-        div.stButton > button:hover {
-            background-color: #1B4332 !important;
-            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
-        }
-
-        /* Tabelas */
-        [data-testid="stDataFrame"] {
-            border: 1px solid #E9ECEF !important;
-            border-radius: 8px !important;
-        }
-
-        /* Customização de Títulos */
-        .section-title {
-            color: #212529;
-            font-weight: 700;
-            font-size: 24px;
-            margin-bottom: 20px;
-        }
-        
+        .stApp { background-color: #F8F9FA; color: #1A1C1E; font-family: 'Inter', sans-serif; }
+        [data-testid="stMetric"] { background-color: #FFFFFF; border: 1px solid #E9ECEF; border-radius: 12px; padding: 20px !important; }
+        div.stButton > button { background-color: #2D6A4F !important; color: white !important; border-radius: 6px !important; font-weight: 600 !important; }
         header, footer, #MainMenu {visibility: hidden;}
     </style>
 """, unsafe_allow_html=True)
 
-# --- 3. LOGICA DE ACESSO ---
+# --- AUTENTICAÇÃO ---
 if "authenticated" not in st.session_state:
     st.session_state["authenticated"] = False
 
@@ -79,21 +28,15 @@ if not st.session_state["authenticated"]:
     _, col, _ = st.columns([1, 1, 1])
     with col:
         st.markdown("<br><br><br>", unsafe_allow_html=True)
-        st.markdown("""
-            <div style='text-align: center; padding: 30px; background: white; border-radius: 15px; border: 1px solid #E9ECEF;'>
-                <h2 style='color: #2D6A4F;'>GESTOR PRO</h2>
-                <p style='color: #6C757D;'>Painel de Gestão de Engenharia</p>
-            </div>
-        """, unsafe_allow_html=True)
         with st.form("login"):
+            st.markdown("<h2 style='text-align:center;'>GESTOR PRO</h2>", unsafe_allow_html=True)
             pwd = st.text_input("Senha", type="password")
-            if st.form_submit_button("Acessar Painel"):
+            if st.form_submit_button("Acessar"):
                 if pwd == st.secrets["password"]:
                     st.session_state["authenticated"] = True
                     st.rerun()
-                else: st.error("Acesso não autorizado.")
 else:
-    # --- 4. BACKEND ---
+    # --- DATA BACKEND ---
     @st.cache_data(ttl=60)
     def load_data():
         try:
@@ -110,93 +53,90 @@ else:
 
     df_obras, df_fin, connector = load_data()
 
-    # --- 5. NAVEGAÇÃO LATERAL CLEAN ---
+    # --- NAVEGAÇÃO ---
     with st.sidebar:
-        st.markdown("<h3 style='text-align:center; color:#2D6A4F;'>GESTOR PRO</h3>", unsafe_allow_html=True)
         sel = option_menu(
-            None, ["Dashboard", "Gestão de Obras", "Financeiro", "Relatórios"],
+            "GESTOR PRO", ["Dashboard", "Gestão de Obras", "Financeiro", "Relatórios"],
             icons=['house', 'building', 'wallet2', 'file-text'],
             menu_icon="cast", default_index=0,
-            styles={
-                "container": {"background-color": "#FFFFFF"},
-                "nav-link": {"color": "#495057", "font-size": "14px", "text-align": "left", "margin": "5px"},
-                "nav-link-selected": {"background-color": "#E9F5EE", "color": "#2D6A4F", "font-weight": "600"},
-            }
+            styles={"nav-link-selected": {"background-color": "#E9F5EE", "color": "#2D6A4F", "font-weight": "600"}}
         )
         if st.button("Sair"):
             st.session_state["authenticated"] = False
             st.rerun()
 
-    # --- 6. PÁGINAS ---
+    # --- PÁGINAS ---
     if sel == "Dashboard":
-        st.markdown("<h1 class='section-title'>📊 Visão Geral do Negócio</h1>", unsafe_allow_html=True)
+        st.markdown("### 📊 Performance de Investimento")
         
         if not df_obras.empty:
-            obra_sel = st.selectbox("Filtrar por Obra", ["Consolidado de Obras"] + df_obras['Cliente'].tolist())
+            # Seleção de obra para análise de ROI
+            obra_sel = st.selectbox("Selecione a Casa/Obra", df_obras['Cliente'].tolist())
             
-            df_v = df_fin.copy()
-            if obra_sel != "Consolidado de Obras":
-                df_v = df_fin[df_fin['Obra Vinculada'] == obra_sel]
+            # Filtros Financeiros
+            df_v = df_fin[df_fin['Obra Vinculada'] == obra_sel]
+            obra_info = df_obras[df_obras['Cliente'] == obra_sel].iloc[0]
             
-            ent = df_v[df_v['Tipo'].str.contains('Entrada', na=False)]['Valor'].sum()
-            sai = df_v[df_v['Tipo'].str.contains('Saída', na=False)]['Valor'].sum()
+            # Cálculo de ROI e Lucro
+            valor_venda = obra_info['Valor Total']
+            custo_total = df_v[df_v['Tipo'].str.contains('Saída', na=False)]['Valor'].sum()
+            lucro_previsto = valor_venda - custo_total
+            roi = (lucro_previsto / custo_total * 100) if custo_total > 0 else 0
             
-            c1, c2, c3 = st.columns(3)
-            c1.metric("Receitas Totais", f"R$ {ent:,.2f}")
-            c2.metric("Despesas Totais", f"R$ {sai:,.2f}")
-            c3.metric("Saldo Líquido", f"R$ {ent-sai:,.2f}")
+            # Cards Estratégicos
+            c1, c2, c3, c4 = st.columns(4)
+            c1.metric("Preço de Venda", f"R$ {valor_venda:,.2f}")
+            c2.metric("Custo Acumulado", f"R$ {custo_total:,.2f}", delta=f"{ (custo_total/valor_venda*100 if valor_venda>0 else 0):.1f}% do VGV", delta_color="inverse")
+            c3.metric("Lucro Estimado", f"R$ {lucro_previsto:,.2f}")
+            c4.metric("ROI (%)", f"{roi:.2f}%")
 
-            st.markdown("<br>", unsafe_allow_html=True)
+            st.markdown("---")
             
-            col_left, col_right = st.columns([2, 1])
-            with col_left:
-                df_ev = df_v[df_v['Tipo'].str.contains('Saída', na=False)].sort_values('Data')
-                fig = px.line(df_ev, x='Data', y='Valor', title="Evolução de Custos", color_discrete_sequence=['#2D6A4F'])
-                fig.update_layout(plot_bgcolor='white', paper_bgcolor='white')
+            # Gráficos de Composição de Custos
+            col1, col2 = st.columns([2, 1])
+            with col1:
+                st.markdown("**Fluxo de Caixa da Obra**")
+                df_ev = df_v.sort_values('Data')
+                fig = px.area(df_ev, x='Data', y='Valor', color='Tipo', color_discrete_map={'Saída (Despesa)': '#E63946', 'Entrada': '#2D6A4F'})
                 st.plotly_chart(fig, use_container_width=True)
             
-            with col_right:
-                st.markdown("##### Status da Carteira")
-                fig_pie = px.pie(df_obras, names='Status', hole=0.5, color_discrete_sequence=['#2D6A4F', '#A4C3B2', '#E9F5EE'])
-                fig_pie.update_layout(showlegend=False, margin=dict(t=0, b=0, l=0, r=0))
+            with col2:
+                st.markdown("**Composição de Gastos**")
+                # Aqui agrupamos por descrição para simular categorias (Ex: Material, Mão de Obra)
+                # Dica: Se você colocar "Material: Cimento" na descrição, o código abaixo agrupa.
+                fig_pie = px.pie(df_v[df_v['Tipo'].str.contains('Saída')], names='Descrição', values='Valor', hole=0.4)
+                fig_pie.update_layout(showlegend=False)
                 st.plotly_chart(fig_pie, use_container_width=True)
 
     elif sel == "Gestão de Obras":
-        st.markdown("<h1 class='section-title'>📁 Projetos e Contratos</h1>", unsafe_allow_html=True)
-        tab1, tab2 = st.tabs(["Novo Cadastro", "Lista de Projetos"])
-        
+        st.markdown("### 📁 Registro de Novos Empreendimentos")
+        tab1, tab2 = st.tabs(["Nova Obra para Venda", "Inventário de Obras"])
         with tab1:
             with st.form("new_o"):
                 c1, c2 = st.columns(2)
-                cli = c1.text_input("Cliente / Obra")
-                val = c2.number_input("Valor do Contrato", step=1000.0)
-                if st.form_submit_button("Cadastrar Obra"):
-                    connector.open("GestorObras_DB").worksheet("Obras").append_row([len(df_obras)+1, cli, "", "Em Andamento", val, str(date.today()), ""])
+                cli = c1.text_input("Identificação da Casa/Lote")
+                val = c2.number_input("Valor Estimado de Venda (VGV)", min_value=0.0, step=10000.0)
+                if st.form_submit_button("Cadastrar Empreendimento"):
+                    connector.open("GestorObras_DB").worksheet("Obras").append_row([len(df_obras)+1, cli, "", "Construção", val, str(date.today()), ""])
                     st.cache_data.clear()
                     st.rerun()
-        
         with tab2:
-            st.dataframe(df_obras, use_container_width=True, hide_index=True)
+            st.dataframe(df_obras, use_container_width=True)
 
     elif sel == "Financeiro":
-        st.markdown("<h1 class='section-title'>💸 Fluxo de Caixa</h1>", unsafe_allow_html=True)
-        tab1, tab2 = st.tabs(["Lançamento Manual", "Extrato Geral"])
-        
-        with tab1:
-            with st.form("new_f"):
-                c1, c2 = st.columns(2)
-                tipo = c1.selectbox("Tipo", ["Saída (Despesa)", "Entrada"])
-                obra_v = c1.selectbox("Vincular Obra", df_obras['Cliente'].tolist() if not df_obras.empty else ["Geral"])
-                desc = c2.text_input("Descrição")
-                valor = c2.number_input("Valor R$", step=10.0)
-                if st.form_submit_button("Lançar"):
-                    connector.open("GestorObras_DB").worksheet("Financeiro").append_row([str(date.today()), tipo, "Geral", desc, valor, obra_v])
-                    st.cache_data.clear()
-                    st.rerun()
-        
-        with tab2:
-            st.dataframe(df_fin.sort_values('Data', ascending=False), use_container_width=True, hide_index=True)
+        st.markdown("### 💸 Lançamento de Custos e Receitas")
+        with st.form("new_f"):
+            c1, c2, c3 = st.columns(3)
+            tipo = c1.selectbox("Tipo", ["Saída (Despesa)", "Entrada"])
+            obra_v = c2.selectbox("Obra Vinculada", df_obras['Cliente'].tolist() if not df_obras.empty else ["Geral"])
+            valor = c3.number_input("Valor R$", min_value=0.0, step=100.0)
+            desc = st.text_input("Descrição (Ex: Fundação, Alvenaria, Acabamento, Terreno)")
+            if st.form_submit_button("Confirmar Lançamento"):
+                connector.open("GestorObras_DB").worksheet("Financeiro").append_row([str(date.today()), tipo, "Geral", desc, valor, obra_v])
+                st.cache_data.clear()
+                st.rerun()
+        st.dataframe(df_fin.sort_values('Data', ascending=False), use_container_width=True)
 
     elif sel == "Relatórios":
-        st.markdown("<h1 class='section-title'>📄 Relatórios e Documentos</h1>", unsafe_allow_html=True)
-        st.info("Utilize os filtros do Dashboard para exportar os dados consolidados.")
+        st.markdown("### 📄 Relatório de Viabilidade Econômica")
+        st.write("Dados consolidados para análise de retorno de capital.")
