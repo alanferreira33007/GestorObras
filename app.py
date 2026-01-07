@@ -3,7 +3,19 @@ from streamlit_option_menu import option_menu
 
 from core.auth import ensure_auth, login_screen
 from core.data import load_data, obras_list
-from pages import investimentos, caixa, insumos, projetos
+import importlib
+
+def safe_import(module_name: str):
+    try:
+        return importlib.import_module(module_name)
+    except Exception as e:
+        st.error(f"Erro ao importar {module_name}: {type(e).__name__}: {e}")
+        st.stop()
+
+investimentos = safe_import("pages.investimentos")
+caixa = safe_import("pages.caixa")
+insumos = safe_import("pages.insumos")
+projetos = safe_import("pages.projetos")
 
 # --- 1) CONFIGURAÇÃO DA PÁGINA ---
 st.set_page_config(page_title="GESTOR PRO | Modular", layout="wide")
