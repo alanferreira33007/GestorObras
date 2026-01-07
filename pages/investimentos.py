@@ -37,9 +37,17 @@ vgv = float(obra_row.get("Valor Total", 0) or 0)
     if not df_plot.empty:
         df_plot["Custo Acumulado"] = df_plot["Valor"].cumsum()
         fig = px.line(df_plot, x="Data_DT", y="Custo Acumulado", markers=True)
-        fig.update_layout(
-            plot_bgcolor="white",
-            xaxis_title="Data",
-            yaxis_title="Custo acumulado (R$)"
-        )
-        st.plotly_chart(fig, use_container_width=True)
+
+# Linha horizontal do VGV (meta de venda)
+try:
+    fig.add_hline(y=vgv, annotation_text="VGV (meta)", annotation_position="top left")
+except Exception:
+    pass
+
+fig.update_layout(
+    plot_bgcolor="white",
+    xaxis_title="Data",
+    yaxis_title="Custo acumulado (R$)"
+)
+st.plotly_chart(fig, use_container_width=True)
+
