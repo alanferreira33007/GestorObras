@@ -8,9 +8,9 @@ from datetime import datetime, date
 from streamlit_option_menu import option_menu
 
 # --- 1. CONFIGURAÇÃO ---
-st.set_page_config(page_title="Gestor PRO | Edição Final", layout="wide")
+st.set_page_config(page_title="Gestor PRO | Final Version", layout="wide")
 
-# --- 2. CSS DE ALTO CONTRASTE E BOTÕES VERDES ---
+# --- 2. CSS DE ALTO IMPACTO (FIX DOS BOTÕES) ---
 st.markdown("""
     <style>
         /* Fundo Grafite Profundo */
@@ -19,48 +19,49 @@ st.markdown("""
             color: #FFFFFF !important;
         }
         
-        /* Forçar TUDO que é texto para Branco */
+        /* Forçar Texto Branco em tudo */
         h1, h2, h3, h4, h5, h6, p, label, .stMarkdown, [data-testid="stMetricValue"] {
             color: #FFFFFF !important;
             font-family: 'Inter', sans-serif;
         }
 
-        /* Ajuste da Barra Lateral */
-        [data-testid="stSidebar"] {
-            background-color: #1e293b !important;
-            border-right: 2px solid #334155;
+        /* AJUSTE DOS BOTÕES (DENTRO E FORA DE FORMS) */
+        /* Isso garante que o fundo seja verde e o texto branco sempre */
+        button[kind="primary"], button[kind="secondary"], .stButton > button {
+            background-color: #28a745 !important;
+            color: #FFFFFF !important;
+            border: 2px solid #28a745 !important;
+            font-weight: bold !important;
+            opacity: 1 !important;
+            width: 100% !important;
+            display: block !important;
         }
-        
-        /* Ajuste de Inputs (Caixas de Texto) */
+
+        /* Hover do Botão */
+        .stButton > button:hover {
+            background-color: #218838 !important;
+            border-color: #1e7e34 !important;
+            color: #FFFFFF !important;
+            box-shadow: 0 4px 15px rgba(40, 167, 69, 0.4) !important;
+        }
+
+        /* Fix para o texto não sumir dentro do botão */
+        .stButton p {
+            color: #FFFFFF !important;
+            font-weight: bold !important;
+        }
+
+        /* Ajuste de Inputs */
         .stTextInput>div>div>input, .stNumberInput>div>div>input, .stSelectbox>div>div>div {
-            background-color: #0f172a !important;
+            background-color: #1e293b !important;
             color: #FFFFFF !important;
             border: 1px solid #3b82f6 !important;
         }
 
-        /* BOTÃO SALVAR / LANÇAR (VERDE) */
-        div.stButton > button:first-child {
-            background-color: #28a745 !important;
-            color: #FFFFFF !important;
-            border: none !important;
-            font-weight: bold !important;
-            padding: 0.5rem 1rem !important;
-            width: 100% !important;
-            transition: 0.3s;
-        }
-        
-        div.stButton > button:first-child:hover {
-            background-color: #218838 !important;
-            box-shadow: 0 4px 15px rgba(40, 167, 69, 0.4) !important;
-            transform: translateY(-2px);
-        }
-
-        /* MÉTRICAS (KPIs) */
-        div[data-testid="stMetric"] {
-            background: #1e293b !important;
-            border: 2px solid #334155 !important;
-            border-radius: 12px;
-            padding: 20px;
+        /* Sidebar */
+        [data-testid="stSidebar"] {
+            background-color: #1e293b !important;
+            border-right: 2px solid #334155;
         }
 
         #MainMenu, footer {visibility: hidden;}
@@ -78,6 +79,7 @@ if not st.session_state["authenticated"]:
         st.markdown("<h1 style='text-align: center;'>🏗️ GESTOR PRO</h1>", unsafe_allow_html=True)
         with st.form("login"):
             pwd = st.text_input("Senha de Acesso", type="password")
+            # O botão abaixo agora deve aparecer verde com texto branco
             if st.form_submit_button("ENTRAR NO SISTEMA"):
                 if pwd == st.secrets["password"]:
                     st.session_state["authenticated"] = True
@@ -105,7 +107,7 @@ else:
 
     df_obras, df_fin = load_data()
 
-    # --- 5. NAVEGAÇÃO LATERAL ---
+    # --- 5. NAVEGAÇÃO ---
     with st.sidebar:
         st.markdown("<h3 style='text-align: center; color: #3b82f6 !important;'>MENU</h3>", unsafe_allow_html=True)
         sel = option_menu(
@@ -119,7 +121,8 @@ else:
             }
         )
         st.markdown("---")
-        if st.button("🚪 SAIR DO SISTEMA"):
+        # Botão de Sair também ficará verde conforme a regra CSS
+        if st.button("SAIR DO SISTEMA"):
             st.session_state["authenticated"] = False
             st.rerun()
 
@@ -154,7 +157,7 @@ else:
                 st.write("### Novo Projeto")
                 cli = st.text_input("Cliente")
                 val = st.number_input("Valor do Contrato", step=1000.0)
-                if st.form_submit_button("💾 SALVAR OBRA"):
+                if st.form_submit_button("SALVAR OBRA"):
                     get_client().open("GestorObras_DB").worksheet("Obras").append_row([len(df_obras)+1, cli, "", "Ativa", val, str(date.today()), ""])
                     st.cache_data.clear()
                     st.rerun()
@@ -172,7 +175,7 @@ else:
                 obra_v = st.selectbox("Obra", df_obras['Cliente'].tolist() if not df_obras.empty else ["Geral"])
                 desc = st.text_input("Descrição")
                 valor = st.number_input("Valor", step=10.0)
-                if st.form_submit_button("✅ LANÇAR NO SISTEMA"):
+                if st.form_submit_button("LANÇAR NO SISTEMA"):
                     get_client().open("GestorObras_DB").worksheet("Financeiro").append_row([str(date.today()), tipo, "Geral", desc, valor, obra_v])
                     st.cache_data.clear()
                     st.rerun()
@@ -182,4 +185,4 @@ else:
 
     elif sel == "Relatórios":
         st.markdown("<h1>📄 Exportação e Documentos</h1>", unsafe_allow_html=True)
-        st.write("Módulo de geração de relatórios pronto para uso conforme seleção de obra.")
+        st.write("Módulo de geração de relatórios pronto para uso.")
