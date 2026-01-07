@@ -1,4 +1,5 @@
 from __future__ import annotations
+import json
 from io import BytesIO
 from typing import Optional, Tuple
 
@@ -7,8 +8,14 @@ from google.oauth2.service_account import Credentials
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseUpload
 
-def _drive_service():
+def _load_sa_info():
     info = st.secrets["gcp_service_account"]["json_content"]
+    if isinstance(info, str):
+        info = json.loads(info)
+    return info
+
+def _drive_service():
+    info = _load_sa_info()
     scopes = ["https://www.googleapis.com/auth/drive"]
     creds = Credentials.from_service_account_info(info, scopes=scopes)
     return build("drive", "v3", credentials=creds)
@@ -31,7 +38,9 @@ def upload_to_drive(
     media = MediaIoBaseUpload(BytesIO(file_bytes), mimetype=mime_type, resumable=True)
 
     created = service.files().create(
-        body=metadata, media_body=media, fields="id,webViewLink"
+        body=metadata,
+        media_body=media,
+        fields="id,webViewLink"
     ).execute()
 
     return created["id"], created.get("webViewLink", "")
