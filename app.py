@@ -13,7 +13,8 @@ st.set_page_config(page_title="Gestor de Obras", layout="wide")
 def conectar_google_sheets():
     try:
         scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
-        json_creds = json.loads(st.secrets["gcp_service_account"]["json_content"])
+        # strict=False permite quebras de linha (correção para Mac)
+        json_creds = json.loads(st.secrets["gcp_service_account"]["json_content"], strict=False)
         creds = ServiceAccountCredentials.from_json_keyfile_dict(json_creds, scope)
         client = gspread.authorize(creds)
         sheet = client.open("GestorObras_DB")
