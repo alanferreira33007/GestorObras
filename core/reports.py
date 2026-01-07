@@ -119,7 +119,7 @@ def gerar_relatorio_investimentos_pdf(
     if not df_l.empty and "Valor" in df_l.columns:
         df_l["Valor"] = df_l["Valor"].apply(_fmt_brl)
 
-    story.append(_df_to_table(df_l, max_rows=30))
+    story.append(_df_to_table(df_l, max_rows=5000))
     story.append(Spacer(1, 6))
     story.append(Paragraph("<i>Obs.: se houver muitos lançamentos, o PDF traz apenas as primeiras linhas.</i>", styles["BodyText"]))
 
