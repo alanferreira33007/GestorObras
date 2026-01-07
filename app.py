@@ -8,150 +8,119 @@ from datetime import datetime, date
 from streamlit_option_menu import option_menu
 import io
 
-# --- 1. CONFIGURAÇÃO E AUTENTICAÇÃO (SESSÃO) ---
-st.set_page_config(page_title="Gestor Obras | Ultra Speed", layout="wide")
+# --- 1. CONFIGURAÇÃO E AUTENTICAÇÃO ---
+st.set_page_config(page_title="Gestor Obras | Enterprise", layout="wide")
 
-# Inicializa o estado de autenticação se não existir
 if "authenticated" not in st.session_state:
     st.session_state["authenticated"] = False
 
 def check_password():
     if not st.session_state["authenticated"]:
-        _, col_central, _ = st.columns([1, 1, 1])
+        _, col_central, _ = st.columns([1, 1.2, 1])
         with col_central:
-            st.markdown("<br><br>", unsafe_allow_html=True)
-            st.title("🏗️ Gestor PRO")
-            with st.form("login_form"):
-                pwd = st.text_input("Senha", type="password")
-                if st.form_submit_button("Entrar"):
-                    if pwd == st.secrets["password"]:
-                        st.session_state["authenticated"] = True
-                        st.rerun()
-                    else:
-                        st.error("⚠️ Senha incorreta.")
+            st.markdown("<br><br><br>", unsafe_allow_html=True)
+            with st.container():
+                st.markdown("""
+                    <div style='background-color: white; padding: 40px; border-radius: 20px; box-shadow: 0 10px 25px rgba(0,0,0,0.1); border: 1px solid #f0f0f0;'>
+                        <h2 style='text-align: center; color: #1e3a8a;'>🏗️ GESTOR PRO</h2>
+                        <p style='text-align: center; color: #64748b;'>Painel Administrativo</p>
+                    </div>
+                """, unsafe_allow_html=True)
+                with st.form("login_form"):
+                    pwd = st.text_input("Senha de Acesso", type="password", placeholder="••••••••")
+                    if st.form_submit_button("Acessar Sistema", use_container_width=True):
+                        if pwd == st.secrets["password"]:
+                            st.session_state["authenticated"] = True
+                            st.rerun()
+                        else: st.error("⚠️ Senha inválida")
         return False
     return True
 
 if check_password():
-
-    # --- 2. BACKEND COM CACHE INTELIGENTE ---
+    # --- 2. BACKEND E CACHE ---
     @st.cache_resource
-    def get_gspread_client():
-        """Cria o cliente de conexão uma única vez."""
+    def get_client():
         scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
         json_creds = json.loads(st.secrets["gcp_service_account"]["json_content"], strict=False)
-        creds = ServiceAccountCredentials.from_json_keyfile_dict(json_creds, scope)
-        return gspread.authorize(creds)
+        return gspread.authorize(ServiceAccountCredentials.from_json_keyfile_dict(json_creds, scope))
 
-    @st.cache_data(ttl=300) # Guarda os dados na memória por 5 minutos (300 segundos)
-    def buscar_dados():
-        """Busca as abas e transforma em DataFrames de forma rápida."""
-        client = get_gspread_client()
+    @st.cache_data(ttl=300)
+    def load_data():
+        client = get_client()
         sheet = client.open("GestorObras_DB")
+        df_obras = pd.DataFrame(sheet.worksheet("Obras").get_all_records())
+        df_fin = pd.DataFrame(sheet.worksheet("Financeiro").get_all_records())
         
-        # Obras
-        ws_obras = sheet.worksheet("Obras")
-        df_obras = pd.DataFrame(ws_obras.get_all_records())
         if not df_obras.empty:
             df_obras['Valor Total'] = pd.to_numeric(df_obras['Valor Total'], errors='coerce').fillna(0)
-        
-        # Financeiro
-        ws_fin = sheet.worksheet("Financeiro")
-        df_fin = pd.DataFrame(ws_fin.get_all_records())
         if not df_fin.empty:
             df_fin['Valor'] = pd.to_numeric(df_fin['Valor'], errors='coerce').fillna(0)
             df_fin['Data'] = pd.to_datetime(df_fin['Data'], errors='coerce').dt.date
-            
         return df_obras, df_fin
 
-    # --- 3. UI E ESTILO ---
+    # --- 3. ESTILIZAÇÃO CSS (INTERFACE MODERNA) ---
     st.markdown("""
         <style>
-            .main { background-color: #f8f9fa; }
-            div[data-testid="stMetric"] {
-                background-color: #ffffff; border-radius: 12px; padding: 20px;
-                box-shadow: 0 4px 6px rgba(0,0,0,0.05); border: 1px solid #eee;
+            @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
+            html, body, [class*="css"] { font-family: 'Inter', sans-serif; }
+            
+            .stApp { background-color: #fcfcfd; }
+            
+            /* Estilo dos Cards de Formulário */
+            [data-testid="stForm"] {
+                background-color: white !important;
+                border: 1px solid #ebedef !important;
+                border-radius: 15px !important;
+                padding: 30px !important;
+                box-shadow: 0 4px 12px rgba(0,0,0,0.03) !important;
             }
-            #MainMenu, footer {visibility: hidden;}
+            
+            /* Títulos das Páginas */
+            .page-title { color: #1e293b; font-weight: 700; font-size: 28px; margin-bottom: 5px; }
+            .page-subtitle { color: #64748b; font-size: 16px; margin-bottom: 25px; }
+            
+            /* Métricas Customizadas */
+            div[data-testid="stMetric"] {
+                background-color: white;
+                border: 1px solid #f1f5f9;
+                border-radius: 12px;
+                padding: 15px;
+                transition: transform 0.2s;
+            }
+            div[data-testid="stMetric"]:hover { transform: translateY(-3px); }
         </style>
     """, unsafe_allow_html=True)
 
-    # Carregamento inicial rápido
-    df_obras, df_fin = buscar_dados()
+    df_obras, df_fin = load_data()
 
     # --- 4. SIDEBAR ---
     with st.sidebar:
-        st.markdown("<h2 style='text-align: center;'>🏗️ GESTOR PRO</h2>", unsafe_allow_html=True)
-        
+        st.markdown("<div style='padding: 20px 0;'><h2 style='text-align: center; color: #1e3a8a;'>🏗️ GESTOR</h2></div>", unsafe_allow_html=True)
         menu = option_menu(
-            menu_title=None,
-            options=["Dashboard", "Obras", "Financeiro", "Relatórios"],
-            icons=["bar-chart-line", "house-gear", "cash-stack", "file-earmark-pdf"],
-            default_index=0,
+            None, ["Dashboard", "Obras", "Financeiro", "Relatórios"],
+            icons=['grid-1x2', 'briefcase', 'wallet2', 'file-earmark-bar-graph'],
+            menu_icon="cast", default_index=0,
             styles={
-                "nav-link": {"font-size": "15px", "text-align": "left", "margin": "5px", "border-radius": "8px"},
-                "nav-link-selected": {"background-color": "#007bff"},
+                "nav-link": {"font-size": "14px", "text-align": "left", "margin": "8px", "border-radius": "10px", "font-weight": "500"},
+                "nav-link-selected": {"background-color": "#2563eb"},
             }
         )
-        
+        st.markdown("<br><br>", unsafe_allow_html=True)
         if st.button("🚪 Sair", use_container_width=True):
             st.session_state["authenticated"] = False
             st.rerun()
 
-    # --- 5. PÁGINAS (SÓ PROCESSAM O NECESSÁRIO) ---
+    # --- 5. CONTEÚDO ---
     if menu == "Dashboard":
-        st.title("📊 Painel Estratégico")
+        st.markdown("<h1 class='page-title'>📊 Dashboard Executivo</h1>", unsafe_allow_html=True)
+        st.markdown("<p class='page-subtitle'>Resumo financeiro e progresso das obras em tempo real.</p>", unsafe_allow_html=True)
+        
         if not df_obras.empty:
-            obra_sel = st.selectbox("Obra", ["Todas"] + df_obras['Cliente'].tolist())
+            obra_sel = st.selectbox("Selecione uma obra para análise:", ["Todas as Obras"] + df_obras['Cliente'].tolist())
             
-            # Filtro em memória (muito rápido)
             df_v = df_fin.copy()
-            if obra_sel != "Todas":
+            if obra_sel != "Todas as Obras":
                 df_v = df_fin[df_fin['Obra Vinculada'] == obra_sel]
             
             ent = df_v[df_v['Tipo'].str.contains('Entrada', na=False)]['Valor'].sum()
-            sai = df_v[df_v['Tipo'].str.contains('Saída', na=False)]['Valor'].sum()
-            
-            c1, c2, c3 = st.columns(3)
-            c1.metric("Recebido", f"R$ {ent:,.2f}")
-            c2.metric("Gasto", f"R$ {sai:,.2f}")
-            c3.metric("Saldo", f"R$ {ent-sai:,.2f}")
-            
-            if not df_v.empty:
-                df_ev = df_v[df_v['Tipo'].str.contains('Saída', na=False)].sort_values('Data')
-                fig = px.line(df_ev, x='Data', y='Valor', title="Fluxo de Gastos", markers=True)
-                fig.update_layout(hovermode="x unified")
-                st.plotly_chart(fig, use_container_width=True)
-        else: st.info("Sem dados.")
-
-    elif menu == "Obras":
-        st.title("📁 Gestão de Obras")
-        with st.form("f_ob", clear_on_submit=True):
-            c1, c2 = st.columns(2)
-            cli = c1.text_input("Cliente")
-            val = c2.number_input("Valor Contrato", step=500.0)
-            if st.form_submit_button("Salvar Obra"):
-                client = get_gspread_client()
-                client.open("GestorObras_DB").worksheet("Obras").append_row([len(df_obras)+1, cli, "", "Em Andamento", val, str(date.today()), ""])
-                st.cache_data.clear() # Limpa o cache para forçar leitura nova
-                st.rerun()
-        st.dataframe(df_obras, use_container_width=True, hide_index=True)
-
-    elif menu == "Financeiro":
-        st.title("💸 Caixa")
-        with st.form("f_fi", clear_on_submit=True):
-            t = st.selectbox("Tipo", ["Saída (Despesa)", "Entrada"])
-            o = st.selectbox("Obra", df_obras['Cliente'].tolist() if not df_obras.empty else ["Geral"])
-            d = st.text_input("Descrição")
-            v = st.number_input("Valor", step=10.0)
-            if st.form_submit_button("Lançar"):
-                client = get_gspread_client()
-                client.open("GestorObras_DB").worksheet("Financeiro").append_row([str(date.today()), t, "Geral", d, v, o])
-                st.cache_data.clear() # Atualiza os dados
-                st.rerun()
-        st.dataframe(df_fin, use_container_width=True, hide_index=True)
-
-    elif menu == "Relatórios":
-        st.title("📄 Relatórios")
-        st.info("O módulo de exportação está otimizado para a base atual.")
-        # Reinsira aqui a sua função de PDF preferida se desejar usar agora
+            sai = df_v[df_v['Tipo'].str.contains('
