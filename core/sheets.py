@@ -1,56 +1,61 @@
-import json
+from __future__ import annotations
 import streamlit as st
 import gspread
-from oauth2client.service_account import ServiceAccountCredentials
-from core.constants import FIN_HEADERS, OBRAS_HEADERS, ORC_HEADERS
+from google.oauth2.service_account import Credentials
 
+SCOPES = [
+    "https://www.googleapis.com/auth/spreadsheets",
+    "https://www.googleapis.com/auth/drive",
+]
 
-def obter_conector():
-    creds_json = json.loads(st.secrets["gcp_service_account"]["json_content"], strict=False)
-    scope = [
-        "https://spreadsheets.google.com/feeds",
-        "https://www.googleapis.com/auth/drive",
-    ]
-    return gspread.authorize(ServiceAccountCredentials.from_json_keyfile_dict(creds_json, scope))
+def get_gspread_client():
+    info = st.secrets["gcp_service_account"]["json_content"]
+    creds = Credentials.from_service_account_info(info, scopes=SCOPES)
+    return gspread.authorize(creds)
 
-
-def get_db():
-    client = obter_conector()
+def open_db():
+    client = get_gspread_client()
     return client.open("GestorObras_DB")
 
+def ensure_financeiro_schema():
+    """
+    Garante que a aba Financeiro tem as colunas:
+    Data | Tipo | Categoria | Descrição | Valor | Obra Vinculada | Anexo
+    """
+    db = open_db()
+    ws = db.worksheet("Financeiro")
 
-def ensure_worksheet(db, title: str, rows=1000, cols=20):
-    try:
-        return db.worksheet(title)
-    except Exception:
-        return db.add_worksheet(title=title, rows=str(rows), cols=str(cols))
+    header = ws.row_values(1)
+    desired = ["Data", "Tipo", "Categoria", "Descrição", "Valor", "Obra Vinculada", "Anexo"]
 
-
-def ensure_headers(ws, required_headers: list[str]):
-    # garante que a primeira linha tenha todos os headers necessários
-    row1 = ws.row_values(1)
-    if not row1:
-        ws.update("A1", [required_headers])
+    if not header:
+        ws.update("A1:G1", [desired])
         return
 
-    current = row1
-    changed = False
-    for h in required_headers:
-        if h not in current:
-            current.append(h)
-            changed = True
-    if changed:
-        ws.update("A1", [current])
+    # adiciona colunas faltantes ao final
+    missing = [c for c in desired if c not in header]
+    if missing:
+        new_header = header + missing
+        ws.update(f"A1:{chr(64+len(new_header))}1", [new_header])
 
+def ensure_obras_schema():
+    """
+    Garante a aba Obras com colunas básicas.
+    """
+    db = open_db()
+    ws = db.worksheet("Obras")
+    header = ws.row_values(1)
+    desired = ["ID", "Cliente", "Endereço", "Status", "Valor Total", "Data Início", "Prazo"]
+
+    if not header:
+        ws.update("A1:G1", [desired])
+        return
+
+    missing = [c for c in desired if c not in header]
+    if missing:
+        new_header = header + missing
+        ws.update(f"A1:{chr(64+len(new_header))}1", [new_header])
 
 def ensure_schema():
-    db = get_db()
-    ws_fin = ensure_worksheet(db, "Financeiro", rows=3000, cols=30)
-    ws_obr = ensure_worksheet(db, "Obras", rows=1000, cols=20)
-    ws_orc = ensure_worksheet(db, "Orcamento", rows=1000, cols=10)
-
-    ensure_headers(ws_fin, FIN_HEADERS)
-    ensure_headers(ws_obr, OBRAS_HEADERS)
-    ensure_headers(ws_orc, ORC_HEADERS)
-
-    return db
+    ensure_obras_schema()
+    ensure_financeiro_schema()
