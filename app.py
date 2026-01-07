@@ -9,102 +9,131 @@ from datetime import datetime, date
 from streamlit_option_menu import option_menu
 
 # --- 1. CONFIGURAÇÃO DE ALTO NÍVEL ---
-st.set_page_config(page_title="Gestor Obras | Elite Edition", layout="wide", initial_sidebar_state="expanded")
+st.set_page_config(page_title="GESTOR PRO | Signature Edition", layout="wide", initial_sidebar_state="expanded")
 
-# --- 2. CSS CUSTOMIZADO (DESIGN PREMIUM DARK) ---
+# --- 2. CSS SIGNATURE (O ACABAMENTO DE LUXO) ---
 st.markdown("""
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;800&display=swap');
         
-        /* Base e Fundo */
-        .stApp { background-color: #0b0e14; color: #ffffff; font-family: 'Inter', sans-serif; }
-        
-        /* Cards de Métricas Estilizados */
-        div[data-testid="stMetric"] {
-            background: linear-gradient(145deg, #161b22, #0d1117);
-            border: 1px solid #30363d;
-            border-radius: 16px;
-            padding: 25px !important;
-            box-shadow: 0 8px 16px rgba(0,0,0,0.4);
+        /* Fundo e Tipografia */
+        .stApp { 
+            background: linear-gradient(135deg, #0f172a 0%, #020617 100%); 
+            color: #f8fafc; 
+            font-family: 'Plus Jakarta Sans', sans-serif; 
         }
         
-        /* Botões Estilo "Elite" (Verde Esmeralda) */
+        /* Efeito de Vidro na Sidebar */
+        [data-testid="stSidebar"] {
+            background-color: rgba(15, 23, 42, 0.7) !important;
+            backdrop-filter: blur(15px);
+            border-right: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        
+        /* Cards de Métricas Estilo Premium */
+        div[data-testid="stMetric"] {
+            background: rgba(30, 41, 59, 0.5);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 20px;
+            padding: 25px !important;
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+        }
+        
+        /* Botões Signature (Verde Neon Profissional) */
         div.stButton > button, div[data-testid="stForm"] button {
-            background: linear-gradient(90deg, #10b981, #059669) !important;
+            background: linear-gradient(135deg, #22c55e 0%, #15803d 100%) !important;
             color: white !important;
             border: none !important;
-            border-radius: 10px !important;
-            font-weight: 800 !important;
-            text-transform: uppercase;
-            letter-spacing: 1px;
-            height: 48px;
-            transition: 0.3s all;
+            border-radius: 12px !important;
+            font-weight: 700 !important;
+            letter-spacing: 0.5px;
+            height: 50px;
+            transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
         }
         div.stButton > button:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 10px 20px rgba(16, 185, 129, 0.3);
+            transform: scale(1.02);
+            box-shadow: 0 0 20px rgba(34, 197, 94, 0.4);
         }
 
-        /* Tabelas e Dataframes */
-        .stDataFrame { border: 1px solid #30363d; border-radius: 12px; }
+        /* Inputs Estilizados */
+        input, select, textarea, div[data-baseweb="select"] {
+            background-color: #1e293b !important;
+            border-radius: 10px !important;
+            border: 1px solid rgba(255, 255, 255, 0.1) !important;
+            color: white !important;
+        }
 
-        /* Sidebar Customizada */
-        [data-testid="stSidebar"] { background-color: #0d1117 !important; border-right: 1px solid #30363d; }
+        /* Títulos de Página */
+        .main-title {
+            font-size: 38px;
+            font-weight: 800;
+            background: linear-gradient(90deg, #f8fafc, #94a3b8);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            margin-bottom: 30px;
+        }
         
         #MainMenu, footer {visibility: hidden;}
     </style>
 """, unsafe_allow_html=True)
 
-# --- 3. CONTROLE DE ACESSO ---
+# --- 3. AUTENTICAÇÃO ---
 if "authenticated" not in st.session_state:
     st.session_state["authenticated"] = False
 
-if not st.session_state["authenticated"]:
-    _, col, _ = st.columns([1, 1.2, 1])
+def screen_login():
+    _, col, _ = st.columns([1, 1.3, 1])
     with col:
         st.markdown("<br><br><br>", unsafe_allow_html=True)
-        st.markdown("<h1 style='text-align: center;'>🏗️ GESTOR PRO</h1>", unsafe_allow_html=True)
-        st.markdown("<p style='text-align: center; color: #8b949e;'>Painel Administrativo de Elite</p>", unsafe_allow_html=True)
+        st.markdown("""
+            <div style='text-align: center; padding: 40px; border-radius: 30px; background: rgba(30,41,59,0.5); border: 1px solid rgba(255,255,255,0.1);'>
+                <h1 style='color: white; margin-bottom: 0;'>GESTOR PRO</h1>
+                <p style='color: #94a3b8;'>Signature Access</p>
+            </div>
+        """, unsafe_allow_html=True)
         with st.form("login"):
-            pwd = st.text_input("CHAVE DE ACESSO", type="password")
-            if st.form_submit_button("DESBLOQUEAR SISTEMA"):
+            pwd = st.text_input("PASSWORD", type="password")
+            if st.form_submit_button("AUTHENTICATE"):
                 if pwd == st.secrets["password"]:
                     st.session_state["authenticated"] = True
                     st.rerun()
-                else: st.error("Chave inválida.")
+                else: st.error("Acesso Negado")
+
+if not st.session_state["authenticated"]:
+    screen_login()
 else:
-    # --- 4. BACKEND INTEGRADO ---
+    # --- 4. DATA ENGINE ---
     @st.cache_resource
-    def get_client():
-        json_creds = json.loads(st.secrets["gcp_service_account"]["json_content"], strict=False)
-        return gspread.authorize(ServiceAccountCredentials.from_json_keyfile_dict(json_creds, ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]))
+    def get_connector():
+        creds_dict = json.loads(st.secrets["gcp_service_account"]["json_content"], strict=False)
+        return gspread.authorize(ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]))
 
     @st.cache_data(ttl=60)
-    def load_data():
+    def load_elite_data():
         try:
-            client = get_client()
-            db = client.open("GestorObras_DB")
-            df_o = pd.DataFrame(db.worksheet("Obras").get_all_records())
-            df_f = pd.DataFrame(db.worksheet("Financeiro").get_all_records())
+            client = get_connector()
+            sheet = client.open("GestorObras_DB")
+            df_o = pd.DataFrame(sheet.worksheet("Obras").get_all_records())
+            df_f = pd.DataFrame(sheet.worksheet("Financeiro").get_all_records())
             df_o['Valor Total'] = pd.to_numeric(df_o['Valor Total'], errors='coerce').fillna(0)
             df_f['Valor'] = pd.to_numeric(df_f['Valor'], errors='coerce').fillna(0)
             df_f['Data'] = pd.to_datetime(df_f['Data'], errors='coerce').dt.date
             return df_o, df_f
         except: return pd.DataFrame(), pd.DataFrame()
 
-    df_obras, df_fin = load_data()
+    df_obras, df_fin = load_elite_data()
 
-    # --- 5. NAVEGAÇÃO PREMIUM ---
+    # --- 5. NAVEGAÇÃO LATERAL (OPTION MENU) ---
     with st.sidebar:
-        st.markdown("<div style='padding: 20px 0; text-align: center;'><h2 style='color: #10b981;'>GESTOR PRO</h2></div>", unsafe_allow_html=True)
+        st.markdown("<div style='text-align: center; margin-bottom: 30px;'><h1 style='color: #22c55e; font-size: 24px;'>GESTOR PRO</h1></div>", unsafe_allow_html=True)
         sel = option_menu(
-            None, ["Insights", "Obras", "Financeiro", "Relatórios"],
-            icons=['cpu', 'building-gear', 'bank', 'file-earmark-medical'],
+            None, ["Insights", "Projetos", "Fluxo de Caixa", "Relatórios"],
+            icons=['command', 'layout-text-sidebar-reverse', 'wallet2', 'journal-text'],
             menu_icon="cast", default_index=0,
             styles={
                 "container": {"background-color": "transparent"},
-                "nav-link": {"color": "#8b949e", "font-size": "14px", "text-align": "left", "margin": "8px", "border-radius": "10px"},
-                "nav-link-selected": {"background-color": "#10b981", "color": "white", "font-weight": "800"},
+                "nav-link": {"color": "#94a3b8", "font-size": "15px", "text-align": "left", "margin": "10px", "border-radius": "12px", "padding": "12px"},
+                "nav-link-selected": {"background-color": "#22c55e", "color": "white", "font-weight": "700"},
             }
         )
         st.markdown("<br><br>", unsafe_allow_html=True)
@@ -114,105 +143,82 @@ else:
 
     # --- 6. TELAS ---
     if sel == "Insights":
-        st.markdown("<h1 style='letter-spacing: -1px;'>📊 Dashboard de Elite</h1>", unsafe_allow_html=True)
+        st.markdown("<h1 class='main-title'>📈 Inteligência de Negócio</h1>", unsafe_allow_html=True)
         
         if not df_obras.empty:
-            obra = st.selectbox("Selecione a Unidade de Análise", ["Faturamento Global"] + df_obras['Cliente'].tolist())
+            obra_sel = st.selectbox("Unidade de Negócio", ["Consolidado"] + df_obras['Cliente'].tolist())
             
             df_v = df_fin.copy()
-            valor_contrato = df_obras['Valor Total'].sum()
+            if obra_sel != "Consolidado":
+                df_v = df_fin[df_fin['Obra Vinculada'] == obra_sel]
             
-            if obra != "Faturamento Global":
-                df_v = df_fin[df_fin['Obra Vinculada'] == obra]
-                valor_contrato = df_obras[df_obras['Cliente'] == obra]['Valor Total'].sum()
+            e = df_v[df_v['Tipo'].str.contains('Entrada', na=False)]['Valor'].sum()
+            s = df_v[df_v['Tipo'].str.contains('Saída', na=False)]['Valor'].sum()
             
-            ent = df_v[df_v['Tipo'].str.contains('Entrada', na=False)]['Valor'].sum()
-            sai = df_v[df_v['Tipo'].str.contains('Saída', na=False)]['Valor'].sum()
-            saldo = ent - sai
+            c1, c2, c3 = st.columns(3)
+            with c1: st.metric("RECEITA BRUTA", f"R$ {e:,.2f}")
+            with c2: st.metric("CUSTOS TOTAIS", f"R$ {s:,.2f}")
+            with c3: st.metric("MARGEM LÍQUIDA", f"R$ {e-s:,.2f}")
             
-            # Cards de Métricas com Design Moderno
-            c1, c2, c3, c4 = st.columns(4)
-            c1.metric("RECEITA", f"R$ {ent:,.2f}")
-            c2.metric("CUSTOS", f"R$ {sai:,.2f}", delta_color="inverse")
-            c3.metric("RESULTADO", f"R$ {saldo:,.2f}")
-            progresso = (sai / valor_contrato * 100) if valor_contrato > 0 else 0
-            c4.metric("CONSUMO CONTRATO", f"{progresso:.1f}%")
-
             st.markdown("<br>", unsafe_allow_html=True)
+            col_left, col_right = st.columns([2, 1])
             
-            # Gráfico de Evolução Profissional
-            col_g1, col_g2 = st.columns([2, 1])
-            with col_g1:
+            with col_left:
                 df_ev = df_v[df_v['Tipo'].str.contains('Saída', na=False)].sort_values('Data')
-                fig = px.area(df_ev, x='Data', y='Valor', title="Fluxo de Desembolso Mensal",
-                              color_discrete_sequence=['#10b981'])
-                fig.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', 
-                                  font=dict(color="#8b949e"), margin=dict(l=0, r=0, t=30, b=0))
+                fig = px.area(df_ev, x='Data', y='Valor', title="Evolução de Desembolso", color_discrete_sequence=['#22c55e'])
+                fig.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', font=dict(color="#f8fafc"))
                 st.plotly_chart(fig, use_container_width=True)
             
-            with col_g2:
-                # Gauge Chart (Velocímetro) de Lucratividade
-                lucratividade = (saldo / ent * 100) if ent > 0 else 0
-                fig_gauge = go.Figure(go.Indicator(
-                    mode = "gauge+number",
-                    value = lucratividade,
-                    title = {'text': "Margem de Lucro (%)", 'font': {'size': 14, 'color': "#8b949e"}},
-                    gauge = {
-                        'axis': {'range': [None, 100], 'tickwidth': 1, 'tickcolor': "#8b949e"},
-                        'bar': {'color': "#10b981"},
-                        'bgcolor': "#161b22",
-                        'borderwidth': 2,
-                        'bordercolor': "#30363d",
-                        'steps': [
-                            {'range': [0, 20], 'color': '#ef4444'},
-                            {'range': [20, 50], 'color': '#f59e0b'}],
-                    }
-                ))
-                fig_gauge.update_layout(paper_bgcolor='rgba(0,0,0,0)', font=dict(color="#8b949e"), height=250, margin=dict(l=20, r=20, t=30, b=20))
-                st.plotly_chart(fig_gauge, use_container_width=True)
+            with col_right:
+                # Indicador de Performance (Bullet)
+                st.markdown("<div style='background: rgba(30,41,59,0.5); padding: 20px; border-radius: 20px; border: 1px solid rgba(255,255,255,0.1);'>", unsafe_allow_html=True)
+                st.write("📊 Saúde Financeira")
+                perc = (e-s)/e*100 if e > 0 else 0
+                st.progress(max(min(perc/100, 1.0), 0.0))
+                st.write(f"Margem: {perc:.1f}%")
+                st.markdown("</div>", unsafe_allow_html=True)
 
-    elif sel == "Obras":
-        st.markdown("<h1>📁 Gerenciamento de Projetos</h1>", unsafe_allow_html=True)
-        tab_o1, tab_o2 = st.tabs(["📝 Cadastrar Novo Contrato", "🔍 Consultar Portfólio"])
+    elif sel == "Projetos":
+        st.markdown("<h1 class='main-title'>📁 Portfólio de Obras</h1>", unsafe_allow_html=True)
+        t1, t2 = st.tabs(["📝 Novo Projeto", "🔍 Lista de Obras"])
         
-        with tab_o1:
-            with st.form("new_o_pro"):
+        with t1:
+            with st.form("new_signature_o"):
                 c1, c2 = st.columns(2)
-                cli = c1.text_input("Nome do Cliente/Obra")
-                val = c2.number_input("Valor Total do Contrato", min_value=0.0, step=1000.0)
-                if st.form_submit_button("🚀 REGISTRAR PROJETO NO SISTEMA"):
-                    get_client().open("GestorObras_DB").worksheet("Obras").append_row([len(df_obras)+1, cli, "", "Ativo", val, str(date.today()), ""])
+                cli = c1.text_input("Identificação do Cliente")
+                val = c2.number_input("Valor de Contrato (R$)", step=1000.0)
+                if st.form_submit_button("REGISTRAR NA BASE SIGNATURE"):
+                    get_connector().open("GestorObras_DB").worksheet("Obras").append_row([len(df_obras)+1, cli, "", "Ativo", val, str(date.today()), ""])
                     st.cache_data.clear()
-                    st.success(f"Obra {cli} cadastrada com sucesso!")
                     st.rerun()
         
-        with tab_o2:
+        with t2:
             st.dataframe(df_obras, use_container_width=True, hide_index=True)
 
-    elif sel == "Financeiro":
-        st.markdown("<h1>💸 Centro de Custos</h1>", unsafe_allow_html=True)
-        tab_f1, tab_f2 = st.tabs(["💰 Novo Lançamento", "📄 Extrato Consolidado"])
+    elif sel == "Fluxo de Caixa":
+        st.markdown("<h1 class='main-title'>💸 Movimentação Financeira</h1>", unsafe_allow_html=True)
+        t1, t2 = st.tabs(["💰 Lançar Operação", "🧾 Extrato Detalhado"])
         
-        with tab_f1:
-            with st.form("new_f_pro"):
+        with t1:
+            with st.form("new_signature_f"):
                 c1, c2 = st.columns(2)
-                tipo = c1.selectbox("Natureza da Operação", ["Saída (Despesa)", "Entrada (Receita)"])
-                obra_v = c1.selectbox("Vincular à Unidade", df_obras['Cliente'].tolist() if not df_obras.empty else ["Geral"])
-                desc = c2.text_input("Descrição Detalhada")
-                valor = c2.number_input("Valor da Transação", min_value=0.0, step=10.0)
-                if st.form_submit_button("✅ EFETIVAR LANÇAMENTO"):
-                    get_client().open("GestorObras_DB").worksheet("Financeiro").append_row([str(date.today()), tipo, "Geral", desc, valor, obra_v])
+                tipo = c1.selectbox("Tipo de Operação", ["Saída (Despesa)", "Entrada"])
+                obra_v = c1.selectbox("Obra Referência", df_obras['Cliente'].tolist() if not df_obras.empty else ["Geral"])
+                desc = c2.text_input("Descrição / Finalidade")
+                valor = c2.number_input("Valor da Transação", step=10.0)
+                if st.form_submit_button("EFETIVAR LANÇAMENTO"):
+                    get_connector().open("GestorObras_DB").worksheet("Financeiro").append_row([str(date.today()), tipo, "Geral", desc, valor, obra_v])
                     st.cache_data.clear()
                     st.rerun()
         
-        with tab_f2:
+        with t2:
             st.dataframe(df_fin.sort_values('Data', ascending=False), use_container_width=True, hide_index=True)
 
     elif sel == "Relatórios":
-        st.markdown("<h1>📄 Inteligência Documental</h1>", unsafe_allow_html=True)
+        st.markdown("<h1 class='main-title'>📄 Central de Inteligência</h1>", unsafe_allow_html=True)
         st.markdown("""
-            <div style='padding: 40px; border: 1px dashed #30363d; border-radius: 20px; text-align: center; background-color: #161b22;'>
-                <h3 style='color: #10b981;'>Relatórios de Medição e Prestação de Contas</h3>
-                <p>O sistema processa automaticamente os dados do Dashboard para gerar PDFs técnicos.</p>
+            <div style='background: rgba(30,41,59,0.5); padding: 50px; border-radius: 30px; text-align: center; border: 1px dashed rgba(255,255,255,0.2);'>
+                <h2 style='color: #22c55e;'>Geração de Relatório Consolidado</h2>
+                <p>O sistema está pronto para compilar as métricas selecionadas no Dashboard em um documento técnico PDF.</p>
             </div>
         """, unsafe_allow_html=True)
