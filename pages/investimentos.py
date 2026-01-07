@@ -6,6 +6,7 @@ import pandas as pd
 
 from core.formatters import fmt_moeda
 from core.reports import gerar_relatorio_investimentos_pdf
+from core.constants import BUDGET_WARN, BUDGET_FAIL
 
 
 MESES = [
@@ -28,38 +29,29 @@ MESES = [
 def _filtrar_periodo(df: pd.DataFrame, ano_sel: str, mes_sel):
     df2 = df.copy()
     df2 = df2.dropna(subset=["Data_DT"])
-
     if ano_sel != "Todos":
-        ano_int = int(ano_sel)
-        df2 = df2[df2["Data_DT"].dt.year == ano_int]
-
+        df2 = df2[df2["Data_DT"].dt.year == int(ano_sel)]
     if mes_sel != "Todos":
-        mes_int = int(mes_sel)
-        df2 = df2[df2["Data_DT"].dt.month == mes_int]
-
+        df2 = df2[df2["Data_DT"].dt.month == int(mes_sel)]
     return df2
 
 
 def _top_n_com_outros(df_cat: pd.DataFrame, top_n: int, agrupar_outros: bool) -> pd.DataFrame:
     if df_cat.empty:
         return df_cat
-
     if not agrupar_outros:
         return df_cat.head(top_n).copy()
-
     df_top = df_cat.head(top_n).copy()
     df_rest = df_cat.iloc[top_n:].copy()
-
     if df_rest.empty:
         return df_top
-
     outros_valor = float(df_rest["Valor"].sum())
     df_outros = pd.DataFrame([{"Categoria": "Outros", "Valor": outros_valor}])
     return pd.concat([df_top, df_outros], ignore_index=True)
 
 
 def render(df_obras: pd.DataFrame, df_fin: pd.DataFrame, lista_obras: list[str]):
-    st.markdown("### 📊 Performance e ROI por Obra")
+    st.markdown("### 📊 Investimentos — Obra")
 
     if not lista_obras:
         st.info("Cadastre uma obra para iniciar a análise.")
@@ -69,7 +61,7 @@ def render(df_obras: pd.DataFrame, df_fin: pd.DataFrame, lista_obras: list[str])
 
     df_match = df_obras[df_obras["Cliente"].astype(str).str.strip() == str(obra_sel).strip()]
     if df_match.empty:
-        st.warning("Obra não encontrada. Verifique se o nome está igual ao cadastrado na aba Obras.")
+        st.warning("Obra não encontrada.")
         return
 
     obra_row = df_match.iloc[0]
@@ -77,9 +69,7 @@ def render(df_obras: pd.DataFrame, df_fin: pd.DataFrame, lista_obras: list[str])
 
     df_v = df_fin[df_fin["Obra Vinculada"].astype(str).str.strip() == str(obra_sel).strip()].copy()
 
-    # -----------------------------
-    # FILTRO (Ano/Mês)
-    # -----------------------------
+    # filtros
     df_temp = df_v.dropna(subset=["Data_DT"]).copy()
     anos = sorted(df_temp["Data_DT"].dt.year.dropna().astype(int).unique().tolist())
     op_anos = ["Todos"] + [str(a) for a in anos] if anos else ["Todos"]
@@ -87,7 +77,6 @@ def render(df_obras: pd.DataFrame, df_fin: pd.DataFrame, lista_obras: list[str])
     with st.expander("📅 Filtros (Ano/Mês)", expanded=False):
         f1, f2 = st.columns(2)
         ano_sel = f1.selectbox("Ano", op_anos, index=0)
-
         mes_label = f2.selectbox("Mês", [m[1] for m in MESES], index=0)
         mes_sel = "Todos"
         for num, lab in MESES:
@@ -97,42 +86,42 @@ def render(df_obras: pd.DataFrame, df_fin: pd.DataFrame, lista_obras: list[str])
 
     df_v = _filtrar_periodo(df_v, ano_sel, mes_sel)
 
-    # -----------------------------
-    # MÉTRICAS
-    # -----------------------------
+    # separa entradas e saídas
     df_saida = df_v[df_v["Tipo"].astype(str).str.contains("Saída", case=False, na=False)].copy()
+    df_ent = df_v[df_v["Tipo"].astype(str).str.contains("Entrada", case=False, na=False)].copy()
 
     custos = float(df_saida["Valor"].sum()) if not df_saida.empty else 0.0
+    entradas = float(df_ent["Valor"].sum()) if not df_ent.empty else 0.0
+
     lucro = vgv - custos
     roi = (lucro / custos * 100) if custos > 0 else 0.0
     perc_vgv = (custos / vgv * 100) if vgv > 0 else 0.0
 
+    # ALERTA: saldo do período negativo
+    saldo_periodo = entradas - custos
+    if saldo_periodo < 0:
+        st.warning(f"⚠️ Saldo do período está negativo: {fmt_moeda(saldo_periodo)}")
+
     c1, c2, c3, c4 = st.columns(4)
     c1.metric("VGV Venda", fmt_moeda(vgv))
-    c2.metric("Custo (no período)", fmt_moeda(custos))
-    c3.metric("Lucro Estimado", fmt_moeda(lucro))
-    c4.metric("ROI (no período)", f"{roi:.1f}%")
-    st.caption(f"📌 Percentual do VGV já gasto no período: **{perc_vgv:.2f}%**")
+    c2.metric("Saídas (período)", fmt_moeda(custos))
+    c3.metric("Entradas (período)", fmt_moeda(entradas))
+    c4.metric("Saldo (período)", fmt_moeda(saldo_periodo))
+
+    st.caption(f"📌 Percentual do VGV já gasto no período: **{perc_vgv:.2f}%** | ROI (lucro/custo): **{roi:.1f}%**")
 
     # -----------------------------
-    # df_cat (sempre definido, mesmo vazio)
+    # Custo por categoria
     # -----------------------------
     if df_saida.empty:
         df_cat = pd.DataFrame(columns=["Categoria", "Valor"])
     else:
         df_cat = df_saida.copy()
         df_cat["Categoria"] = df_cat["Categoria"].fillna("Sem categoria").astype(str).str.strip()
-        df_cat = (
-            df_cat.groupby("Categoria", as_index=False)["Valor"]
-            .sum()
-            .sort_values("Valor", ascending=False)
-        )
+        df_cat = df_cat.groupby("Categoria", as_index=False)["Valor"].sum().sort_values("Valor", ascending=False)
 
-    # -----------------------------
-    # PDF (1 clique: gera + baixa automático)
-    # -----------------------------
+    # PDF 1 clique
     periodo_txt = f"Ano: {ano_sel} | Mês: {mes_label}"
-
     if st.button("⬇️ Baixar PDF"):
         pdf_bytes = gerar_relatorio_investimentos_pdf(
             obra=str(obra_sel),
@@ -145,79 +134,74 @@ def render(df_obras: pd.DataFrame, df_fin: pd.DataFrame, lista_obras: list[str])
             df_categorias=df_cat[["Categoria", "Valor"]].copy() if not df_cat.empty else df_cat,
             df_lancamentos=df_saida.copy(),
         )
-
         filename = f"relatorio_investimentos_{str(obra_sel).replace(' ', '_')}.pdf"
         b64 = base64.b64encode(pdf_bytes).decode()
-
         html = f"""
         <a id="dl" href="data:application/pdf;base64,{b64}" download="{filename}"></a>
-        <script>
-          const a = document.getElementById("dl");
-          a.click();
-        </script>
+        <script>document.getElementById("dl").click();</script>
         """
         components.html(html, height=0)
 
-    # -----------------------------
-    # CUSTO POR CATEGORIA (BARRAS + PIZZA)
-    # -----------------------------
     st.markdown("#### 🧾 Custo por categoria (no período)")
-
     if df_cat.empty:
-        st.info("Sem despesas (Saída) no período selecionado.")
+        st.info("Sem despesas no período.")
     else:
-        with st.expander("⚙️ Ajustes do gráfico de categorias", expanded=False):
+        with st.expander("⚙️ Ajustes", expanded=False):
             col_a, col_b = st.columns(2)
             top_n = col_a.slider("Top categorias", min_value=3, max_value=15, value=5, step=1)
-            agrupar_outros = col_b.checkbox("Agrupar o restante em 'Outros'", value=True)
+            agrupar_outros = col_b.checkbox("Agrupar em 'Outros'", value=True)
 
         df_cat_viz = _top_n_com_outros(df_cat, top_n=top_n, agrupar_outros=agrupar_outros)
 
         g1, g2 = st.columns(2)
-
         with g1:
-            st.markdown("**📊 Barras**")
-            fig_cat_bar = px.bar(df_cat_viz, x="Categoria", y="Valor")
-            fig_cat_bar.update_layout(
-                plot_bgcolor="white",
-                xaxis_title="Categoria",
-                yaxis_title="Total (R$)",
-            )
-            st.plotly_chart(fig_cat_bar, use_container_width=True)
+            fig_bar = px.bar(df_cat_viz, x="Categoria", y="Valor")
+            fig_bar.update_layout(plot_bgcolor="white", xaxis_title="Categoria", yaxis_title="Total (R$)")
+            st.plotly_chart(fig_bar, use_container_width=True)
 
         with g2:
-            st.markdown("**🥧 Pizza**")
-            fig_cat_pie = px.pie(df_cat_viz, names="Categoria", values="Valor", hole=0.35)
-            st.plotly_chart(fig_cat_pie, use_container_width=True)
+            fig_pie = px.pie(df_cat_viz, names="Categoria", values="Valor", hole=0.35)
+            st.plotly_chart(fig_pie, use_container_width=True)
 
         df_cat_show = df_cat.copy()
         df_cat_show["Valor"] = df_cat_show["Valor"].apply(fmt_moeda)
         st.dataframe(df_cat_show, use_container_width=True, hide_index=True)
 
     # -----------------------------
-    # EVOLUÇÃO DO CUSTO (ACUMULADO) com zoom
+    # Caixa por obra (evolução do saldo)
+    # -----------------------------
+    st.markdown("#### 💰 Fluxo de caixa da obra (no período)")
+    if df_v.dropna(subset=["Data_DT"]).empty:
+        st.info("Sem dados no período.")
+        return
+
+    df_flow = df_v.dropna(subset=["Data_DT"]).sort_values("Data_DT").copy()
+    df_flow["signed"] = df_flow.apply(
+        lambda r: float(r["Valor"]) if "Entrada" in str(r["Tipo"]) else -float(r["Valor"]),
+        axis=1
+    )
+    df_flow["Saldo Acumulado"] = df_flow["signed"].cumsum()
+
+    fig_flow = px.line(df_flow, x="Data_DT", y="Saldo Acumulado", markers=True)
+    fig_flow.update_layout(plot_bgcolor="white", xaxis_title="Data", yaxis_title="Saldo acumulado (R$)")
+    st.plotly_chart(fig_flow, use_container_width=True)
+
+    # -----------------------------
+    # Evolução do custo (zoom)
     # -----------------------------
     st.markdown("#### 📈 Evolução do custo (acumulado)")
-
     df_plot = df_saida.dropna(subset=["Data_DT"]).sort_values("Data_DT").copy()
-
     if df_plot.empty:
-        st.info("Sem despesas (Saída) no período para gerar a evolução do custo.")
+        st.info("Sem despesas no período.")
         return
 
     df_plot["Custo Acumulado"] = df_plot["Valor"].cumsum()
     fig = px.line(df_plot, x="Data_DT", y="Custo Acumulado", markers=True)
-
     try:
         fig.add_hline(y=vgv, annotation_text="VGV (meta)", annotation_position="top left")
     except Exception:
         pass
 
     y_max = max(df_plot["Custo Acumulado"].max() * 1.15, 1)
-    fig.update_layout(
-        plot_bgcolor="white",
-        xaxis_title="Data",
-        yaxis_title="Custo acumulado (R$)",
-        yaxis=dict(range=[0, y_max]),
-    )
+    fig.update_layout(plot_bgcolor="white", xaxis_title="Data", yaxis_title="Custo acumulado (R$)", yaxis=dict(range=[0, y_max]))
     st.plotly_chart(fig, use_container_width=True)
