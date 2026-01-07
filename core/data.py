@@ -9,7 +9,7 @@ def ensure_cols(df: pd.DataFrame, cols: list[str]) -> pd.DataFrame:
             df[c] = None
     return df[cols]
 
-@st.cache_data(ttl=10)
+@st.cache_data(ttl=60)
 def load_data():
     db = get_db()
 
