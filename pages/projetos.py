@@ -1,40 +1,50 @@
 import streamlit as st
-from datetime import date, datetime
-from core.sheets import get_db
-from core.data import clear_cache
+from datetime import date
+
+from core.data import carregar_dados
 from core.formatters import fmt_moeda
+from core.sheets import open_db
 
+st.title("📁 Projetos (Obras)")
 
-def render(df_obras, df_fin, lista_obras):
-    st.markdown("### 📁 Projetos — Obras")
+df_obras, _ = carregar_dados()
 
-    with st.form("f_obra", clear_on_submit=True):
-        n_obra = st.text_input("Nome da Casa/Lote")
-        v_obra = st.number_input("Preço de Venda Pretendido (VGV)", format="%.2f", min_value=0.0, step=1000.0)
-        status = st.selectbox("Status", ["Planejamento", "Em Construção", "Finalizada"], index=1)
-        if st.form_submit_button("CADASTRAR OBRA"):
-            if not n_obra.strip():
-                st.error("Informe o nome da obra.")
-                st.stop()
+with st.form("f_obra", clear_on_submit=True):
+    n_obra = st.text_input("Nome da Obra (Cliente)")
+    end = st.text_input("Endereço", value="")
+    status = st.selectbox("Status", ["Planejamento", "Em Construção", "Concluída"])
+    vgv = st.number_input("VGV (Valor Total)", format="%.2f", step=100.0)
+    prazo = st.text_input("Prazo", value="A definir")
 
-            db = get_db()
+    if st.form_submit_button("CADASTRAR OBRA"):
+        try:
+            db = open_db()
             ws = db.worksheet("Obras")
-            new_id = str(int(datetime.now().timestamp() * 1000))
+            novo_id = (len(df_obras) + 1) if not df_obras.empty else 1
 
-            ws.append_row(
-                [new_id, n_obra, status, float(v_obra), date.today().strftime("%Y-%m-%d"), ""],
-                value_input_option="USER_ENTERED",
-            )
-            clear_cache()
+            ws.append_row([
+                novo_id,
+                n_obra,
+                end,
+                status,
+                float(vgv),
+                date.today().strftime("%Y-%m-%d"),
+                prazo
+            ])
+
+            st.cache_data.clear()
             st.success("Obra cadastrada!")
             st.rerun()
 
-    if df_obras.empty:
-        st.info("Nenhuma obra cadastrada.")
-        return
+        except Exception as e:
+            st.error(f"Erro ao cadastrar: {e}")
 
-    df_show = df_obras.copy()
-    if "Valor Total" in df_show.columns:
-        df_show["Valor Total"] = df_show["Valor Total"].apply(fmt_moeda)
-    cols = [c for c in ["Cliente", "Status", "Valor Total", "Data Início"] if c in df_show.columns]
-    st.dataframe(df_show[cols], use_container_width=True, hide_index=True)
+st.divider()
+st.subheader("📌 Obras cadastradas")
+
+if df_obras.empty:
+    st.info("Nenhuma obra cadastrada.")
+else:
+    df_show = df_obras[["Cliente","Status","Valor Total"]].copy()
+    df_show["Valor Total"] = df_show["Valor Total"].apply(fmt_moeda)
+    st.dataframe(df_show, use_container_width=True, hide_index=True)
