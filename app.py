@@ -9,7 +9,7 @@ from datetime import datetime, date
 from streamlit_option_menu import option_menu
 
 # --- 1. CONFIGURAÇÃO ---
-st.set_page_config(page_title="GESTOR PRO | Dashboard Elite", layout="wide")
+st.set_page_config(page_title="GESTOR PRO | Final Edition", layout="wide")
 
 # --- 2. CSS CORPORATIVO ---
 st.markdown("""
@@ -46,21 +46,26 @@ else:
         return gspread.authorize(ServiceAccountCredentials.from_json_keyfile_dict(creds_json, scope))
 
     @st.cache_data(ttl=30)
-    def carregar_dados_v21():
+    def carregar_dados_v22():
         try:
             client = obter_conector()
             db = client.open("GestorObras_DB")
             df_o = pd.DataFrame(db.worksheet("Obras").get_all_records())
             df_f = pd.DataFrame(db.worksheet("Financeiro").get_all_records())
+            
             df_o['Valor Total'] = pd.to_numeric(df_o['Valor Total'], errors='coerce').fillna(0)
             df_f['Valor'] = pd.to_numeric(df_f['Valor'], errors='coerce').fillna(0)
+            
+            # Formatação de Datas
             df_f['Data_DT'] = pd.to_datetime(df_f['Data'], errors='coerce')
+            df_f['Data_BR'] = df_f['Data_DT'].dt.strftime('%d/%m/%Y')
+            
             return df_o, df_f
         except Exception as e:
             st.error(f"Erro ao carregar dados: {e}")
             return pd.DataFrame(), pd.DataFrame()
 
-    df_obras, df_fin = carregar_dados_v21()
+    df_obras, df_fin = carregar_dados_v22()
 
     # --- 5. MENU LATERAL ---
     with st.sidebar:
@@ -80,12 +85,9 @@ else:
             st.write("Selecione o Empreendimento:")
             lista_obras = df_obras['Cliente'].tolist()
             
-            # --- SELEÇÃO POR BOTÕES HORIZONTAIS ---
             escolha = option_menu(
-                menu_title=None,
-                options=lista_obras,
+                menu_title=None, options=lista_obras, orientation="horizontal",
                 icons=["house"] * len(lista_obras),
-                orientation="horizontal",
                 styles={
                     "container": {"padding": "0!important", "background-color": "transparent"},
                     "nav-link": {"font-size": "12px", "margin": "5px", "background-color": "#FFFFFF", "border": "1px solid #E9ECEF", "color": "#495057"},
@@ -111,7 +113,7 @@ else:
             if not fin_obra.empty and custos > 0:
                 df_ev = fin_obra[fin_obra['Tipo'].str.contains('Saída')].sort_values('Data_DT')
                 fig = px.line(df_ev, x='Data_DT', y='Valor', title=f"Histórico: {escolha}", markers=True, color_discrete_sequence=['#2D6A4F'])
-                fig.update_layout(xaxis_tickformat='%d/%m/%Y', plot_bgcolor='white')
+                fig.update_layout(xaxis_tickformat='%d/%m/%Y', plot_bgcolor='white', xaxis_title="Data da Compra")
                 st.plotly_chart(fig, use_container_width=True)
             else:
                 st.info("Nenhum custo registrado para esta obra.")
@@ -122,33 +124,40 @@ else:
         st.markdown("### 💸 Lançamento Financeiro")
         with st.form("f_caixa", clear_on_submit=True):
             c1, c2 = st.columns(2)
-            dt = c1.date_input("Data da Compra", value=date.today())
-            tp = c2.selectbox("Tipo", ["Saída (Despesa)", "Entrada"])
+            dt_manual = c1.date_input("Data da Compra/Recebimento", value=date.today(), format="DD/MM/YYYY")
+            tp = c2.selectbox("Tipo de Movimentação", ["Saída (Despesa)", "Entrada"])
             c3, c4 = st.columns(2)
             ob = c3.selectbox("Obra", df_obras['Cliente'].tolist() if not df_obras.empty else ["Geral"])
             vl = c4.number_input("Valor R$", min_value=0.0)
             ds = st.text_input("Descrição (Insumo: Detalhe)")
             if st.form_submit_button("REGISTRAR LANÇAMENTO"):
                 client = obter_conector()
-                client.open("GestorObras_DB").worksheet("Financeiro").append_row([dt.strftime('%Y-%m-%d'), tp, "Geral", ds, vl, ob])
+                client.open("GestorObras_DB").worksheet("Financeiro").append_row([dt_manual.strftime('%Y-%m-%d'), tp, "Geral", ds, vl, ob])
                 st.cache_data.clear()
+                st.success(f"Lançamento de {dt_manual.strftime('%d/%m/%Y')} registrado!")
                 st.rerun()
-        st.dataframe(df_fin.sort_values('Data_DT', ascending=False), use_container_width=True)
+        
+        # Exibição com Data BR
+        if not df_fin.empty:
+            df_exibicao = df_fin[['Data_BR', 'Tipo', 'Descrição', 'Valor', 'Obra Vinculada']].sort_values('Data_BR', ascending=False)
+            df_exibicao.columns = ['Data', 'Tipo', 'Descrição', 'Valor', 'Obra']
+            st.dataframe(df_exibicao, use_container_width=True, hide_index=True)
 
     elif sel == "Insumos":
         st.title("🛒 Monitor de Inflação")
-        # (Lógica de insumos aqui...)
-        st.info("Aqui serão exibidos os alertas de aumento de preço.")
+        # Lógica de alertas mantida...
+        st.info("Os alertas de aumento de preço aparecerão aqui conforme as datas de compra.")
 
     elif sel == "Projetos":
         st.title("📁 Gestão de Obras")
         with st.form("f_obra"):
-            c1, c2 = st.columns(2)
+            c1, c2, c3 = st.columns([2,1,1])
             n = c1.text_input("Nome da Casa")
             v = c2.number_input("VGV de Venda", min_value=0.0)
+            d = c3.date_input("Data de Início", value=date.today(), format="DD/MM/YYYY")
             if st.form_submit_button("SALVAR"):
                 client = obter_conector()
-                client.open("GestorObras_DB").worksheet("Obras").append_row([len(df_obras)+1, n, "", "Construção", v, date.today().strftime('%Y-%m-%d'), ""])
+                client.open("GestorObras_DB").worksheet("Obras").append_row([len(df_obras)+1, n, "", "Construção", v, d.strftime('%Y-%m-%d'), ""])
                 st.cache_data.clear()
                 st.rerun()
         st.dataframe(df_obras, use_container_width=True)
