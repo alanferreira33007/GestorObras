@@ -4,91 +4,94 @@ import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 import json
 import plotly.express as px
-import plotly.graph_objects as go
 from datetime import datetime, date
 from streamlit_option_menu import option_menu
 
-# --- 1. CONFIGURAÇÃO DE ALTO NÍVEL ---
-st.set_page_config(page_title="GESTOR PRO | Signature Edition", layout="wide", initial_sidebar_state="expanded")
+# --- 1. CONFIGURAÇÃO DE UI RADICAL ---
+st.set_page_config(page_title="GESTOR PRO | Architect", layout="wide", initial_sidebar_state="collapsed")
 
-# --- 2. CSS SIGNATURE (O ACABAMENTO DE LUXO) ---
+# --- 2. CSS DE ALTO NÍVEL (CONSTRUINDO O APP DO ZERO) ---
 st.markdown("""
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;800&display=swap');
+        /* Importação de Fonte Google */
+        @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&display=swap');
         
-        /* Fundo e Tipografia */
-        .stApp { 
-            background: linear-gradient(135deg, #0f172a 0%, #020617 100%); 
-            color: #f8fafc; 
-            font-family: 'Plus Jakarta Sans', sans-serif; 
+        /* Fundo e Container Principal */
+        .stApp {
+            background-color: #050505;
+            color: #E0E0E0;
+            font-family: 'Outfit', sans-serif;
         }
-        
-        /* Efeito de Vidro na Sidebar */
-        [data-testid="stSidebar"] {
-            background-color: rgba(15, 23, 42, 0.7) !important;
-            backdrop-filter: blur(15px);
-            border-right: 1px solid rgba(255, 255, 255, 0.1);
+
+        /* Removendo Padding Desnecessário */
+        .block-container {
+            padding-top: 2rem !important;
+            padding-bottom: 0rem !important;
         }
-        
-        /* Cards de Métricas Estilo Premium */
-        div[data-testid="stMetric"] {
-            background: rgba(30, 41, 59, 0.5);
-            border: 1px solid rgba(255, 255, 255, 0.1);
+
+        /* ESTILIZAÇÃO DOS WIDGETS (CARDS) */
+        .metric-card {
+            background: rgba(20, 20, 20, 0.8);
+            border: 1px solid #222;
             border-radius: 20px;
-            padding: 25px !important;
-            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+            padding: 24px;
+            text-align: left;
+            box-shadow: 0 4px 30px rgba(0, 0, 0, 0.5);
+            transition: 0.4s;
         }
-        
-        /* Botões Signature (Verde Neon Profissional) */
+        .metric-card:hover {
+            border-color: #10b981;
+            transform: translateY(-5px);
+        }
+
+        /* BOTÕES DE AÇÃO (ULTRA MODERNOS) */
         div.stButton > button, div[data-testid="stForm"] button {
-            background: linear-gradient(135deg, #22c55e 0%, #15803d 100%) !important;
-            color: white !important;
+            background: #10b981 !important;
+            color: #000 !important;
             border: none !important;
             border-radius: 12px !important;
             font-weight: 700 !important;
-            letter-spacing: 0.5px;
-            height: 50px;
-            transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            font-size: 14px !important;
+            letter-spacing: 1px;
+            height: 48px;
+            text-transform: uppercase;
+            box-shadow: 0 0 20px rgba(16, 185, 129, 0.2);
         }
         div.stButton > button:hover {
-            transform: scale(1.02);
-            box-shadow: 0 0 20px rgba(34, 197, 94, 0.4);
+            background: #34d399 !important;
+            box-shadow: 0 0 30px rgba(16, 185, 129, 0.4);
         }
 
-        /* Inputs Estilizados */
-        input, select, textarea, div[data-baseweb="select"] {
-            background-color: #1e293b !important;
-            border-radius: 10px !important;
-            border: 1px solid rgba(255, 255, 255, 0.1) !important;
-            color: white !important;
+        /* TABELAS E DATAFRAMES */
+        [data-testid="stDataFrame"] {
+            background: #0A0A0A !important;
+            border: 1px solid #222 !important;
+            border-radius: 15px !important;
         }
 
-        /* Títulos de Página */
-        .main-title {
-            font-size: 38px;
-            font-weight: 800;
-            background: linear-gradient(90deg, #f8fafc, #94a3b8);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            margin-bottom: 30px;
+        /* SIDEBAR CUSTOMIZADA */
+        [data-testid="stSidebar"] {
+            background-color: #000000 !important;
+            border-right: 1px solid #111;
         }
         
-        #MainMenu, footer {visibility: hidden;}
+        /* Ocultar elementos nativos do Streamlit */
+        header, footer, #MainMenu {visibility: hidden;}
     </style>
 """, unsafe_allow_html=True)
 
-# --- 3. AUTENTICAÇÃO ---
+# --- 3. LOGICA DE ACESSO ---
 if "authenticated" not in st.session_state:
     st.session_state["authenticated"] = False
 
-def screen_login():
-    _, col, _ = st.columns([1, 1.3, 1])
+if not st.session_state["authenticated"]:
+    _, col, _ = st.columns([1, 1.2, 1])
     with col:
-        st.markdown("<br><br><br>", unsafe_allow_html=True)
+        st.markdown("<br><br><br><br>", unsafe_allow_html=True)
         st.markdown("""
-            <div style='text-align: center; padding: 40px; border-radius: 30px; background: rgba(30,41,59,0.5); border: 1px solid rgba(255,255,255,0.1);'>
-                <h1 style='color: white; margin-bottom: 0;'>GESTOR PRO</h1>
-                <p style='color: #94a3b8;'>Signature Access</p>
+            <div style='background: #0A0A0A; padding: 50px; border-radius: 30px; border: 1px solid #222; text-align: center;'>
+                <h1 style='color: #10b981; font-weight: 800; font-size: 40px;'>GESTOR PRO</h1>
+                <p style='color: #666;'>SISTEMA DE GESTÃO DE OBRAS DE ELITE</p>
             </div>
         """, unsafe_allow_html=True)
         with st.form("login"):
@@ -98,127 +101,124 @@ def screen_login():
                     st.session_state["authenticated"] = True
                     st.rerun()
                 else: st.error("Acesso Negado")
-
-if not st.session_state["authenticated"]:
-    screen_login()
 else:
-    # --- 4. DATA ENGINE ---
-    @st.cache_resource
-    def get_connector():
-        creds_dict = json.loads(st.secrets["gcp_service_account"]["json_content"], strict=False)
-        return gspread.authorize(ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]))
-
+    # --- 4. BACKEND ---
     @st.cache_data(ttl=60)
     def load_elite_data():
         try:
-            client = get_connector()
+            creds_dict = json.loads(st.secrets["gcp_service_account"]["json_content"], strict=False)
+            client = gspread.authorize(ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]))
             sheet = client.open("GestorObras_DB")
             df_o = pd.DataFrame(sheet.worksheet("Obras").get_all_records())
             df_f = pd.DataFrame(sheet.worksheet("Financeiro").get_all_records())
             df_o['Valor Total'] = pd.to_numeric(df_o['Valor Total'], errors='coerce').fillna(0)
             df_f['Valor'] = pd.to_numeric(df_f['Valor'], errors='coerce').fillna(0)
             df_f['Data'] = pd.to_datetime(df_f['Data'], errors='coerce').dt.date
-            return df_o, df_f
-        except: return pd.DataFrame(), pd.DataFrame()
+            return df_o, df_f, client
+        except: return pd.DataFrame(), pd.DataFrame(), None
 
-    df_obras, df_fin = load_elite_data()
+    df_obras, df_fin, connector = load_elite_data()
 
-    # --- 5. NAVEGAÇÃO LATERAL (OPTION MENU) ---
+    # --- 5. MENU DE NAVEGAÇÃO SUPERIOR (DENTRO DA SIDEBAR) ---
     with st.sidebar:
-        st.markdown("<div style='text-align: center; margin-bottom: 30px;'><h1 style='color: #22c55e; font-size: 24px;'>GESTOR PRO</h1></div>", unsafe_allow_html=True)
+        st.markdown("<h2 style='text-align:center; color:#10b981;'>CONTROL</h2>", unsafe_allow_html=True)
         sel = option_menu(
-            None, ["Insights", "Projetos", "Fluxo de Caixa", "Relatórios"],
-            icons=['command', 'layout-text-sidebar-reverse', 'wallet2', 'journal-text'],
+            None, ["Insights", "Projetos", "Financeiro", "Relatórios"],
+            icons=['cpu-fill', 'grid-3x3-gap-fill', 'wallet-fill', 'file-earmark-text-fill'],
             menu_icon="cast", default_index=0,
             styles={
                 "container": {"background-color": "transparent"},
-                "nav-link": {"color": "#94a3b8", "font-size": "15px", "text-align": "left", "margin": "10px", "border-radius": "12px", "padding": "12px"},
-                "nav-link-selected": {"background-color": "#22c55e", "color": "white", "font-weight": "700"},
+                "nav-link": {"color": "#666", "font-size": "14px", "text-align": "left", "margin": "10px", "border-radius": "10px"},
+                "nav-link-selected": {"background-color": "#111", "color": "#10b981", "font-weight": "800", "border": "1px solid #10b981"},
             }
         )
-        st.markdown("<br><br>", unsafe_allow_html=True)
-        if st.button("🚪 LOGOUT"):
+        if st.button("LOGOUT"):
             st.session_state["authenticated"] = False
             st.rerun()
 
-    # --- 6. TELAS ---
+    # --- 6. PÁGINAS ---
     if sel == "Insights":
-        st.markdown("<h1 class='main-title'>📈 Inteligência de Negócio</h1>", unsafe_allow_html=True)
+        st.markdown("<h1 style='font-weight: 800; font-size: 42px;'>ESTATÍSTICAS REAIS</h1>", unsafe_allow_html=True)
         
         if not df_obras.empty:
-            obra_sel = st.selectbox("Unidade de Negócio", ["Consolidado"] + df_obras['Cliente'].tolist())
+            # Widget de Seleção Moderno
+            obra_sel = st.selectbox("Unidade de Negócio", ["Consolidado Global"] + df_obras['Cliente'].tolist())
             
             df_v = df_fin.copy()
-            if obra_sel != "Consolidado":
+            if obra_sel != "Consolidado Global":
                 df_v = df_fin[df_fin['Obra Vinculada'] == obra_sel]
             
-            e = df_v[df_v['Tipo'].str.contains('Entrada', na=False)]['Valor'].sum()
-            s = df_v[df_v['Tipo'].str.contains('Saída', na=False)]['Valor'].sum()
+            ent = df_v[df_v['Tipo'].str.contains('Entrada', na=False)]['Valor'].sum()
+            sai = df_v[df_v['Tipo'].str.contains('Saída', na=False)]['Valor'].sum()
             
-            c1, c2, c3 = st.columns(3)
-            with c1: st.metric("RECEITA BRUTA", f"R$ {e:,.2f}")
-            with c2: st.metric("CUSTOS TOTAIS", f"R$ {s:,.2f}")
-            with c3: st.metric("MARGEM LÍQUIDA", f"R$ {e-s:,.2f}")
-            
+            # GRID DE MÉTRICAS CUSTOMIZADAS
+            m1, m2, m3 = st.columns(3)
+            with m1:
+                st.markdown(f"<div class='metric-card'><small>TOTAL RECEBIDO</small><br><h2 style='color:#10b981;'>R$ {ent:,.2f}</h2></div>", unsafe_allow_html=True)
+            with m2:
+                st.markdown(f"<div class='metric-card'><small>CUSTO OPERACIONAL</small><br><h2 style='color:#EF4444;'>R$ {sai:,.2f}</h2></div>", unsafe_allow_html=True)
+            with m3:
+                st.markdown(f"<div class='metric-card'><small>MARGEM LÍQUIDA</small><br><h2 style='color:#3B82F6;'>R$ {ent-sai:,.2f}</h2></div>", unsafe_allow_html=True)
+
             st.markdown("<br>", unsafe_allow_html=True)
-            col_left, col_right = st.columns([2, 1])
             
+            # Gráficos com Estilo Glassmorphism
+            col_left, col_right = st.columns([2, 1])
             with col_left:
                 df_ev = df_v[df_v['Tipo'].str.contains('Saída', na=False)].sort_values('Data')
-                fig = px.area(df_ev, x='Data', y='Valor', title="Evolução de Desembolso", color_discrete_sequence=['#22c55e'])
-                fig.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', font=dict(color="#f8fafc"))
+                fig = px.area(df_ev, x='Data', y='Valor', title="Evolução de Gastos", color_discrete_sequence=['#10b981'])
+                fig.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', font=dict(color="#666"))
                 st.plotly_chart(fig, use_container_width=True)
             
             with col_right:
-                # Indicador de Performance (Bullet)
-                st.markdown("<div style='background: rgba(30,41,59,0.5); padding: 20px; border-radius: 20px; border: 1px solid rgba(255,255,255,0.1);'>", unsafe_allow_html=True)
-                st.write("📊 Saúde Financeira")
-                perc = (e-s)/e*100 if e > 0 else 0
-                st.progress(max(min(perc/100, 1.0), 0.0))
-                st.write(f"Margem: {perc:.1f}%")
+                st.markdown("<div class='metric-card' style='height: 380px;'>", unsafe_allow_html=True)
+                st.write("📊 STATUS DOS PROJETOS")
+                fig_pie = px.pie(df_obras, names='Status', hole=0.7, color_discrete_sequence=['#10b981', '#3B82F6', '#EF4444'])
+                fig_pie.update_layout(showlegend=False, paper_bgcolor='rgba(0,0,0,0)', margin=dict(t=0, b=0, l=0, r=0))
+                st.plotly_chart(fig_pie, use_container_width=True)
                 st.markdown("</div>", unsafe_allow_html=True)
 
     elif sel == "Projetos":
-        st.markdown("<h1 class='main-title'>📁 Portfólio de Obras</h1>", unsafe_allow_html=True)
-        t1, t2 = st.tabs(["📝 Novo Projeto", "🔍 Lista de Obras"])
+        st.markdown("<h1 style='font-weight: 800;'>CONTROLE DE OBRAS</h1>", unsafe_allow_html=True)
+        tab1, tab2 = st.tabs(["[ NOVO REGISTRO ]", "[ LISTA DE ATIVOS ]"])
         
-        with t1:
-            with st.form("new_signature_o"):
+        with tab1:
+            with st.form("new_o_pro"):
                 c1, c2 = st.columns(2)
-                cli = c1.text_input("Identificação do Cliente")
-                val = c2.number_input("Valor de Contrato (R$)", step=1000.0)
-                if st.form_submit_button("REGISTRAR NA BASE SIGNATURE"):
-                    get_connector().open("GestorObras_DB").worksheet("Obras").append_row([len(df_obras)+1, cli, "", "Ativo", val, str(date.today()), ""])
+                cli = c1.text_input("IDENTIFICAÇÃO DO PROJETO")
+                val = c2.number_input("VALOR TOTAL DO CONTRATO", step=1000.0)
+                if st.form_submit_button("REGISTRAR PROJETO"):
+                    connector.open("GestorObras_DB").worksheet("Obras").append_row([len(df_obras)+1, cli, "", "Ativo", val, str(date.today()), ""])
                     st.cache_data.clear()
                     st.rerun()
         
-        with t2:
+        with tab2:
             st.dataframe(df_obras, use_container_width=True, hide_index=True)
 
-    elif sel == "Fluxo de Caixa":
-        st.markdown("<h1 class='main-title'>💸 Movimentação Financeira</h1>", unsafe_allow_html=True)
-        t1, t2 = st.tabs(["💰 Lançar Operação", "🧾 Extrato Detalhado"])
+    elif sel == "Financeiro":
+        st.markdown("<h1 style='font-weight: 800;'>CONTROLE DE CAIXA</h1>", unsafe_allow_html=True)
+        tab1, tab2 = st.tabs(["[ LANÇAR MOVIMENTAÇÃO ]", "[ HISTÓRICO DE EXTRATO ]"])
         
-        with t1:
-            with st.form("new_signature_f"):
+        with tab1:
+            with st.form("new_f_pro"):
                 c1, c2 = st.columns(2)
-                tipo = c1.selectbox("Tipo de Operação", ["Saída (Despesa)", "Entrada"])
-                obra_v = c1.selectbox("Obra Referência", df_obras['Cliente'].tolist() if not df_obras.empty else ["Geral"])
-                desc = c2.text_input("Descrição / Finalidade")
-                valor = c2.number_input("Valor da Transação", step=10.0)
-                if st.form_submit_button("EFETIVAR LANÇAMENTO"):
-                    get_connector().open("GestorObras_DB").worksheet("Financeiro").append_row([str(date.today()), tipo, "Geral", desc, valor, obra_v])
+                tipo = c1.selectbox("TIPO", ["Saída (Despesa)", "Entrada"])
+                obra_v = c1.selectbox("OBRA", df_obras['Cliente'].tolist() if not df_obras.empty else ["Geral"])
+                desc = c2.text_input("DESCRIÇÃO")
+                valor = c2.number_input("VALOR", step=10.0)
+                if st.form_submit_button("EFETUAR LANÇAMENTO"):
+                    connector.open("GestorObras_DB").worksheet("Financeiro").append_row([str(date.today()), tipo, "Geral", desc, valor, obra_v])
                     st.cache_data.clear()
                     st.rerun()
         
-        with t2:
+        with tab2:
             st.dataframe(df_fin.sort_values('Data', ascending=False), use_container_width=True, hide_index=True)
 
     elif sel == "Relatórios":
-        st.markdown("<h1 class='main-title'>📄 Central de Inteligência</h1>", unsafe_allow_html=True)
+        st.markdown("<h1 style='font-weight: 800;'>CENTRAL DE RELATÓRIOS</h1>", unsafe_allow_html=True)
         st.markdown("""
-            <div style='background: rgba(30,41,59,0.5); padding: 50px; border-radius: 30px; text-align: center; border: 1px dashed rgba(255,255,255,0.2);'>
-                <h2 style='color: #22c55e;'>Geração de Relatório Consolidado</h2>
-                <p>O sistema está pronto para compilar as métricas selecionadas no Dashboard em um documento técnico PDF.</p>
+            <div style='background: #0A0A0A; padding: 100px; border-radius: 30px; border: 1px dashed #222; text-align: center;'>
+                <h3 style='color: #10b981;'>GERADOR DE PDF TÉCNICO</h3>
+                <p style='color: #666;'>O sistema está pronto para compilar os dados do Dashboard.</p>
             </div>
         """, unsafe_allow_html=True)
