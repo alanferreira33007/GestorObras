@@ -1,39 +1,57 @@
 import streamlit as st
 import pandas as pd
 from core.formatters import fmt_moeda
+from core.normalize import extrair_insumo
 
-def render(df_fin: pd.DataFrame):
-    st.markdown("### 🛒 Monitor de Preços (Inflação)")
+
+def render(df_obras: pd.DataFrame, df_fin: pd.DataFrame, lista_obras: list[str]):
+    st.markdown("### 🛒 Insumos — Monitor de preços")
 
     if df_fin.empty:
-        st.info("Sem dados para monitoramento.")
+        st.info("Sem dados.")
         return
 
-    df_g = df_fin[df_fin["Tipo"].astype(str).str.contains("Saída", case=False, na=False)].copy()
+    df_g = df_fin[df_fin["Tipo"].astype(str).str.contains("Saída", na=False)].copy()
+    df_g = df_g.dropna(subset=["Data_DT"])
     if df_g.empty:
-        st.info("Sem despesas registradas.")
+        st.info("Sem saídas para monitorar.")
         return
 
-    df_g["Insumo"] = df_g["Descrição"].astype(str).apply(lambda x: x.split(":")[0].strip() if ":" in x else x.strip())
-    df_g = df_g.dropna(subset=["Data_DT"]).sort_values("Data_DT")
+    with st.expander("⚙️ Configurações de alerta", expanded=False):
+        limiar_pct = st.slider("Alertar se subir mais que (%)", 1, 30, 5)
+        apenas_top = st.checkbox("Mostrar só Top 10 maiores altas", value=True)
 
-    alertas = False
-    for item in df_g["Insumo"].dropna().unique():
-        historico = df_g[df_g["Insumo"] == item].sort_values("Data_DT")
-        if len(historico) >= 2:
-            atual = historico.iloc[-1]
-            ant = historico.iloc[-2]
-            if float(ant["Valor"]) > 0 and float(atual["Valor"]) > float(ant["Valor"]):
-                var = ((float(atual["Valor"]) / float(ant["Valor"])) - 1) * 100
-                if var >= 2:
-                    alertas = True
-                    st.markdown(f"""
-                    <div class='alert-card'>
-                        <strong>{item}</strong> <span style='color:#E63946; float:right;'>+{var:.1f}%</span><br>
-                        <small>Anterior: {fmt_moeda(ant['Valor'])} ({ant['Data_BR']})</small><br>
-                        <strong>Atual: {fmt_moeda(atual['Valor'])} ({atual['Data_BR']})</strong>
-                    </div>
-                    """, unsafe_allow_html=True)
+    df_g["Insumo"] = df_g["Descrição"].astype(str).apply(extrair_insumo)
+    df_g = df_g.sort_values("Data_DT")
+
+    alertas = []
+    for item in df_g["Insumo"].unique():
+        hist = df_g[df_g["Insumo"] == item].sort_values("Data_DT")
+        if len(hist) >= 2:
+            atual = hist.iloc[-1]
+            ant = hist.iloc[-2]
+            if ant["Valor"] > 0 and atual["Valor"] > ant["Valor"]:
+                var = ((atual["Valor"] / ant["Valor"]) - 1) * 100
+                if var >= limiar_pct:
+                    alertas.append((item, var, ant, atual))
+
+    alertas.sort(key=lambda x: x[1], reverse=True)
+    if apenas_top:
+        alertas = alertas[:10]
 
     if not alertas:
-        st.success("Nenhum aumento relevante detectado nos insumos (>= 2%).")
+        st.success("Nenhum aumento relevante detectado.")
+        return
+
+    for item, var, ant, atual in alertas:
+        st.markdown(
+            f"""
+            <div style="background:#fff;border-left:5px solid #E63946;padding:16px;border-radius:8px;margin-bottom:10px">
+              <strong>{item}</strong>
+              <span style="color:#E63946;float:right">+{var:.1f}%</span><br>
+              <small>Anterior: {fmt_moeda(ant['Valor'])} ({ant['Data_BR']})</small><br>
+              <strong>Atual: {fmt_moeda(atual['Valor'])} ({atual['Data_BR']})</strong>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
