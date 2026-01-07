@@ -1,7 +1,9 @@
 import streamlit as st
 import plotly.express as px
 import pandas as pd
+
 from core.formatters import fmt_moeda
+from core.reports import gerar_relatorio_investimentos_pdf  # <- PDF
 
 
 MESES = [
@@ -37,14 +39,11 @@ def _filtrar_periodo(df: pd.DataFrame, ano_sel: str, mes_sel):
 
 
 def _top_n_com_outros(df_cat: pd.DataFrame, top_n: int, agrupar_outros: bool) -> pd.DataFrame:
-    """
-    df_cat: colunas ['Categoria', 'Valor'] já agregadas e ordenadas desc.
-    """
     if df_cat.empty:
         return df_cat
 
     if not agrupar_outros:
-        return df_cat.head(top_n).copy() if top_n else df_cat.copy()
+        return df_cat.head(top_n).copy()
 
     df_top = df_cat.head(top_n).copy()
     df_rest = df_cat.iloc[top_n:].copy()
@@ -54,7 +53,6 @@ def _top_n_com_outros(df_cat: pd.DataFrame, top_n: int, agrupar_outros: bool) ->
 
     outros_valor = float(df_rest["Valor"].sum())
     df_outros = pd.DataFrame([{"Categoria": "Outros", "Valor": outros_valor}])
-
     return pd.concat([df_top, df_outros], ignore_index=True)
 
 
@@ -67,7 +65,6 @@ def render(df_obras: pd.DataFrame, df_fin: pd.DataFrame, lista_obras: list[str])
 
     obra_sel = st.selectbox("Selecione a obra", lista_obras)
 
-    # Proteção: obra não encontrada
     df_match = df_obras[df_obras["Cliente"].astype(str).str.strip() == str(obra_sel).strip()]
     if df_match.empty:
         st.warning("Obra não encontrada. Verifique se o nome está igual ao cadastrado na aba Obras.")
@@ -76,7 +73,6 @@ def render(df_obras: pd.DataFrame, df_fin: pd.DataFrame, lista_obras: list[str])
     obra_row = df_match.iloc[0]
     vgv = float(obra_row.get("Valor Total", 0) or 0)
 
-    # Dados financeiros da obra
     df_v = df_fin[df_fin["Obra Vinculada"].astype(str).str.strip() == str(obra_sel).strip()].copy()
 
     # -----------------------------
@@ -114,16 +110,13 @@ def render(df_obras: pd.DataFrame, df_fin: pd.DataFrame, lista_obras: list[str])
     c2.metric("Custo (no período)", fmt_moeda(custos))
     c3.metric("Lucro Estimado", fmt_moeda(lucro))
     c4.metric("ROI (no período)", f"{roi:.1f}%")
-
     st.caption(f"📌 Percentual do VGV já gasto no período: **{perc_vgv:.2f}%**")
 
     # -----------------------------
-    # CUSTO POR CATEGORIA (BARRAS + PIZZA + TOP N/OUTROS)
+    # PREPARA df_cat (mesmo que vazio)
     # -----------------------------
-    st.markdown("#### 🧾 Custo por categoria (no período)")
-
     if df_saida.empty:
-        st.info("Sem despesas (Saída) no período selecionado.")
+        df_cat = pd.DataFrame(columns=["Categoria", "Valor"])
     else:
         df_cat = df_saida.copy()
         df_cat["Categoria"] = df_cat["Categoria"].fillna("Sem categoria").astype(str).str.strip()
@@ -133,6 +126,45 @@ def render(df_obras: pd.DataFrame, df_fin: pd.DataFrame, lista_obras: list[str])
             .sort_values("Valor", ascending=False)
         )
 
+    # -----------------------------
+    # ✅ EXPORTAR PDF (BOTÃO SEMPRE APARECE AQUI)
+    # -----------------------------
+    st.markdown("#### 📄 Relatório em PDF")
+    periodo_txt = f"Ano: {ano_sel} | Mês: {mes_label}"
+
+    col_pdf1, col_pdf2 = st.columns([1, 2])
+    gerar = col_pdf1.button("📄 Gerar PDF do relatório")
+
+    if gerar:
+        pdf_bytes = gerar_relatorio_investimentos_pdf(
+            obra=str(obra_sel),
+            periodo=periodo_txt,
+            vgv=vgv,
+            custos=custos,
+            lucro=lucro,
+            roi=roi,
+            perc_vgv=perc_vgv,
+            df_categorias=df_cat[["Categoria", "Valor"]].copy() if not df_cat.empty else df_cat,
+            df_lancamentos=df_saida.copy(),
+        )
+        st.session_state["pdf_investimentos_bytes"] = pdf_bytes
+
+    if "pdf_investimentos_bytes" in st.session_state:
+        col_pdf2.download_button(
+            "⬇️ Baixar PDF",
+            data=st.session_state["pdf_investimentos_bytes"],
+            file_name=f"relatorio_investimentos_{str(obra_sel).replace(' ', '_')}.pdf",
+            mime="application/pdf",
+        )
+
+    # -----------------------------
+    # CUSTO POR CATEGORIA (BARRAS + PIZZA)
+    # -----------------------------
+    st.markdown("#### 🧾 Custo por categoria (no período)")
+
+    if df_cat.empty:
+        st.info("Sem despesas (Saída) no período selecionado.")
+    else:
         with st.expander("⚙️ Ajustes do gráfico de categorias", expanded=False):
             col_a, col_b = st.columns(2)
             top_n = col_a.slider("Top categorias", min_value=3, max_value=15, value=5, step=1)
@@ -142,7 +174,6 @@ def render(df_obras: pd.DataFrame, df_fin: pd.DataFrame, lista_obras: list[str])
 
         g1, g2 = st.columns(2)
 
-        # Barras
         with g1:
             st.markdown("**📊 Barras**")
             fig_cat_bar = px.bar(df_cat_viz, x="Categoria", y="Valor")
@@ -153,20 +184,17 @@ def render(df_obras: pd.DataFrame, df_fin: pd.DataFrame, lista_obras: list[str])
             )
             st.plotly_chart(fig_cat_bar, use_container_width=True)
 
-        # Pizza
         with g2:
             st.markdown("**🥧 Pizza**")
             fig_cat_pie = px.pie(df_cat_viz, names="Categoria", values="Valor", hole=0.35)
-            fig_cat_pie.update_layout()
             st.plotly_chart(fig_cat_pie, use_container_width=True)
 
-        # Tabela (sempre útil)
         df_cat_show = df_cat.copy()
         df_cat_show["Valor"] = df_cat_show["Valor"].apply(fmt_moeda)
         st.dataframe(df_cat_show, use_container_width=True, hide_index=True)
 
     # -----------------------------
-    # GRÁFICO: CUSTO ACUMULADO + LINHA VGV (com zoom)
+    # EVOLUÇÃO DO CUSTO (ACUMULADO) com zoom
     # -----------------------------
     st.markdown("#### 📈 Evolução do custo (acumulado)")
 
@@ -177,23 +205,18 @@ def render(df_obras: pd.DataFrame, df_fin: pd.DataFrame, lista_obras: list[str])
         return
 
     df_plot["Custo Acumulado"] = df_plot["Valor"].cumsum()
-
     fig = px.line(df_plot, x="Data_DT", y="Custo Acumulado", markers=True)
 
-    # Linha do VGV (meta)
     try:
         fig.add_hline(y=vgv, annotation_text="VGV (meta)", annotation_position="top left")
     except Exception:
         pass
 
-    # Zoom automático para custo ficar legível
     y_max = max(df_plot["Custo Acumulado"].max() * 1.15, 1)
-
     fig.update_layout(
         plot_bgcolor="white",
         xaxis_title="Data",
         yaxis_title="Custo acumulado (R$)",
         yaxis=dict(range=[0, y_max]),
     )
-
     st.plotly_chart(fig, use_container_width=True)
