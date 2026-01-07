@@ -45,6 +45,7 @@ def render(df_obras: pd.DataFrame, df_fin: pd.DataFrame, lista_obras: list[str])
 
     obra_sel = st.selectbox("Selecione a obra", lista_obras)
 
+    # Proteção: obra não encontrada (nome divergente)
     df_match = df_obras[df_obras["Cliente"].astype(str).str.strip() == str(obra_sel).strip()]
     if df_match.empty:
         st.warning("Obra não encontrada. Verifique se o nome está igual ao cadastrado na aba Obras.")
@@ -53,9 +54,12 @@ def render(df_obras: pd.DataFrame, df_fin: pd.DataFrame, lista_obras: list[str])
     obra_row = df_match.iloc[0]
     vgv = float(obra_row.get("Valor Total", 0) or 0)
 
+    # Dados financeiros da obra
     df_v = df_fin[df_fin["Obra Vinculada"].astype(str).str.strip() == str(obra_sel).strip()].copy()
 
-    # Filtros de período (baseado nos lançamentos da obra)
+    # -----------------------------
+    # FILTRO DE PERÍODO (Ano/Mês)
+    # -----------------------------
     df_temp = df_v.dropna(subset=["Data_DT"]).copy()
     anos = sorted(df_temp["Data_DT"].dt.year.dropna().astype(int).unique().tolist())
     op_anos = ["Todos"] + [str(a) for a in anos] if anos else ["Todos"]
@@ -73,7 +77,12 @@ def render(df_obras: pd.DataFrame, df_fin: pd.DataFrame, lista_obras: list[str])
 
     df_v = _filtrar_periodo(df_v, ano_sel, mes_sel)
 
-    custos = df_v[df_v["Tipo"].astype(str).str.contains("Saída", case=False, na=False)]["Valor"].sum()
+    # -----------------------------
+    # MÉTRICAS
+    # -----------------------------
+    df_saida = df_v[df_v["Tipo"].astype(str).str.contains("Saída", case=False, na=False)].copy()
+
+    custos = df_saida["Valor"].sum()
     lucro = vgv - custos
     roi = (lucro / custos * 100) if custos > 0 else 0.0
 
@@ -83,14 +92,46 @@ def render(df_obras: pd.DataFrame, df_fin: pd.DataFrame, lista_obras: list[str])
     c3.metric("Lucro Estimado", fmt_moeda(lucro))
     c4.metric("ROI (no período)", f"{roi:.1f}%")
 
-    df_plot = df_v[df_v["Tipo"].astype(str).str.contains("Saída", case=False, na=False)].copy()
-    df_plot = df_plot.dropna(subset=["Data_DT"]).sort_values("Data_DT")
+    # -----------------------------
+    # CUSTO POR CATEGORIA (BARRAS)
+    # -----------------------------
+    st.markdown("#### 🧾 Custo por categoria (no período)")
+
+    if not df_saida.empty:
+        df_cat = df_saida.copy()
+        df_cat["Categoria"] = df_cat["Categoria"].fillna("Sem categoria").astype(str).str.strip()
+        df_cat = (
+            df_cat.groupby("Categoria", as_index=False)["Valor"]
+            .sum()
+            .sort_values("Valor", ascending=False)
+        )
+
+        fig_cat = px.bar(df_cat, x="Categoria", y="Valor")
+        fig_cat.update_layout(
+            plot_bgcolor="white",
+            xaxis_title="Categoria",
+            yaxis_title="Total (R$)",
+        )
+        st.plotly_chart(fig_cat, use_container_width=True)
+
+        df_cat_show = df_cat.copy()
+        df_cat_show["Valor"] = df_cat_show["Valor"].apply(fmt_moeda)
+        st.dataframe(df_cat_show, use_container_width=True, hide_index=True)
+    else:
+        st.info("Sem despesas (Saída) no período selecionado.")
+
+    # -----------------------------
+    # GRÁFICO: CUSTO ACUMULADO + LINHA VGV
+    # -----------------------------
+    st.markdown("#### 📈 Evolução do custo (acumulado)")
+
+    df_plot = df_saida.dropna(subset=["Data_DT"]).sort_values("Data_DT").copy()
 
     if not df_plot.empty:
         df_plot["Custo Acumulado"] = df_plot["Valor"].cumsum()
         fig = px.line(df_plot, x="Data_DT", y="Custo Acumulado", markers=True)
 
-        # Linha do VGV
+        # Linha horizontal do VGV (meta de venda)
         try:
             fig.add_hline(y=vgv, annotation_text="VGV (meta)", annotation_position="top left")
         except Exception:
@@ -103,4 +144,4 @@ def render(df_obras: pd.DataFrame, df_fin: pd.DataFrame, lista_obras: list[str])
         )
         st.plotly_chart(fig, use_container_width=True)
     else:
-        st.info("Sem despesas (Saída) no período selecionado.")
+        st.info("Sem despesas (Saída) no período para gerar a evolução do custo.")
