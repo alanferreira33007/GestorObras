@@ -12,8 +12,13 @@ def render(df_obras: pd.DataFrame, df_fin: pd.DataFrame, lista_obras: list[str])
 
     obra_sel = st.selectbox("Selecione a obra", lista_obras)
 
-    obra_row = df_obras[df_obras["Cliente"].astype(str).str.strip() == obra_sel].iloc[0]
-    vgv = float(obra_row["Valor Total"] or 0)
+    df_match = df_obras[df_obras["Cliente"].astype(str).str.strip() == str(obra_sel).strip()]
+if df_match.empty:
+    st.warning("Obra não encontrada. Verifique se o nome está igual ao cadastrado na aba Obras.")
+    return
+
+obra_row = df_match.iloc[0]
+vgv = float(obra_row.get("Valor Total", 0) or 0)
 
     df_v = df_fin[df_fin["Obra Vinculada"].astype(str).str.strip() == obra_sel].copy()
     custos = df_v[df_v["Tipo"].astype(str).str.contains("Saída", case=False, na=False)]["Valor"].sum()
