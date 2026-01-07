@@ -7,61 +7,61 @@ import plotly.express as px
 from datetime import datetime, date
 from streamlit_option_menu import option_menu
 
-# --- 1. CONFIGURAÇÃO ---
-st.set_page_config(page_title="Gestor PRO | Final Version", layout="wide")
+# --- 1. CONFIGURAÇÃO (FORÇAR TEMA DARK) ---
+st.set_page_config(page_title="Gestor PRO | Final Fix", layout="wide")
 
-# --- 2. CSS DE ALTO IMPACTO (FIX DOS BOTÕES) ---
+# --- 2. CSS AGRESSIVO PARA BOTÕES E CONTRASTE ---
 st.markdown("""
     <style>
-        /* Fundo Grafite Profundo */
+        /* Fundo e Texto Geral */
         .stApp {
-            background: #0f172a;
+            background-color: #0f172a !important;
             color: #FFFFFF !important;
-        }
-        
-        /* Forçar Texto Branco em tudo */
-        h1, h2, h3, h4, h5, h6, p, label, .stMarkdown, [data-testid="stMetricValue"] {
-            color: #FFFFFF !important;
-            font-family: 'Inter', sans-serif;
         }
 
-        /* AJUSTE DOS BOTÕES (DENTRO E FORA DE FORMS) */
-        /* Isso garante que o fundo seja verde e o texto branco sempre */
-        button[kind="primary"], button[kind="secondary"], .stButton > button {
+        /* 🟢 BOTÕES: FORÇAR VERDE COM TEXTO BRANCO 🟢 */
+        /* Aplicar em todos os botões, inclusive dentro de forms */
+        div.stButton > button, div[data-testid="stForm"] button {
             background-color: #28a745 !important;
             color: #FFFFFF !important;
             border: 2px solid #28a745 !important;
             font-weight: bold !important;
-            opacity: 1 !important;
+            font-size: 16px !important;
+            text-transform: uppercase !important;
             width: 100% !important;
-            display: block !important;
+            height: 45px !important;
+            opacity: 1 !important;
+            visibility: visible !important;
         }
 
-        /* Hover do Botão */
-        .stButton > button:hover {
+        /* Garantir que o texto do botão seja branco mesmo no HOVER */
+        div.stButton > button:hover, div[data-testid="stForm"] button:hover {
             background-color: #218838 !important;
-            border-color: #1e7e34 !important;
             color: #FFFFFF !important;
-            box-shadow: 0 4px 15px rgba(40, 167, 69, 0.4) !important;
+            border-color: #FFFFFF !important;
         }
 
-        /* Fix para o texto não sumir dentro do botão */
-        .stButton p {
+        /* ⚪ CORREÇÃO DE INPUTS (ONDE ESCREVE) ⚪ */
+        input, select, textarea {
+            color: #FFFFFF !important;
+            background-color: #1e293b !important;
+        }
+
+        /* Labels (Nomes dos campos) */
+        label {
             color: #FFFFFF !important;
             font-weight: bold !important;
         }
 
-        /* Ajuste de Inputs */
-        .stTextInput>div>div>input, .stNumberInput>div>div>input, .stSelectbox>div>div>div {
-            background-color: #1e293b !important;
+        /* Tabelas */
+        [data-testid="stTable"] {
             color: #FFFFFF !important;
-            border: 1px solid #3b82f6 !important;
+            background-color: #1e293b !important;
         }
-
+        
         /* Sidebar */
         [data-testid="stSidebar"] {
             background-color: #1e293b !important;
-            border-right: 2px solid #334155;
         }
 
         #MainMenu, footer {visibility: hidden;}
@@ -76,17 +76,17 @@ if not st.session_state["authenticated"]:
     _, col, _ = st.columns([1, 1, 1])
     with col:
         st.markdown("<br><br><br>", unsafe_allow_html=True)
-        st.markdown("<h1 style='text-align: center;'>🏗️ GESTOR PRO</h1>", unsafe_allow_html=True)
+        st.markdown("<h1 style='text-align: center; color: white;'>🏗️ GESTOR PRO</h1>", unsafe_allow_html=True)
         with st.form("login"):
-            pwd = st.text_input("Senha de Acesso", type="password")
-            # O botão abaixo agora deve aparecer verde com texto branco
+            # O Enter vai funcionar aqui
+            pwd = st.text_input("SENHA DE ACESSO", type="password")
             if st.form_submit_button("ENTRAR NO SISTEMA"):
                 if pwd == st.secrets["password"]:
                     st.session_state["authenticated"] = True
                     st.rerun()
-                else: st.error("Senha Incorreta")
+                else: st.error("Senha incorreta.")
 else:
-    # --- 4. DATA BACKEND ---
+    # --- 4. BACKEND ---
     @st.cache_resource
     def get_client():
         json_creds = json.loads(st.secrets["gcp_service_account"]["json_content"], strict=False)
@@ -107,66 +107,63 @@ else:
 
     df_obras, df_fin = load_data()
 
-    # --- 5. NAVEGAÇÃO ---
+    # --- 5. MENU LATERAL ---
     with st.sidebar:
-        st.markdown("<h3 style='text-align: center; color: #3b82f6 !important;'>MENU</h3>", unsafe_allow_html=True)
+        st.markdown("<h3 style='text-align: center; color: #3b82f6;'>GESTOR PRO</h3>", unsafe_allow_html=True)
         sel = option_menu(
             None, ["Insights", "Obras", "Financeiro", "Relatórios"],
             icons=['graph-up-arrow', 'building', 'currency-dollar', 'file-pdf'],
             menu_icon="cast", default_index=0,
             styles={
                 "container": {"background-color": "#1e293b"},
-                "nav-link": {"color": "#FFFFFF", "font-size": "14px", "text-align": "left", "margin": "5px"},
-                "nav-link-selected": {"background-color": "#3b82f6", "font-weight": "bold"},
+                "nav-link": {"color": "white", "font-size": "14px", "text-align": "left"},
+                "nav-link-selected": {"background-color": "#3b82f6"},
             }
         )
         st.markdown("---")
-        # Botão de Sair também ficará verde conforme a regra CSS
-        if st.button("SAIR DO SISTEMA"):
+        if st.button("🚪 SAIR"):
             st.session_state["authenticated"] = False
             st.rerun()
 
-    # --- 6. TELAS ---
+    # --- 6. CONTEÚDO ---
     if sel == "Insights":
-        st.markdown("<h1>📊 Dashboard Executivo</h1>", unsafe_allow_html=True)
+        st.title("📊 Painel de Desempenho")
         if not df_obras.empty:
             obra = st.selectbox("Filtrar Obra", ["Todas"] + df_obras['Cliente'].tolist())
             df_v = df_fin.copy()
             if obra != "Todas": df_v = df_fin[df_fin['Obra Vinculada'] == obra]
             
-            e = df_v[df_v['Tipo'].str.contains('Entrada', na=False)]['Valor'].sum()
-            s = df_v[df_v['Tipo'].str.contains('Saída', na=False)]['Valor'].sum()
+            ent = df_v[df_v['Tipo'].str.contains('Entrada', na=False)]['Valor'].sum()
+            sai = df_v[df_v['Tipo'].str.contains('Saída', na=False)]['Valor'].sum()
             
             c1, c2, c3 = st.columns(3)
-            c1.metric("FATURAMENTO", f"R$ {e:,.2f}")
-            c2.metric("GASTOS", f"R$ {s:,.2f}")
-            c3.metric("LUCRO", f"R$ {e-s:,.2f}")
+            c1.metric("FATURAMENTO", f"R$ {ent:,.2f}")
+            c2.metric("GASTOS", f"R$ {sai:,.2f}")
+            c3.metric("LUCRO", f"R$ {ent-sai:,.2f}")
             
             st.markdown("<br>", unsafe_allow_html=True)
             df_ev = df_v[df_v['Tipo'].str.contains('Saída', na=False)].sort_values('Data')
             fig = px.area(df_ev, x='Data', y='Valor', title="Fluxo de Custos", template="plotly_dark")
             fig.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)')
             st.plotly_chart(fig, use_container_width=True)
-        else: st.info("Cadastre uma obra para iniciar.")
 
     elif sel == "Obras":
-        st.markdown("<h1>📁 Gestão de Contratos</h1>", unsafe_allow_html=True)
+        st.title("📁 Projetos")
         col1, col2 = st.columns([1, 2])
         with col1:
             with st.form("new_o"):
-                st.write("### Novo Projeto")
+                st.write("### Cadastrar Obra")
                 cli = st.text_input("Cliente")
-                val = st.number_input("Valor do Contrato", step=1000.0)
+                val = st.number_input("Valor", step=1000.0)
                 if st.form_submit_button("SALVAR OBRA"):
                     get_client().open("GestorObras_DB").worksheet("Obras").append_row([len(df_obras)+1, cli, "", "Ativa", val, str(date.today()), ""])
                     st.cache_data.clear()
                     st.rerun()
         with col2:
-            st.write("### Base de Dados")
-            st.dataframe(df_obras, use_container_width=True, hide_index=True)
+            st.dataframe(df_obras, use_container_width=True)
 
     elif sel == "Financeiro":
-        st.markdown("<h1>💸 Fluxo de Caixa</h1>", unsafe_allow_html=True)
+        st.title("💸 Caixa")
         col1, col2 = st.columns([1, 2])
         with col1:
             with st.form("new_f"):
@@ -175,14 +172,13 @@ else:
                 obra_v = st.selectbox("Obra", df_obras['Cliente'].tolist() if not df_obras.empty else ["Geral"])
                 desc = st.text_input("Descrição")
                 valor = st.number_input("Valor", step=10.0)
-                if st.form_submit_button("LANÇAR NO SISTEMA"):
+                if st.form_submit_button("LANÇAR AGORA"):
                     get_client().open("GestorObras_DB").worksheet("Financeiro").append_row([str(date.today()), tipo, "Geral", desc, valor, obra_v])
                     st.cache_data.clear()
                     st.rerun()
         with col2:
-            st.write("### Histórico Recente")
-            st.dataframe(df_fin.sort_values('Data', ascending=False), use_container_width=True, hide_index=True)
+            st.dataframe(df_fin.sort_values('Data', ascending=False), use_container_width=True)
 
     elif sel == "Relatórios":
-        st.markdown("<h1>📄 Exportação e Documentos</h1>", unsafe_allow_html=True)
-        st.write("Módulo de geração de relatórios pronto para uso.")
+        st.title("📄 Relatórios")
+        st.write("Relatórios disponíveis conforme dados do Dashboard.")
