@@ -136,55 +136,5 @@ if menu == "📊 Dashboard Executivo":
     if not df_obras.empty:
         # CÁLCULOS DE KPI
         total_contratos = df_obras["Valor Total"].sum()
-        # Soma segura para financeiro (evita erro se estiver vazio)
-        if not df_financeiro.empty and 'Tipo' in df_financeiro.columns:
-            total_gasto = df_financeiro[df_financeiro['Tipo'].str.contains('Saída', case=False, na=False)]['Valor'].sum()
-        else:
-            total_gasto = 0
-            
-        lucro_estimado = total_contratos - total_gasto
         
-        # DEFINIÇÃO DE CORES SEMÂNTICAS
-        cores_status = {
-            "Concluída": "#2ecc71",      # Verde
-            "Em Andamento": "#f1c40f",   # Amarelo
-            "Planejamento": "#3498db",   # Azul
-            "Paralisada": "#e74c3c"      # Vermelho
-        }
-
-        # KPI CARDS
-        c1, c2, c3, c4 = st.columns(4)
-        c1.metric("Faturamento Contratado", f"R$ {total_contratos:,.2f}", delta="Total Obras")
-        c2.metric("Despesas Totais", f"R$ {total_gasto:,.2f}", delta="- Saídas", delta_color="inverse")
-        c3.metric("Saldo de Caixa", f"R$ {lucro_estimado:,.2f}", delta="Margem")
-        c4.metric("Obras Ativas", len(df_obras[df_obras['Status'] == 'Em Andamento']), "Projetos")
-
-        st.markdown("---")
-
-        # GRÁFICOS AVANÇADOS
-        g1, g2 = st.columns([2, 1])
-        
-        with g1:
-            st.subheader("Evolução Financeira por Obra")
-            if not df_obras.empty:
-                fig_bar = px.bar(
-                    df_obras, 
-                    x='Cliente', 
-                    y='Valor Total', 
-                    color='Status',
-                    color_discrete_map=cores_status,
-                    text_auto='.2s',
-                    title="Valor dos Contratos por Cliente"
-                )
-                fig_bar.update_layout(plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)")
-                st.plotly_chart(fig_bar, use_container_width=True)
-        
-        with g2:
-            st.subheader("Status dos Projetos")
-            status_counts = df_obras['Status'].value_counts()
-            fig_pie = px.donut(
-                values=status_counts.values, 
-                names=status_counts.index, 
-                color=status_counts.index,
-                color_discrete_map=cores_status,
-                hole
+        if not df_financeiro.empty and 'Tipo' in df_financeiro.columns
