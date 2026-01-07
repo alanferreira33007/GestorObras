@@ -123,4 +123,75 @@ if check_password():
                 df_v = df_fin[df_fin['Obra Vinculada'] == obra_sel]
             
             ent = df_v[df_v['Tipo'].str.contains('Entrada', na=False)]['Valor'].sum()
-            sai = df_v[df_v['Tipo'].str.contains('
+            sai = df_v[df_v['Tipo'].str.contains('Saída', na=False)]['Valor'].sum()
+            
+            c1, c2, c3, c4 = st.columns(4)
+            c1.metric("Recebido", f"R$ {ent:,.2f}")
+            c2.metric("Desembolsado", f"R$ {sai:,.2f}")
+            c3.metric("Saldo Líquido", f"R$ {ent-sai:,.2f}")
+            c4.metric("Margem", f"{((ent-sai)/ent*100 if ent>0 else 0):.1f}%")
+            
+            st.markdown("<br>", unsafe_allow_html=True)
+            if not df_v.empty:
+                fig = px.area(df_v[df_v['Tipo'].str.contains('Saída', na=False)].sort_values('Data'), 
+                              x='Data', y='Valor', title="Fluxo de Saída (Custos)", 
+                              color_discrete_sequence=['#2563eb'])
+                fig.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', font=dict(family="Inter"))
+                st.plotly_chart(fig, use_container_width=True)
+        else: st.info("👋 Bem-vindo! Comece cadastrando uma obra na aba lateral.")
+
+    elif menu == "Obras":
+        st.markdown("<h1 class='page-title'>📁 Gestão de Projetos</h1>", unsafe_allow_html=True)
+        st.markdown("<p class='page-subtitle'>Gerencie novos contratos e visualize o status atual.</p>", unsafe_allow_html=True)
+        
+        col_form, col_list = st.columns([1, 1.5])
+        with col_form:
+            with st.form("f_ob", clear_on_submit=True):
+                st.markdown("**Cadastrar Novo Contrato**")
+                cli = st.text_input("Nome do Cliente", placeholder="Ex: Residencial Alvorada")
+                val = st.number_input("Valor do Contrato (R$)", min_value=0.0, step=1000.0)
+                status = st.selectbox("Status Inicial", ["Planejamento", "Em Andamento", "Finalizada"])
+                if st.form_submit_button("🚀 Salvar Obra", use_container_width=True):
+                    client = get_client()
+                    client.open("GestorObras_DB").worksheet("Obras").append_row([len(df_obras)+1, cli, "", status, val, str(date.today()), ""])
+                    st.cache_data.clear()
+                    st.rerun()
+        
+        with col_list:
+            st.markdown("**Projetos Ativos**")
+            st.dataframe(df_obras[['Cliente', 'Status', 'Valor Total']], use_container_width=True, hide_index=True)
+
+    elif menu == "Financeiro":
+        st.markdown("<h1 class='page-title'>💸 Controle de Caixa</h1>", unsafe_allow_html=True)
+        st.markdown("<p class='page-subtitle'>Registre cada centavo que entra ou sai dos seus projetos.</p>", unsafe_allow_html=True)
+        
+        col_f, col_t = st.columns([1, 2])
+        with col_f:
+            with st.form("f_fi", clear_on_submit=True):
+                st.markdown("**Novo Lançamento**")
+                t = st.selectbox("Tipo", ["Saída (Despesa)", "Entrada"])
+                o = st.selectbox("Obra Vinculada", df_obras['Cliente'].tolist() if not df_obras.empty else ["Geral"])
+                desc = st.text_input("Descrição", placeholder="Ex: Compra de Vergalhões")
+                v = st.number_input("Valor", min_value=0.0, step=10.0)
+                if st.form_submit_button("💾 Confirmar Lançamento", use_container_width=True):
+                    client = get_client()
+                    client.open("GestorObras_DB").worksheet("Financeiro").append_row([str(date.today()), t, "Geral", desc, v, o])
+                    st.cache_data.clear()
+                    st.rerun()
+        
+        with col_t:
+            st.markdown("**Extrato de Lançamentos**")
+            st.dataframe(df_fin.sort_values('Data', ascending=False), use_container_width=True, hide_index=True)
+
+    elif menu == "Relatórios":
+        st.markdown("<h1 class='page-title'>📄 Relatórios Inteligentes</h1>", unsafe_allow_html=True)
+        st.markdown("<p class='page-subtitle'>Gere documentos técnicos em PDF para clientes ou sócios.</p>", unsafe_allow_html=True)
+        
+        with st.container(border=True):
+            if not df_obras.empty:
+                o_rep = st.selectbox("Escolha o projeto para exportação:", df_obras['Cliente'].tolist())
+                st.markdown("---")
+                c1, c2 = st.columns(2)
+                c1.button("📄 Gerar Relatório de Medição", use_container_width=True)
+                c2.button("📊 Exportar Fluxo de Caixa (Excel)", use_container_width=True)
+            else: st.warning("Cadastre dados para habilitar relatórios.")
