@@ -1,7 +1,10 @@
 streamlit
 pandas
-plotly
 gspread
 oauth2client
-reportlab
+plotly
 streamlit-option-menu
+reportlab
+google-api-python-client
+google-auth
+google-auth-httplib2
