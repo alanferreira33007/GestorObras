@@ -241,32 +241,11 @@ elif sel == "Caixa":
     # ===============================
     st.subheader("📋 Últimas Movimentações")
 
-df_vis = df_fin[df_fin["Obra Vinculada"] == obra_sel].copy()
-
-if df_vis.empty:
+if df_fin.empty:
     st.info("Nenhuma movimentação registrada.")
 else:
-    # Formata data para padrão brasileiro
-    df_vis["Data"] = pd.to_datetime(df_vis["Data"]).dt.strftime("%d/%m/%Y")
-
-    # Formata valor para padrão brasileiro
-    df_vis["Valor"] = df_vis["Valor"].apply(fmt_moeda)
-
-    # Remove colunas técnicas
-    colunas_exibir = [
-        "Data",
-        "Tipo",
-        "Categoria",
-        "Descrição",
-        "Valor",
-        "Obra Vinculada"
-    ]
-
-    st.dataframe(
-        df_vis[colunas_exibir],
-        use_container_width=True,
-        hide_index=True
-    )
+    df_filtrado = df_fin[df_fin["Obra Vinculada"] == obra_sel]
+    st.dataframe(df_filtrado, use_container_width=True)
 
 # =================================================
 # TELA: PROJETOS
