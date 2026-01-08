@@ -121,144 +121,102 @@ def _df_to_table(df: pd.DataFrame, max_rows=None):
     return t
 
 
-def gerar_relatorio_investimentos_pdf(
-    obra: str,
-    periodo: str,
-    vgv: float,
-    custos: float,
-    lucro: float,
-    roi: float,
-    perc_vgv: float,
-    df_categorias: pd.DataFrame,
-    df_lancamentos: pd.DataFrame,
-) -> bytes:
-    buffer = io.BytesIO()
-    footer_left = f"Gestor Pro • {obra} • {periodo}"
+# ----------------------------
+# 1) CONFIG UI
+# ----------------------------
+st.set_page_config(page_title="GESTOR PRO | Master v26", layout="wide")
 
-    doc = SimpleDocTemplate(
-        buffer,
-        pagesize=A4,
-        rightMargin=24,
-        leftMargin=24,
-        topMargin=24,
-        bottomMargin=40,
-        title="Relatório - Investimentos",
-    )
+st.markdown("""
+<style>
+    .stApp { background-color: #F8F9FA; color: #1A1C1E; font-family: 'Inter', sans-serif; }
+    [data-testid="stMetric"] { background-color: #FFFFFF; border: 1px solid #E9ECEF; border-radius: 12px; padding: 20px !important; box-shadow: 0 2px 4px rgba(0,0,0,0.02); }
+    div.stButton > button { background-color: #2D6A4F !important; color: white !important; border-radius: 6px !important; font-weight: 600 !important; width: 100%; height: 45px; }
+    .alert-card { background-color: #FFFFFF; border-left: 5px solid #E63946; padding: 20px; border-radius: 8px; margin-bottom: 15px; box-shadow: 0 2px 10px rgba(0,0,0,0.05); }
+    header, footer, #MainMenu {visibility: hidden;}
+</style>
+""", unsafe_allow_html=True)
 
-    styles = getSampleStyleSheet()
-    story = []
-
-    story.append(Paragraph("GESTOR PRO — Relatório de Investimentos", styles["Title"]))
-    story.append(Spacer(1, 8))
-    story.append(Paragraph(f"<b>Obra:</b> {obra}", styles["BodyText"]))
-    story.append(Paragraph(f"<b>Período:</b> {periodo}", styles["BodyText"]))
-    story.append(Paragraph(f"<b>Gerado em:</b> {datetime.now().strftime('%d/%m/%Y %H:%M')}", styles["BodyText"]))
-    story.append(Spacer(1, 12))
-
-    story.append(Paragraph("Resumo", styles["Heading2"]))
-    resumo = pd.DataFrame(
-        [
-            ["VGV", fmt_moeda(vgv)],
-            ["Custo (período)", fmt_moeda(custos)],
-            ["Lucro estimado", fmt_moeda(lucro)],
-            ["ROI (lucro/custo)", f"{roi:.1f}%"],
-            ["% do VGV gasto", f"{perc_vgv:.2f}%"],
-        ],
-        columns=["Indicador", "Valor"],
-    )
-    story.append(_df_to_table(resumo))
-    story.append(Spacer(1, 14))
-
-    story.append(Paragraph("Custo por categoria (período)", styles["Heading2"]))
-    df_cat = df_categorias.copy() if df_categorias is not None else pd.DataFrame()
-    if df_cat.empty:
-        story.append(_df_to_table(pd.DataFrame(columns=["Categoria", "Valor"])))
-    else:
-        if "Categoria" not in df_cat.columns:
-            df_cat["Categoria"] = "Sem categoria"
-        if "Valor" not in df_cat.columns:
-            df_cat["Valor"] = 0
-
-        df_cat["Categoria"] = df_cat["Categoria"].fillna("Sem categoria").astype(str).str.strip()
-        df_cat["Valor_num"] = df_cat["Valor"].apply(_to_float)
-
-        df_cat_agg = (
-            df_cat.groupby("Categoria", as_index=False)["Valor_num"]
-            .sum()
-            .sort_values("Valor_num", ascending=False)
-        )
-        df_cat_tbl = df_cat_agg.rename(columns={"Valor_num": "Valor"})
-        df_cat_tbl["Valor"] = df_cat_tbl["Valor"].apply(fmt_moeda)
-        story.append(_df_to_table(df_cat_tbl))
-
-    story.append(Spacer(1, 14))
-
-    story.append(Paragraph("Lançamentos (Saídas) no período", styles["Heading2"]))
-    df_l = df_lancamentos.copy() if df_lancamentos is not None else pd.DataFrame()
-
-    if not df_l.empty:
-        if "Data_DT" in df_l.columns and df_l["Data_DT"].notna().any():
-            df_l["_data_ord"] = pd.to_datetime(df_l["Data_DT"], errors="coerce")
-        elif "Data" in df_l.columns and df_l["Data"].notna().any():
-            df_l["_data_ord"] = pd.to_datetime(df_l["Data"], errors="coerce")
-        elif "Data_BR" in df_l.columns and df_l["Data_BR"].notna().any():
-            df_l["_data_ord"] = pd.to_datetime(df_l["Data_BR"], errors="coerce", dayfirst=True)
-        else:
-            df_l["_data_ord"] = pd.NaT
-
-        df_l = df_l.sort_values("_data_ord", ascending=False, na_position="last")
-        df_l["Data"] = df_l["_data_ord"].dt.strftime("%d/%m/%Y").fillna("")
-    else:
-        df_l["Data"] = ""
-
-    cols = []
-    if "Data" in df_l.columns: cols.append("Data")
-    if "Categoria" in df_l.columns: cols.append("Categoria")
-    if "Descrição" in df_l.columns: cols.append("Descrição")
-    if "Valor" in df_l.columns: cols.append("Valor")
-
-    df_l_show = df_l[cols].copy() if cols else df_l.copy()
-    if not df_l_show.empty and "Valor" in df_l_show.columns:
-        df_l_show["Valor"] = df_l_show["Valor"].apply(fmt_moeda)
-
-    story.append(_df_to_table(df_l_show, max_rows=None))
-    story.append(Spacer(1, 14))
-
-    story.append(Paragraph("Fechamento do período", styles["Heading2"]))
-    total_lanc = (
-        float(df_lancamentos["Valor"].apply(_to_float).sum())
-        if (df_lancamentos is not None and not df_lancamentos.empty and "Valor" in df_lancamentos.columns)
-        else float(custos)
-    )
-    qtd_lanc = int(len(df_lancamentos)) if (df_lancamentos is not None and not df_lancamentos.empty) else 0
-
-    fechamento = pd.DataFrame(
-        [
-            ["Total de lançamentos (Saídas)", str(qtd_lanc)],
-            ["Total gasto no período", fmt_moeda(total_lanc)],
-        ],
-        columns=["Item", "Valor"],
-    )
-    story.append(_df_to_table(fechamento))
-    story.append(Spacer(1, 10))
-
-    doc.build(
-        story,
-        canvasmaker=lambda *args, **kwargs: NumberedCanvas(*args, footer_left=footer_left, **kwargs),
-    )
-
-    pdf_bytes = buffer.getvalue()
-    buffer.close()
-    return pdf_bytes
+# ----------------------------
+# 2) CONSTANTES (SCHEMA)
+# ----------------------------
+OBRAS_COLS = ["ID", "Cliente", "Endereço", "Status", "Valor Total", "Data Início", "Prazo"]
+FIN_COLS   = ["Data", "Tipo", "Categoria", "Descrição", "Valor", "Obra Vinculada"]
+CATEGORIAS_PADRAO = ["Geral", "Material", "Mão de Obra", "Serviços", "Impostos", "Outros"]
 
 
-def _download_pdf_one_click(pdf_bytes: bytes, filename: str):
-    b64 = base64.b64encode(pdf_bytes).decode()
-    html = f"""
-    <a id="dl" href="data:application/pdf;base64,{b64}" download="{filename}"></a>
-    <script>
-      const a = document.getElementById("dl");
-      a.click();
-    </script>
-    """
-    st.components.v1.html(html, height=0)
+def ensure_cols(df: pd.DataFrame, cols: list[str]) -> pd.DataFrame:
+    for c in cols:
+        if c not in df.columns:
+            df[c] = None
+    return df[cols]
+
+
+# ----------------------------
+# 3) DB (Google Sheets)
+# ----------------------------
+@st.cache_resource
+def obter_db():
+    creds_json = json.loads(st.secrets["gcp_service_account"]["json_content"], strict=False)
+    scope = [
+        "https://spreadsheets.google.com/feeds",
+        "https://www.googleapis.com/auth/drive",
+    ]
+    client = gspread.authorize(ServiceAccountCredentials.from_json_keyfile_dict(creds_json, scope))
+    return client.open("GestorObras_DB")
+
+
+@st.cache_data(ttl=10)
+def carregar_dados():
+    try:
+        db = obter_db()
+
+        ws_o = db.worksheet("Obras")
+        df_o = pd.DataFrame(ws_o.get_all_records())
+        if df_o.empty:
+            df_o = pd.DataFrame(columns=OBRAS_COLS)
+        df_o = ensure_cols(df_o, OBRAS_COLS)
+        df_o["ID"] = pd.to_numeric(df_o["ID"], errors="coerce")
+        df_o["Valor Total"] = pd.to_numeric(df_o["Valor Total"], errors="coerce").fillna(0)
+
+        ws_f = db.worksheet("Financeiro")
+        df_f = pd.DataFrame(ws_f.get_all_records())
+        if df_f.empty:
+            df_f = pd.DataFrame(columns=FIN_COLS)
+        df_f = ensure_cols(df_f, FIN_COLS)
+        df_f["Valor"] = pd.to_numeric(df_f["Valor"], errors="coerce").fillna(0)
+        df_f["Data_DT"] = pd.to_datetime(df_f["Data"], errors="coerce")
+        df_f["Data_BR"] = df_f["Data_DT"].dt.strftime("%d/%m/%Y")
+        df_f.loc[df_f["Data_DT"].isna(), "Data_BR"] = ""
+
+        # Normaliza strings
+        for col in ["Tipo", "Categoria", "Descrição", "Obra Vinculada"]:
+            if col in df_f.columns:
+                df_f[col] = df_f[col].astype(str)
+
+        return df_o, df_f
+
+    except Exception as e:
+        st.error(f"Erro de Conexão: {e}")
+        return pd.DataFrame(columns=OBRAS_COLS), pd.DataFrame(columns=FIN_COLS + ["Data_DT", "Data_BR"])
+
+
+# ----------------------------
+# 4) AUTH
+# ----------------------------
+if "authenticated" not in st.session_state:
+    st.session_state["authenticated"] = False
+
+if not st.session_state["authenticated"]:
+    _, col, _ = st.columns([1, 1, 1])
+    with col:
+        st.markdown("<br><br><br>", unsafe_allow_html=True)
+        with st.form("login"):
+            st.markdown("<h2 style='text-align:center; color:#2D6A4F;'>GESTOR PRO</h2>", unsafe_allow_html=True)
+            pwd = st.text_input("Senha de Acesso", type="password")
+            if st.form_submit_button("Acessar Painel"):
+                if pwd == st.secrets["password"]:
+                    st.session_state["authenticated"] = True
+                    st.rerun()
+                else:
+                    st.error("Senha incorreta.")
+    st.stop()
