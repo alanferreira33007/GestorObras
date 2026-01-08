@@ -1,105 +1,151 @@
 import streamlit as st
 import pandas as pd
+import plotly.express as px
+import plotly.graph_objects as go
 from datetime import date
 from streamlit_option_menu import option_menu
 
-# Importando nossas funções
+# Nossas peças separadas
 from database import carregar_dados, salvar_financeiro, salvar_obra
 from relatorios import fmt_moeda, gerar_relatorio_investimentos_pdf, download_pdf_one_click
 
 # Configuração de página
 st.set_page_config(page_title="GESTOR PRO | Business Intelligence", layout="wide")
 
-# --- NOVO LAYOUT CSS (MINIMALISTA) ---
+# --- ESTILIZAÇÃO INTERFACE ---
 st.markdown("""
 <style>
-    /* Fundo do app e da sidebar */
-    .stApp { background-color: #FBFBFB; }
-    [data-testid="stSidebar"] {
-        background-color: #FFFFFF;
-        border-right: 1px solid #E6E8EB;
-    }
-    
-    /* Ajuste de fontes e textos */
-    h1, h2, h3 { color: #1E293B !important; font-family: 'Inter', sans-serif; }
-    .stMarkdown { color: #475569; }
-
-    /* Estilização do Menu Lateral */
-    .nav-link {
-        font-size: 15px !important;
-        color: #64748B !important;
-        padding: 10px 15px !important;
-        border-radius: 6px !important;
-    }
-    .nav-link:hover {
-        background-color: #F1F5F9 !important;
-        color: #1E293B !important;
-    }
-    .nav-link-selected {
-        background-color: #E2E8F0 !important;
-        color: #0F172A !important;
-        font-weight: 600 !important;
-    }
-
-    /* Cards de Métricas */
-    [data-testid="stMetric"] {
-        background-color: #FFFFFF;
-        border: 1px solid #E2E8F0;
-        padding: 15px;
-        border-radius: 12px;
-        box-shadow: 0 1px 3px rgba(0,0,0,0.02);
-    }
+    [data-testid="stMetricValue"] { font-size: 28px; color: #1B4332; }
+    .main-cards { background-color: #FFFFFF; border-radius: 15px; padding: 20px; border: 1px solid #E9ECEF; box-shadow: 0 4px 6px rgba(0,0,0,0.02); }
+    div.stButton > button { width: 100%; border-radius: 5px; height: 3em; }
 </style>
 """, unsafe_allow_html=True)
 
-# --- LOGIN ---
+# --- LOGIN (Simplificado) ---
 if "authenticated" not in st.session_state: st.session_state["authenticated"] = False
 if not st.session_state["authenticated"]:
-    # ... (Mantenha seu código de login aqui)
+    _, col, _ = st.columns([1,1,1])
+    with col:
+        st.title("🔐 Gestor Pro")
+        pwd = st.text_input("Senha de Acesso", type="password")
+        if st.button("ACESSAR PAINEL"):
+            if pwd == st.secrets["password"]:
+                st.session_state["authenticated"] = True
+                st.rerun()
+            else: st.error("Senha Incorreta")
     st.stop()
 
 # --- CARREGAMENTO ---
 df_obras, df_fin = carregar_dados()
 lista_obras = df_obras["Cliente"].unique().tolist()
 
-# --- SIDEBAR MINIMALISTA ---
 with st.sidebar:
-    st.markdown("<br>", unsafe_allow_html=True)
-    # Título discreto e elegante
-    st.markdown("<h2 style='text-align: center; font-size: 22px;'>🏗️ Gestor Pro</h2>", unsafe_allow_html=True)
-    st.markdown("<p style='text-align: center; color: #94A3B8; font-size: 12px;'>Versão 2.0 Corporate</p>", unsafe_allow_html=True)
-    st.markdown("<br>", unsafe_allow_html=True)
-    
-    # Menu com visual de "sistema nativo"
-    sel = option_menu(
-        menu_title=None,
-        options=["Investimentos", "Caixa", "Projetos"], 
-        icons=["bar-chart-steps", "wallet2", "stack"], 
-        default_index=0,
-        styles={
-            "container": {"padding": "5px", "background-color": "transparent"},
-            "icon": {"color": "#64748B", "font-size": "18px"}, 
-            "nav-link": {"margin":"5px 0px"},
-            "nav-link-selected": {"background-color": "#F1F5F9", "color": "#1E293B"},
-        }
-    )
-    
-    st.vfill() # Empurra o conteúdo abaixo para o fundo
-    
-    # Rodapé da Sidebar
-    st.markdown("---")
-    st.caption("👤 **Usuário:** Administrador")
-    if st.button("Sair do Sistema", use_container_width=True, type="secondary"):
+    st.image("https://cdn-icons-png.flaticon.com/512/4222/4222031.png", width=80)
+    sel = option_menu("MENU PRINCIPAL", ["Investimentos", "Caixa", "Projetos"], 
+                     icons=["pie-chart-fill", "currency-dollar", "bricks"], menu_icon="cast", default_index=0)
+    st.divider()
+    if st.button("Sair / Logout"):
         st.session_state["authenticated"] = False
         st.rerun()
 
-# --- CONTEÚDO ---
+# --- TELA 1: INVESTIMENTOS (O NOVO DASHBOARD) ---
 if sel == "Investimentos":
-    st.subheader("📊 Análise de Performance")
-    # ... (Restante do seu dashboard)
+    st.title("📊 BI - Inteligência de Obra")
+    
+    if not lista_obras:
+        st.info("Nenhuma obra encontrada. Cadastre em 'Projetos'.")
+    else:
+        # Topo: Seleção e Relatório
+        c_obra, c_rel = st.columns([3, 1])
+        obra_sel = c_obra.selectbox("Selecione a unidade de análise:", lista_obras)
+        
+        # Filtro de Dados
+        obra_row = df_obras[df_obras["Cliente"] == obra_sel].iloc[0]
+        vgv = float(obra_row["Valor Total"])
+        df_v = df_fin[df_fin["Obra Vinculada"] == obra_sel].copy()
+        df_saidas = df_v[df_v["Tipo"].str.contains("Saída", case=False, na=False)]
+        
+        custos = float(df_saidas["Valor"].sum())
+        lucro = vgv - custos
+        roi = (lucro / custos * 100) if custos > 0 else 0
+        perc_gasto = (custos / vgv) if vgv > 0 else 0
+
+        # Botão de Relatório no topo direito
+        if c_rel.button("⬇️ Gerar PDF"):
+            pdf = gerar_relatorio_investimentos_pdf(obra_sel, vgv, custos, lucro, roi, df_saidas)
+            download_pdf_one_click(pdf, f"Dashboard_{obra_sel}.pdf")
+
+        st.divider()
+
+        # KPIs PRINCIPAIS
+        kpi1, kpi2, kpi3, kpi4 = st.columns(4)
+        kpi1.metric("Valor Contrato (VGV)", fmt_moeda(vgv))
+        kpi2.metric("Custo Acumulado", fmt_moeda(custos), delta=f"{(perc_gasto*100):.1f}% do total", delta_color="inverse")
+        kpi3.metric("Lucro Estimado", fmt_moeda(lucro))
+        kpi4.metric("ROI Atual", f"{roi:.1f}%")
+
+        # BARRA DE CONSUMO DO ORÇAMENTO
+        st.write(f"**Consumo do Orçamento (VGV):** {perc_gasto*100:.1f}%")
+        st.progress(min(perc_gasto, 1.0))
+
+        st.divider()
+
+        # GRÁFICOS
+        col_graf1, col_graf2 = st.columns(2)
+
+        with col_graf1:
+            st.subheader("🔥 Distribuição por Categoria")
+            if not df_saidas.empty:
+                df_pie = df_saidas.groupby("Categoria")["Valor"].sum().reset_index()
+                fig_pie = px.pie(df_pie, values='Valor', names='Categoria', hole=.4,
+                                 color_discrete_sequence=px.colors.sequential.Greens_r)
+                fig_pie.update_layout(margin=dict(t=0, b=0, l=0, r=0))
+                st.plotly_chart(fig_pie, use_container_width=True)
+            else:
+                st.info("Sem dados de saída.")
+
+        with col_graf2:
+            st.subheader("📈 Evolução de Gastos")
+            if not df_saidas.empty:
+                df_saidas['Data_DT'] = pd.to_datetime(df_saidas['Data_DT'])
+                df_evol = df_saidas.sort_values("Data_DT").copy()
+                df_evol["Acumulado"] = df_evol["Valor"].cumsum()
+                fig_line = px.line(df_evol, x="Data_DT", y="Acumulado", markers=True,
+                                  line_shape="spline", render_mode="svg")
+                fig_line.update_traces(line_color='#2D6A4F')
+                st.plotly_chart(fig_line, use_container_width=True)
+
+# --- TELA 2: CAIXA ---
 elif sel == "Caixa":
-    st.subheader("💸 Fluxo Financeiro")
-    # ... (Restante do seu caixa)
+    st.title("💸 Fluxo de Caixa")
+    with st.expander("📝 Novo Lançamento", expanded=False):
+        with st.form("f_caixa", clear_on_submit=True):
+            c1, c2, c3 = st.columns(3)
+            f_data = c1.date_input("Data", value=date.today())
+            f_tipo = c2.selectbox("Tipo", ["Saída (Despesa)", "Entrada"])
+            f_cat = c3.selectbox("Categoria", ["Material", "Mão de Obra", "Serviços", "Impostos", "Outros"])
+            c4, c5 = st.columns(2)
+            f_obra = c4.selectbox("Obra", lista_obras if lista_obras else ["Geral"])
+            f_valor = c5.number_input("Valor R$", min_value=0.0)
+            f_desc = st.text_input("Descrição")
+            if st.form_submit_button("SALVAR NO GOOGLE SHEETS"):
+                salvar_financeiro([f_data.strftime("%Y-%m-%d"), f_tipo, f_cat, f_desc, f_valor, f_obra])
+                st.toast("Lançamento realizado!", icon="✅")
+                st.rerun()
+
+    st.subheader("Últimas Movimentações")
+    st.dataframe(df_fin.sort_values("Data_DT", ascending=False), use_container_width=True, hide_index=True)
+
+# --- TELA 3: PROJETOS ---
 elif sel == "Projetos":
-    st.subheader("🏗️ Gestão de Obras")
-    # ... (Restante dos seus projetos)
+    st.title("🏗️ Portfólio de Obras")
+    with st.expander("➕ Cadastrar Nova Obra"):
+        with st.form("f_obra", clear_on_submit=True):
+            f_nome = st.text_input("Nome do Cliente / Identificação da Obra")
+            f_vgv = st.number_input("Valor Total do Contrato (VGV)", min_value=0.0)
+            if st.form_submit_button("CRIAR PROJETO"):
+                salvar_obra([len(df_obras)+1, f_nome, "", "Construção", f_vgv, date.today().strftime("%Y-%m-%d"), ""])
+                st.toast("Obra cadastrada!", icon="🏗️")
+                st.rerun()
+    st.subheader("Status das Obras")
+    st.dataframe(df_obras, use_container_width=True, hide_index=True)
