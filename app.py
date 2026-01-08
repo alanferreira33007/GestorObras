@@ -22,9 +22,9 @@ from reportlab.lib.units import cm
 # 1. CONFIGURAÇÃO VISUAL (UI)
 # ==============================================================================
 st.set_page_config(
-    page_title="GESTOR PRO | Enterprise",
+    page_title="GESTOR PRO | Real Estate",
     layout="wide",
-    page_icon="🏢",
+    page_icon="🏗️",
     initial_sidebar_state="expanded"
 )
 
@@ -33,8 +33,10 @@ st.markdown("""
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap');
     html, body, [class*="css"] { font-family: 'Inter', sans-serif; }
     
+    /* Métricas */
     [data-testid="stMetricValue"] { font-size: 1.8rem !important; font-weight: 700; color: #1a1a1a; }
     
+    /* Botões */
     div.stButton > button {
         background-color: #2D6A4F;
         color: white;
@@ -51,12 +53,40 @@ st.markdown("""
         box-shadow: 0 4px 8px rgba(0,0,0,0.2);
     }
     
+    /* Sidebar */
     [data-testid="stSidebar"] { background-color: #f8f9fa; border-right: 1px solid #e9ecef; }
+    
+    /* Tabs customizadas */
+    .stTabs [data-baseweb="tab-list"] { gap: 10px; }
+    .stTabs [data-baseweb="tab"] {
+        height: 50px;
+        white-space: pre-wrap;
+        background-color: #f0f2f6;
+        border-radius: 4px 4px 0px 0px;
+        gap: 1px;
+        padding-top: 10px;
+        padding-bottom: 10px;
+    }
+    .stTabs [aria-selected="true"] {
+        background-color: #FFFFFF;
+        border-top: 2px solid #2D6A4F;
+    }
 </style>
 """, unsafe_allow_html=True)
 
 # ==============================================================================
-# 2. FUNÇÕES HELPERS
+# 2. DEFINIÇÃO DE COLUNAS (ATUALIZADO PARA INCORPORAÇÃO)
+# ==============================================================================
+# Adicionamos: Custo Terreno, Orçamento Obra, Área Privativa
+OBRAS_COLS = [
+    "ID", "Cliente", "Endereço", "Status", "Valor Total", 
+    "Data Início", "Prazo", "Custo Terreno", "Orçamento Obra", "Area m2"
+]
+FIN_COLS   = ["Data", "Tipo", "Categoria", "Descrição", "Valor", "Obra Vinculada"]
+CATS       = ["Material", "Mão de Obra", "Serviços", "Administrativo", "Impostos", "Outros", "Terreno/Aquisição"]
+
+# ==============================================================================
+# 3. FUNÇÕES HELPERS
 # ==============================================================================
 def fmt_moeda(valor):
     if pd.isna(valor) or valor == "": return "R$ 0,00"
@@ -73,7 +103,7 @@ def safe_float(x) -> float:
     except: return 0.0
 
 # ==============================================================================
-# 3. MOTOR PDF (ENTERPRISE V5 - COM TÍTULOS DINÂMICOS)
+# 4. MOTOR PDF (ENTERPRISE V5)
 # ==============================================================================
 class EnterpriseCanvas(canvas.Canvas):
     def __init__(self, *args, **kwargs):
@@ -100,8 +130,8 @@ class EnterpriseCanvas(canvas.Canvas):
         
         self.setFillColor(colors.grey)
         self.setFont("Helvetica", 8)
-        self.drawString(30, 35, "GESTOR PRO • Sistema Integrado de Gestão de Obras")
-        self.drawString(30, 25, "Relatório contábil individualizado.")
+        self.drawString(30, 35, "GESTOR PRO • Incorporação e Construção")
+        self.drawString(30, 25, "Relatório Gerencial.")
         
         data_hora = datetime.now().strftime("%d/%m/%Y às %H:%M")
         self.drawRightString(width-30, 35, f"Emitido em: {data_hora}")
@@ -109,11 +139,7 @@ class EnterpriseCanvas(canvas.Canvas):
 
 def gerar_pdf_empresarial(escopo, periodo, vgv, custos, lucro, roi, df_cat, df_lanc):
     buffer = io.BytesIO()
-    doc = SimpleDocTemplate(
-        buffer, 
-        pagesize=A4, 
-        rightMargin=30, leftMargin=30, topMargin=40, bottomMargin=60
-    )
+    doc = SimpleDocTemplate(buffer, pagesize=A4, rightMargin=30, leftMargin=30, topMargin=40, bottomMargin=60)
     story = []
     
     styles = getSampleStyleSheet()
@@ -121,12 +147,11 @@ def gerar_pdf_empresarial(escopo, periodo, vgv, custos, lucro, roi, df_cat, df_l
     style_header_sub = ParagraphStyle('HeadSub', parent=styles['Normal'], fontSize=9, leading=11, textColor=colors.whitesmoke)
     style_h2 = ParagraphStyle('SecTitle', parent=styles['Heading2'], fontSize=11, textColor=colors.HexColor("#1B4332"), spaceBefore=15, spaceAfter=8, fontName='Helvetica-Bold')
     
-    # --- 1. CABEÇALHO DINÂMICO ---
-    # Define se é Portfólio ou Obra Individual
+    # 1. CABEÇALHO DINÂMICO
     if "Visão Geral" in escopo:
         titulo_principal = "RELATÓRIO DE PORTFÓLIO (CONSOLIDADO)"
     else:
-        titulo_principal = f"RELATÓRIO INDIVIDUAL: {escopo.upper()}"
+        titulo_principal = f"RELATÓRIO DE EMPREENDIMENTO: {escopo.upper()}"
         
     header_content = [[Paragraph(titulo_principal, style_header_title), Paragraph(f"PERÍODO:<br/>{periodo}", style_header_sub)]]
     t_header = Table(header_content, colWidths=[12*cm, 5*cm])
@@ -140,11 +165,11 @@ def gerar_pdf_empresarial(escopo, periodo, vgv, custos, lucro, roi, df_cat, df_l
     story.append(t_header)
     story.append(Spacer(1, 15))
     
-    # --- 2. RESUMO (KPIs) ---
+    # 2. RESUMO (KPIs)
     story.append(Paragraph("RESUMO FINANCEIRO", style_h2))
     perc_gasto = (custos/vgv*100) if vgv > 0 else 0
     resumo_data = [
-        ["ORÇAMENTO (VGV)", "GASTO TOTAL", "SALDO / LUCRO", "ROI", "CONSUMO"],
+        ["VGV (VENDAS)", "TOTAL GASTO", "LUCRO BRUTO", "ROI", "EXECUÇÃO"],
         [fmt_moeda(vgv), fmt_moeda(custos), fmt_moeda(lucro), f"{roi:.1f}%", f"{perc_gasto:.1f}%"]
     ]
     t_resumo = Table(resumo_data, colWidths=[3.7*cm]*5)
@@ -162,7 +187,7 @@ def gerar_pdf_empresarial(escopo, periodo, vgv, custos, lucro, roi, df_cat, df_l
     story.append(t_resumo)
     story.append(Spacer(1, 15))
     
-    # --- 3. CATEGORIAS ---
+    # 3. CATEGORIAS
     if not df_cat.empty:
         story.append(Paragraph("DISTRIBUIÇÃO POR CATEGORIA", style_h2))
         df_c = df_cat.copy()
@@ -183,8 +208,8 @@ def gerar_pdf_empresarial(escopo, periodo, vgv, custos, lucro, roi, df_cat, df_l
         story.append(t_cat)
         story.append(Spacer(1, 15))
         
-    # --- 4. EXTRATO FINANCEIRO ---
-    story.append(Paragraph("EXTRATO DE LANÇAMENTOS", style_h2))
+    # 4. EXTRATO FINANCEIRO
+    story.append(Paragraph("EXTRATO DE MOVIMENTAÇÕES", style_h2))
     
     if not df_lanc.empty:
         df_l = df_lanc.copy()
@@ -192,8 +217,7 @@ def gerar_pdf_empresarial(escopo, periodo, vgv, custos, lucro, roi, df_cat, df_l
         cols_sel = ["Data", "Categoria", "Descrição", "Valor"]
         data_lanc = [cols_sel] + df_l[cols_sel].values.tolist()
         
-        # LINHA DE TOTAL NA TABELA
-        data_lanc.append(["", "", "SUBTOTAL (Página):", fmt_moeda(custos)])
+        data_lanc.append(["", "", "SUBTOTAL:", fmt_moeda(custos)])
         
         t_lanc = Table(data_lanc, colWidths=[2.5*cm, 3.5*cm, 8*cm, 3*cm])
         estilo_tabela = [
@@ -222,19 +246,16 @@ def gerar_pdf_empresarial(escopo, periodo, vgv, custos, lucro, roi, df_cat, df_l
 
     story.append(Spacer(1, 25))
 
-    # --- 5. BLOCO DE TOTALIZAÇÃO FINAL (DESTAQUE) ---
+    # 5. BLOCO DE TOTALIZAÇÃO FINAL (DESTAQUE)
     bloco_total = []
-    
-    # Texto Explícito sobre o Total Gasto
     msg_total = "TOTAL ACUMULADO GASTO (ATÉ EMISSÃO)"
-    
     total_lbl = Paragraph(f"<b>{msg_total}</b>", ParagraphStyle('TLabel', parent=styles['Normal'], textColor=colors.black, fontSize=10, alignment=TA_RIGHT))
     total_val = Paragraph(f"<b>{fmt_moeda(custos)}</b>", ParagraphStyle('TVal', parent=styles['Normal'], textColor=colors.white, fontSize=14, alignment=TA_RIGHT))
     
     data_total = [[total_lbl, total_val]]
     t_total = Table(data_total, colWidths=[12*cm, 5*cm])
     t_total.setStyle(TableStyle([
-        ('BACKGROUND', (1,0), (1,0), colors.HexColor("#1A1C1E")), # Valor Preto/Escuro
+        ('BACKGROUND', (1,0), (1,0), colors.HexColor("#1A1C1E")),
         ('BACKGROUND', (0,0), (0,0), colors.white), 
         ('LINEBELOW', (0,0), (1,0), 2, colors.HexColor("#1A1C1E")),
         ('TOPPADDING', (0,0), (-1,-1), 12),
@@ -244,13 +265,12 @@ def gerar_pdf_empresarial(escopo, periodo, vgv, custos, lucro, roi, df_cat, df_l
     ]))
     bloco_total.append(t_total)
     story.append(KeepTogether(bloco_total))
-    
     story.append(Spacer(1, 40))
 
-    # --- 6. ASSINATURAS ---
+    # 6. ASSINATURAS
     sig_data = [
         ["_______________________________________", "_______________________________________"],
-        ["GESTOR RESPONSÁVEL", "DIRETORIA FINANCEIRA"],
+        ["GESTOR RESPONSÁVEL", "DIRETORIA / SÓCIOS"],
         [f"Data: {date.today().strftime('%d/%m/%Y')}", "Data: ____/____/________"]
     ]
     t_sig = Table(sig_data, colWidths=[8.5*cm, 8.5*cm])
@@ -266,12 +286,8 @@ def gerar_pdf_empresarial(escopo, periodo, vgv, custos, lucro, roi, df_cat, df_l
     return buffer.getvalue()
 
 # ==============================================================================
-# 4. DADOS E CONEXÃO
+# 5. DADOS E CONEXÃO
 # ==============================================================================
-OBRAS_COLS = ["ID", "Cliente", "Endereço", "Status", "Valor Total", "Data Início", "Prazo"]
-FIN_COLS   = ["Data", "Tipo", "Categoria", "Descrição", "Valor", "Obra Vinculada"]
-CATS       = ["Material", "Mão de Obra", "Serviços", "Administrativo", "Impostos", "Outros"]
-
 @st.cache_resource
 def get_conn():
     creds = json.loads(st.secrets["gcp_service_account"]["json_content"], strict=False)
@@ -282,17 +298,20 @@ def load_data():
     try:
         db = get_conn()
         df_o = pd.DataFrame(db.worksheet("Obras").get_all_records())
+        # Garante estrutura
         if df_o.empty:
-            df_o = pd.DataFrame([{"ID":1,"Cliente":"Obra Modelo","Endereço":"-","Status":"Ativa","Valor Total":500000.0,"Data Início":"2024-01-01","Prazo":"2024-12-31"}])
+            # Estrutura base vazia mas com colunas certas
+            df_o = pd.DataFrame(columns=OBRAS_COLS)
         else:
             for c in OBRAS_COLS: 
                 if c not in df_o.columns: df_o[c] = None
         
         df_f = pd.DataFrame(db.worksheet("Financeiro").get_all_records())
-        # Demo Data se vazio
-        if df_f.empty or len(df_f) < 2:
+        
+        # MODO DEMO SE VAZIO
+        if (df_f.empty or len(df_f) < 2) and not df_o.empty:
             fake = []
-            onome = df_o.iloc[0]["Cliente"]
+            onome = df_o.iloc[0]["Cliente"] if not df_o.empty else "Obra Exemplo"
             for i in range(15):
                 fake.append({
                     "Data": (date.today()-timedelta(days=i*2)).strftime("%Y-%m-%d"),
@@ -307,7 +326,13 @@ def load_data():
             for c in FIN_COLS:
                 if c not in df_f.columns: df_f[c] = None
                 
-        df_o["Valor Total"] = df_o["Valor Total"].apply(safe_float)
+        # Tipagem
+        # Campos de Obra
+        cols_num_obra = ["Valor Total", "Custo Terreno", "Orçamento Obra", "Area m2"]
+        for c in cols_num_obra:
+            if c in df_o.columns:
+                df_o[c] = df_o[c].apply(safe_float)
+        
         df_f["Valor"] = df_f["Valor"].apply(safe_float)
         df_f["Data_DT"] = pd.to_datetime(df_f["Data"], errors="coerce")
         return df_o, df_f
@@ -316,7 +341,7 @@ def load_data():
         return pd.DataFrame(), pd.DataFrame()
 
 # ==============================================================================
-# 5. APP PRINCIPAL
+# 6. APP PRINCIPAL
 # ==============================================================================
 if "auth" not in st.session_state: st.session_state.auth = False
 
@@ -445,16 +470,95 @@ elif sel == "Financeiro":
         dview = df_fin[df_fin["Obra Vinculada"].isin(fob)] if fob else df_fin
         st.dataframe(dview.sort_values("Data_DT", ascending=False), use_container_width=True, hide_index=True)
 
-# --- OBRAS ---
+# --- OBRAS (CADASTRO DE EMPREENDIMENTOS) ---
 elif sel == "Obras":
-    st.title("Obras")
-    c1, c2 = st.columns([1,2])
-    with c1:
-        with st.form("fobra"):
-            nc = st.text_input("Nome")
-            ne = st.text_input("Endereço")
-            nv = st.number_input("VGV", min_value=0.0)
-            st.form_submit_button("Cadastrar") 
-            # (Lógica simplificada para visualização, manter a sua de insert)
-    with c2:
-        st.dataframe(df_obras, use_container_width=True, hide_index=True, column_config={"Valor Total": st.column_config.NumberColumn(format="R$ %.2f")})
+    st.title("Gestão de Empreendimentos")
+    
+    # Layout em Abas para Organização
+    tab_cad, tab_vis = st.tabs(["🏗️ Novo Empreendimento", "📋 Carteira de Obras"])
+    
+    with tab_cad:
+        with st.container(border=True):
+            st.markdown("#### 1. Ficha do Empreendimento")
+            with st.form("new_obra_incorp"):
+                # Linha 1: Identificação
+                c1, c2, c3 = st.columns([2, 2, 1])
+                nome_emp = c1.text_input("Nome do Empreendimento", placeholder="Ex: Residencial Vista Verde")
+                ender = c2.text_input("Localização / Terreno")
+                area = c3.number_input("Área Total (m²)", min_value=0.0, step=10.0)
+                
+                # Linha 2: Custos (Viabilidade)
+                st.markdown("#### 2. Estudo de Viabilidade Econômica")
+                c4, c5, c6 = st.columns(3)
+                # Custo do Terreno
+                custo_terr = c4.number_input("Custo do Terreno (Aquisição)", min_value=0.0, step=1000.0, format="%.2f")
+                # Custo de Construção (Budget)
+                custo_obra = c5.number_input("Orçamento de Obra (Estimado)", min_value=0.0, step=1000.0, format="%.2f")
+                # VGV (Receita)
+                vgv_prev = c6.number_input("VGV (Valor Geral de Vendas)", min_value=0.0, step=5000.0, format="%.2f", help="Soma do valor de venda de todas as unidades")
+                
+                # Linha 3: Planejamento
+                st.markdown("#### 3. Cronograma")
+                c7, c8 = st.columns(2)
+                status = c7.selectbox("Fase Atual", ["Prospecção/Estudo", "Aquisição Terreno", "Projetos/Legalização", "Fundação", "Estrutura", "Acabamento", "Vendas/Pronto"])
+                prazo = c8.date_input("Previsão de Entrega", date.today() + timedelta(days=365))
+                
+                st.markdown("---")
+                
+                # CÁLCULO DE VIABILIDADE EM TEMPO REAL (Visualização)
+                custo_total_proj = custo_terr + custo_obra
+                lucro_proj = vgv_prev - custo_total_proj
+                margem_proj = (lucro_proj / vgv_prev * 100) if vgv_prev > 0 else 0
+                
+                k1, k2, k3 = st.columns(3)
+                k1.metric("Investimento Total (Terreno + Obra)", fmt_moeda(custo_total_proj))
+                k2.metric("Lucro Potencial", fmt_moeda(lucro_proj), delta="Margem Bruta")
+                k3.metric("Margem %", f"{margem_proj:.1f}%", delta_color="normal")
+
+                submitted = st.form_submit_button("💾 CADASTRAR EMPREENDIMENTO", use_container_width=True)
+                
+                if submitted:
+                    if not nome_emp:
+                        st.error("O nome do empreendimento é obrigatório.")
+                    else:
+                        try:
+                            conn = get_conn()
+                            idx = len(lista_obras) + 1
+                            # Ordem: ID, Nome, Endereço, Status, VGV, Data, Prazo, CustoTerreno, OrcamentoObra, Area
+                            row_data = [
+                                idx, 
+                                nome_emp, 
+                                ender, 
+                                status, 
+                                float(vgv_prev), 
+                                date.today().strftime("%Y-%m-%d"), 
+                                prazo.strftime("%d/%m/%Y"),
+                                float(custo_terr),
+                                float(custo_obra),
+                                float(area)
+                            ]
+                            conn.worksheet("Obras").append_row(row_data)
+                            st.toast(f"Empreendimento '{nome_emp}' cadastrado com sucesso!", icon="✅")
+                            st.cache_data.clear()
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"Erro ao salvar: {e}")
+
+    with tab_vis:
+        if not df_obras.empty:
+            for i, r in df_obras.iterrows():
+                with st.container(border=True):
+                    # Layout Card
+                    cols = st.columns([0.5, 3, 1.5, 1.5])
+                    with cols[0]:
+                        st.markdown("# 🏙️")
+                    with cols[1]:
+                        st.markdown(f"**{r['Cliente']}**") # Cliente = Nome do Empreendimento
+                        st.caption(f"📍 {r['Endereço']} • {r['Status']}")
+                    with cols[2]:
+                        area_val = r.get("Area m2", 0)
+                        st.metric("Área", f"{area_val} m²" if area_val else "-")
+                    with cols[3]:
+                        st.metric("VGV (Vendas)", fmt_moeda(r['Valor Total']))
+        else:
+            st.info("Nenhum empreendimento cadastrado.")
