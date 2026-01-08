@@ -4,53 +4,47 @@ import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 import json
 import plotly.express as px
-import plotly.graph_objects as go
 from datetime import date, datetime, timedelta
 from streamlit_option_menu import option_menu
 import io
 import random
 
-# PDF Libs
+# Bibliotecas PDF (ReportLab)
 from reportlab.lib.pagesizes import A4
 from reportlab.lib import colors
-from reportlab.lib.styles import getSampleStyleSheet
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
+from reportlab.lib.enums import TA_CENTER, TA_RIGHT, TA_LEFT
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, Image
 from reportlab.pdfgen import canvas
+from reportlab.lib.units import cm
 
 # ==============================================================================
-# 1. CONFIGURAÇÃO VISUAL (UI/UX)
+# 1. CONFIGURAÇÃO VISUAL E CSS
 # ==============================================================================
 st.set_page_config(
-    page_title="GESTOR PRO | Business",
+    page_title="GESTOR PRO | Enterprise",
     layout="wide",
     page_icon="🏗️",
     initial_sidebar_state="expanded"
 )
 
-# CSS: Botões Maiores e Mais Robustos
 st.markdown("""
 <style>
-    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600&display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap');
+    html, body, [class*="css"] { font-family: 'Inter', sans-serif; }
     
-    html, body, [class*="css"] {
-        font-family: 'Inter', sans-serif;
-    }
+    /* Métricas e Títulos */
+    [data-testid="stMetricValue"] { font-size: 1.8rem !important; font-weight: 700; color: #1a1a1a; }
+    h1, h2, h3 { color: #1B4332; }
     
-    /* Metrics */
-    [data-testid="stMetricValue"] {
-        font-size: 1.8rem !important;
-        font-weight: 700;
-        color: #1a1a1a;
-    }
-    
-    /* BOTÕES GRANDES E CHAMATIVOS */
+    /* Botões Grandes e Profissionais */
     div.stButton > button {
         background-color: #2D6A4F;
         color: white;
         border: none;
         border-radius: 8px;
-        padding: 0.75rem 1rem; /* Mais altura */
-        font-size: 1rem;       /* Texto maior */
+        padding: 0.75rem 1rem;
+        font-size: 1rem;
         font-weight: 600;
         transition: all 0.3s ease;
         box-shadow: 0 2px 5px rgba(0,0,0,0.1);
@@ -60,23 +54,14 @@ st.markdown("""
         transform: translateY(-2px);
         box-shadow: 0 6px 12px rgba(45, 106, 79, 0.3);
     }
-    
-    /* Botão secundário (se houver) */
-    div.stButton > button:active {
-        background-color: #1B4332;
-        transform: translateY(0px);
-    }
 
     /* Sidebar */
-    [data-testid="stSidebar"] {
-        background-color: #f8f9fa;
-        border-right: 1px solid #e9ecef;
-    }
+    [data-testid="stSidebar"] { background-color: #f8f9fa; border-right: 1px solid #e9ecef; }
 </style>
 """, unsafe_allow_html=True)
 
 # ==============================================================================
-# 2. FUNÇÕES HELPERS
+# 2. FUNÇÕES AUXILIARES
 # ==============================================================================
 def fmt_moeda(valor):
     if pd.isna(valor) or valor == "": return "R$ 0,00"
@@ -92,7 +77,9 @@ def safe_float(x) -> float:
     try: return float(s)
     except: return 0.0
 
-# --- MOTOR PDF ---
+# ==============================================================================
+# 3. MOTOR PDF (AVANÇADO E ELEGANTE)
+# ==============================================================================
 class NumberedCanvas(canvas.Canvas):
     def __init__(self, *args, footer_txt="Gestor Pro", **kwargs):
         super().__init__(*args, **kwargs)
@@ -114,59 +101,136 @@ class NumberedCanvas(canvas.Canvas):
     def _draw_footer(self, page_count):
         width, height = A4
         self.setStrokeColor(colors.lightgrey)
-        self.line(30, 30, width-30, 30)
-        self.setFillColor(colors.grey)
-        self.setFont("Helvetica", 9)
-        self.drawString(30, 15, self.footer_txt)
-        self.drawRightString(width-30, 15, f"Pág. {self.getPageNumber()}/{page_count}")
+        self.setLineWidth(0.5)
+        self.line(30, 40, width-30, 40)
+        self.setFillColor(colors.darkgrey)
+        self.setFont("Helvetica", 8)
+        self.drawString(30, 25, f"{self.footer_txt} • Gerado em {datetime.now().strftime('%d/%m/%Y %H:%M')}")
+        self.drawRightString(width-30, 25, f"Pág. {self.getPageNumber()} de {page_count}")
 
-def gerar_pdf(obra, periodo, vgv, custos, lucro, roi, df_cat, df_lanc):
+def gerar_pdf_detalhado(nome_escopo, periodo_str, vgv, custos, lucro, roi, df_cat, df_lanc):
     buffer = io.BytesIO()
-    doc = SimpleDocTemplate(buffer, pagesize=A4, rightMargin=30, leftMargin=30, topMargin=30, bottomMargin=50)
+    doc = SimpleDocTemplate(
+        buffer, 
+        pagesize=A4, 
+        rightMargin=30, leftMargin=30, topMargin=30, bottomMargin=50
+    )
     story = []
-    styles = getSampleStyleSheet()
     
-    story.append(Paragraph("RELATÓRIO DE PERFORMANCE", styles["Title"]))
-    story.append(Paragraph(f"Escopo: {obra} | Período: {periodo}", styles["Normal"]))
-    story.append(Spacer(1, 20))
-
-    data_resumo = [
-        ["INDICADOR", "VALOR"],
-        ["VGV (Total)", fmt_moeda(vgv)],
-        ["Custo Total", fmt_moeda(custos)],
-        ["Lucro Líquido", fmt_moeda(lucro)],
-        ["ROI", f"{roi:.2f}%"]
-    ]
-    t = Table(data_resumo, colWidths=[200, 150], hAlign="LEFT")
-    t.setStyle(TableStyle([
-        ('BACKGROUND', (0,0), (-1,0), colors.HexColor("#2D6A4F")),
-        ('TEXTCOLOR', (0,0), (-1,0), colors.white),
-        ('FONTNAME', (0,0), (-1,0), 'Helvetica-Bold'),
-        ('GRID', (0,0), (-1,-1), 0.5, colors.lightgrey),
-        ('bottomPadding', (0,0), (-1,-1), 8),
-        ('topPadding', (0,0), (-1,-1), 8),
+    # Estilos Customizados
+    styles = getSampleStyleSheet()
+    style_title = ParagraphStyle('CustomTitle', parent=styles['Heading1'], fontSize=16, textColor=colors.white, alignment=TA_LEFT, leading=20)
+    style_subtitle = ParagraphStyle('CustomSub', parent=styles['Normal'], fontSize=10, textColor=colors.whitesmoke, alignment=TA_LEFT)
+    style_section = ParagraphStyle('Section', parent=styles['Heading2'], fontSize=12, textColor=colors.HexColor("#2D6A4F"), spaceBefore=15, spaceAfter=10)
+    
+    # 1. CABEÇALHO COLORIDO (Header Block)
+    # Título muda dinamicamente se for Visão Geral ou Obra Única
+    titulo_relatorio = "RELATÓRIO DE PORTFÓLIO (CONSOLIDADO)" if "Visão Geral" in nome_escopo else f"RELATÓRIO DE OBRA: {nome_escopo.upper()}"
+    
+    header_data = [[
+        Paragraph(f"<b>{titulo_relatorio}</b>", style_title),
+        Paragraph(f"Período Analisado:<br/>{periodo_str}", style_subtitle)
+    ]]
+    
+    t_head = Table(header_data, colWidths=[12*cm, 5*cm])
+    t_head.setStyle(TableStyle([
+        ('BACKGROUND', (0,0), (-1,-1), colors.HexColor("#1B4332")),
+        ('TOPPADDING', (0,0), (-1,-1), 15),
+        ('BOTTOMPADDING', (0,0), (-1,-1), 15),
+        ('LEFTPADDING', (0,0), (-1,-1), 15),
+        ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
+        ('ROUNDEDCORNERS', [6, 6, 6, 6]), # Bordas arredondadas no cabeçalho
     ]))
-    story.append(t)
-    story.append(Spacer(1, 20))
+    story.append(t_head)
+    story.append(Spacer(1, 15))
 
-    story.append(Paragraph("Detalhamento por Categoria", styles["Heading3"]))
+    # 2. CARTÕES DE RESUMO (KPIs Horizontal)
+    story.append(Paragraph("Resumo Executivo", style_section))
+    
+    # Prepara dados
+    perc_gasto = (custos/vgv*100) if vgv > 0 else 0
+    kpi_data = [
+        ["VGV (Contrato)", "Custo Realizado", "Lucro Estimado", "ROI", "% Executado"],
+        [fmt_moeda(vgv), fmt_moeda(custos), fmt_moeda(lucro), f"{roi:.1f}%", f"{perc_gasto:.1f}%"]
+    ]
+    
+    t_kpi = Table(kpi_data, colWidths=[3.6*cm]*5)
+    t_kpi.setStyle(TableStyle([
+        ('BACKGROUND', (0,0), (-1,0), colors.HexColor("#E9ECEF")),
+        ('TEXTCOLOR', (0,0), (-1,0), colors.black),
+        ('FONTNAME', (0,0), (-1,0), 'Helvetica-Bold'),
+        ('ALIGN', (0,0), (-1,-1), 'CENTER'),
+        ('FONTSIZE', (0,0), (-1,0), 8), # Títulos menores
+        ('FONTSIZE', (0,1), (-1,1), 10), # Valores maiores
+        ('BOTTOMPADDING', (0,0), (-1,-1), 8),
+        ('TOPPADDING', (0,0), (-1,-1), 8),
+        ('GRID', (0,0), (-1,-1), 0.5, colors.white),
+        ('BOX', (0,0), (-1,-1), 0.5, colors.lightgrey),
+    ]))
+    story.append(t_kpi)
+    story.append(Spacer(1, 15))
+
+    # 3. CATEGORIAS (Se houver)
     if not df_cat.empty:
+        story.append(Paragraph("Detalhamento por Categoria de Custo", style_section))
         df_c = df_cat.copy()
         df_c["Valor"] = df_c["Valor"].apply(fmt_moeda)
-        data_cat = [df_c.columns.to_list()] + df_c.values.tolist()
-        t2 = Table(data_cat, hAlign="LEFT")
-        t2.setStyle(TableStyle([
+        # Adiciona cabeçalho
+        cat_data = [["Categoria", "Total Gasto"]] + df_c.values.tolist()
+        
+        t_cat = Table(cat_data, colWidths=[12*cm, 5*cm], hAlign='LEFT')
+        t_cat.setStyle(TableStyle([
             ('BACKGROUND', (0,0), (-1,0), colors.HexColor("#40916C")),
             ('TEXTCOLOR', (0,0), (-1,0), colors.white),
+            ('FONTNAME', (0,0), (-1,0), 'Helvetica-Bold'),
+            ('ROWBACKGROUNDS', (0,1), (-1,-1), [colors.whitesmoke, colors.white]), # Efeito Zebrado
             ('GRID', (0,0), (-1,-1), 0.25, colors.lightgrey),
+            ('ALIGN', (1,0), (1,-1), 'RIGHT'), # Alinha valores à direita
+            ('LEFTPADDING', (0,0), (-1,-1), 6),
         ]))
-        story.append(t2)
+        story.append(t_cat)
+        story.append(Spacer(1, 15))
+
+    # 4. EXTRATO DE LANÇAMENTOS
+    story.append(Paragraph(f"Extrato Detalhado de Lançamentos ({len(df_lanc)} registros)", style_section))
     
-    doc.build(story, canvasmaker=lambda *a, **k: NumberedCanvas(*a, footer_txt=f"Gestor Pro - {date.today()}", **k))
+    if not df_lanc.empty:
+        df_l = df_lanc.copy()
+        # Formata para impressão
+        if "Valor" in df_l.columns: df_l["Valor"] = df_l["Valor"].apply(fmt_moeda)
+        
+        # Seleciona colunas úteis para PDF
+        cols_pdf = ["Data", "Categoria", "Descrição", "Valor"]
+        # Garante que as colunas existem
+        cols_final = [c for c in cols_pdf if c in df_l.columns]
+        
+        data_lanc = [cols_final] + df_l[cols_final].values.tolist()
+        
+        # Tabela Lançamentos
+        t_lanc = Table(data_lanc, colWidths=[2.5*cm, 3.5*cm, 8*cm, 3*cm])
+        t_lanc.setStyle(TableStyle([
+            ('BACKGROUND', (0,0), (-1,0), colors.HexColor("#2D6A4F")),
+            ('TEXTCOLOR', (0,0), (-1,0), colors.white),
+            ('FONTNAME', (0,0), (-1,0), 'Helvetica-Bold'),
+            ('FONTSIZE', (0,0), (-1,-1), 8), # Fonte menor para caber
+            ('ROWBACKGROUNDS', (0,1), (-1,-1), [colors.whitesmoke, colors.white]), # Efeito Zebrado
+            ('GRID', (0,0), (-1,-1), 0.25, colors.lightgrey),
+            ('ALIGN', (-1,0), (-1,-1), 'RIGHT'), # Valor à direita
+            ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
+        ]))
+        story.append(t_lanc)
+    else:
+        story.append(Paragraph("Nenhum lançamento registrado no período.", styles['Normal']))
+
+    # Constrói o PDF
+    doc.build(
+        story, 
+        canvasmaker=lambda *args, **kwargs: NumberedCanvas(*args, footer_txt="Gestor Pro Enterprise", **kwargs)
+    )
     return buffer.getvalue()
 
 # ==============================================================================
-# 3. CONEXÃO E DADOS
+# 4. CONEXÃO E DADOS
 # ==============================================================================
 OBRAS_COLS = ["ID", "Cliente", "Endereço", "Status", "Valor Total", "Data Início", "Prazo"]
 FIN_COLS   = ["Data", "Tipo", "Categoria", "Descrição", "Valor", "Obra Vinculada"]
@@ -196,13 +260,13 @@ def load_data():
             st.toast("Modo Demo: Dados fictícios ativos", icon="ℹ️")
             fake_data = []
             obra_nome = df_o.iloc[0]["Cliente"]
-            for i in range(10):
+            for i in range(15):
                 fake_data.append({
-                    "Data": (date.today() - timedelta(days=i*5)).strftime("%Y-%m-%d"),
+                    "Data": (date.today() - timedelta(days=i*3)).strftime("%Y-%m-%d"),
                     "Tipo": "Saída (Despesa)",
                     "Categoria": random.choice(CATS),
-                    "Descrição": f"Compra Simulação {i+1}",
-                    "Valor": random.uniform(1000, 5000),
+                    "Descrição": f"Material / Serviço {i+1}",
+                    "Valor": random.uniform(500, 3000),
                     "Obra Vinculada": obra_nome
                 })
             df_f = pd.DataFrame(fake_data)
@@ -219,15 +283,14 @@ def load_data():
         return pd.DataFrame(), pd.DataFrame()
 
 # ==============================================================================
-# 4. APLICAÇÃO PRINCIPAL
+# 5. APLICAÇÃO PRINCIPAL
 # ==============================================================================
 if "auth" not in st.session_state: st.session_state.auth = False
 
 if not st.session_state.auth:
-    col1, col2, col3 = st.columns([1,1,1])
-    with col2:
-        st.markdown("<br><br>", unsafe_allow_html=True)
-        st.markdown("<h1 style='text-align: center; color: #2D6A4F;'>GESTOR PRO</h1>", unsafe_allow_html=True)
+    c1, c2, c3 = st.columns([1,1,1])
+    with c2:
+        st.markdown("<br><br><h1 style='text-align: center; color: #2D6A4F;'>GESTOR PRO</h1>", unsafe_allow_html=True)
         pwd = st.text_input("Senha de Acesso", type="password")
         if st.button("ACESSAR PAINEL", use_container_width=True):
             if pwd == st.secrets["password"]:
@@ -242,75 +305,49 @@ lista_obras = df_obras["Cliente"].unique().tolist() if not df_obras.empty else [
 with st.sidebar:
     st.markdown("### 🏢 GESTOR PRO")
     selected = option_menu(
-        menu_title=None,
-        options=["Dashboard", "Financeiro", "Obras"],
-        icons=["bar-chart-fill", "wallet-fill", "building-fill"],
+        None, ["Dashboard", "Financeiro", "Obras"], 
+        icons=["bar-chart-fill", "wallet-fill", "building-fill"], 
         default_index=0,
-        styles={
-            "container": {"padding": "0!important", "background-color": "#f8f9fa"},
-            "nav-link": {"font-size": "14px", "margin":"5px", "--hover-color": "#e9ecef"},
-            "nav-link-selected": {"background-color": "#2D6A4F"},
-        }
+        styles={"container": {"padding": "0!important", "background-color": "#f8f9fa"}, "nav-link-selected": {"background-color": "#2D6A4F"}}
     )
     st.markdown("---")
-    if st.button("Sair"):
-        st.session_state.auth = False
-        st.rerun()
+    if st.button("Sair"): st.session_state.auth = False; st.rerun()
 
 # --- DASHBOARD ---
 if selected == "Dashboard":
-    
-    # ---------------------------------------------------------
-    # LAYOUT DE TOPO: Título + Seletor + Botão Atualizar (GRANDE)
-    # ---------------------------------------------------------
     col_tit, col_sel, col_upd = st.columns([1.5, 2, 0.8])
-    
-    with col_tit:
-        st.title("Visão Geral")
-        
+    with col_tit: st.title("Visão Geral")
     with col_sel:
-        # Seletor centralizado
         if lista_obras:
             opcoes_dash = ["Visão Geral (Todas as Obras)"] + lista_obras
             selecao = st.selectbox("Selecione o Escopo:", opcoes_dash, label_visibility="collapsed")
-        else:
-            st.warning("Cadastre uma obra primeiro.")
-            st.stop()
-            
+        else: st.warning("Cadastre uma obra primeiro."); st.stop()
     with col_upd:
-        # Botão ATUALIZAR no topo, grande e alinhado
-        if st.button("🔄 Atualizar Dados", use_container_width=True):
-            st.cache_data.clear()
-            st.rerun()
+        if st.button("🔄 Atualizar Dados", use_container_width=True): st.cache_data.clear(); st.rerun()
 
-    # ---------------------------------------------------------
-    # PROCESSAMENTO DE DADOS
-    # ---------------------------------------------------------
+    # Filtro e Lógica
     if selecao == "Visão Geral (Todas as Obras)":
-        st.markdown("##### 🏢 Consolidado da Empresa")
         vgv = df_obras["Valor Total"].sum()
         df_saidas = df_fin[df_fin["Tipo"].astype(str).str.contains("Saída|Despesa", case=False, na=False)].copy()
     else:
-        st.markdown(f"##### 🏗️ Obra: {selecao}")
         row_obra = df_obras[df_obras["Cliente"] == selecao].iloc[0]
         vgv = row_obra["Valor Total"]
-        df_f_obra = df_fin[df_fin["Obra Vinculada"] == selecao].copy()
-        df_saidas = df_f_obra[df_f_obra["Tipo"].astype(str).str.contains("Saída|Despesa", case=False, na=False)].copy()
+        df_saidas = df_fin[(df_fin["Obra Vinculada"] == selecao) & (df_fin["Tipo"].astype(str).str.contains("Saída|Despesa", case=False, na=False))].copy()
     
     custos = df_saidas["Valor"].sum()
     lucro = vgv - custos
     roi = (lucro / custos * 100) if custos > 0 else 0
-    progresso_fin = (custos / vgv) if vgv > 0 else 0
+    perc = (custos / vgv) if vgv > 0 else 0
     
     # KPIs
     c1, c2, c3, c4 = st.columns(4)
-    with c1:
+    with c1: 
         with st.container(border=True): st.metric("VGV Total", fmt_moeda(vgv))
-    with c2:
-        with st.container(border=True): st.metric("Custo Realizado", fmt_moeda(custos), delta=f"{progresso_fin*100:.1f}% gasto", delta_color="inverse")
-    with c3:
+    with c2: 
+        with st.container(border=True): st.metric("Custo Realizado", fmt_moeda(custos), delta=f"{perc*100:.1f}%", delta_color="inverse")
+    with c3: 
         with st.container(border=True): st.metric("Lucro Estimado", fmt_moeda(lucro))
-    with c4:
+    with c4: 
         with st.container(border=True): st.metric("ROI", f"{roi:.1f}%")
 
     # Gráficos
@@ -325,7 +362,6 @@ if selected == "Dashboard":
             else: fig = px.area(title="Sem dados")
             fig.update_layout(plot_bgcolor="white", margin=dict(t=20, l=10, r=10, b=10), height=350)
             st.plotly_chart(fig, use_container_width=True)
-
     with col_side:
         with st.container(border=True):
             st.subheader("Categorias")
@@ -336,38 +372,44 @@ if selected == "Dashboard":
                 st.plotly_chart(fig2, use_container_width=True)
                 st.dataframe(df_cat.sort_values("Valor", ascending=False).head(3), use_container_width=True, hide_index=True, column_config={"Valor": st.column_config.NumberColumn(format="R$ %.2f")})
             else: st.info("Sem categorias")
-    
-    # Tabela
-    st.markdown("### Últimos Lançamentos")
+            
+    # Tabela + PDF
+    st.markdown("### Detalhamento Financeiro")
     if not df_saidas.empty:
         df_show = df_saidas[["Data", "Categoria", "Descrição", "Valor"]].sort_values("Data", ascending=False)
         st.dataframe(
             df_show, use_container_width=True, hide_index=True, height=300,
             column_config={
-                "Valor": st.column_config.ProgressColumn("Valor (R$)", format="R$ %.2f", min_value=0, max_value=float(df_show["Valor"].max())),
+                "Valor": st.column_config.ProgressColumn("Valor", format="R$ %.2f", min_value=0, max_value=float(df_show["Valor"].max())),
                 "Data": st.column_config.DateColumn("Data", format="DD/MM/YYYY")
             }
         )
-    else: st.info("Nenhum lançamento registrado.")
-            
-    # ---------------------------------------------------------
-    # BOTÃO PDF: FINAL DA PÁGINA (GRANDE E LARGO)
-    # ---------------------------------------------------------
-    st.write("")
-    st.markdown("---")
-    if not df_saidas.empty:
-        # Gera o PDF em memória
-        pdf_data = gerar_pdf(selecao, "Visão Atual", vgv, custos, lucro, roi, df_cat if 'df_cat' in locals() else pd.DataFrame(), df_show)
         
-        # Coluna centralizada ou full width
-        st.download_button(
-            label="⬇️ BAIXAR RELATÓRIO PDF COMPLETO",
-            data=pdf_data,
-            file_name=f"Relatorio_{selecao}.pdf",
-            mime="application/pdf",
-            use_container_width=True,  # OCUPA A LARGURA TODA
-            help="Clique para baixar o relatório detalhado deste período"
+        # Lógica para o Período no PDF
+        d_min = df_saidas["Data_DT"].min().strftime("%d/%m/%Y")
+        d_max = df_saidas["Data_DT"].max().strftime("%d/%m/%Y")
+        periodo_pdf = f"De {d_min} até {d_max}"
+        
+        st.write("")
+        st.markdown("---")
+        # GERAÇÃO DO PDF OTIMIZADA
+        pdf_bytes = gerar_pdf_detalhado(
+            nome_escopo=selecao,
+            periodo_str=periodo_pdf,
+            vgv=vgv, custos=custos, lucro=lucro, roi=roi,
+            df_cat=df_cat if 'df_cat' in locals() else pd.DataFrame(),
+            df_lanc=df_show
         )
+        
+        st.download_button(
+            label="📄 BAIXAR RELATÓRIO DETALHADO (PDF)",
+            data=pdf_bytes,
+            file_name=f"Relatorio_{selecao.replace(' ', '_')}.pdf",
+            mime="application/pdf",
+            use_container_width=True
+        )
+    else:
+        st.info("Sem dados para gerar relatório.")
 
 # --- FINANCEIRO ---
 elif selected == "Financeiro":
@@ -383,50 +425,42 @@ elif selected == "Financeiro":
                 f_ob = st.selectbox("Obra", lista_obras if lista_obras else ["Geral"])
                 f_vl = st.number_input("Valor", min_value=0.0, step=100.0)
                 f_dc = st.text_input("Descrição")
-            if st.form_submit_button("Salvar Lançamento", use_container_width=True):
+            if st.form_submit_button("Salvar", use_container_width=True):
                 try:
                     conn = get_conn()
                     conn.worksheet("Financeiro").append_row([f_dt.strftime("%Y-%m-%d"), f_tp, f_ct, f_dc, f_vl, f_ob])
-                    st.toast("Salvo!", icon="✅")
-                    st.cache_data.clear()
-                    st.rerun()
+                    st.toast("Salvo!", icon="✅"); st.cache_data.clear(); st.rerun()
                 except Exception as e: st.error(f"Erro: {e}")
-
-    st.markdown("### Histórico Completo")
     if not df_fin.empty:
         cf1, cf2 = st.columns(2)
         fo = cf1.multiselect("Filtrar por Obra", lista_obras)
         dg = df_fin.copy()
         if fo: dg = dg[dg["Obra Vinculada"].isin(fo)]
-        st.dataframe(dg.sort_values("Data_DT", ascending=False), use_container_width=True, hide_index=True, column_config={"Valor": st.column_config.NumberColumn("Valor", format="R$ %.2f"), "Data_DT": None, "Data": st.column_config.DateColumn("Data", format="DD/MM/YYYY")})
+        st.dataframe(dg.sort_values("Data_DT", ascending=False), use_container_width=True, hide_index=True, column_config={"Valor": st.column_config.NumberColumn(format="R$ %.2f")})
 
 # --- OBRAS ---
 elif selected == "Obras":
-    st.title("Portfólio de Obras")
+    st.title("Obras")
     c_form, c_view = st.columns([1, 2])
     with c_form:
         with st.container(border=True):
-            st.markdown("#### Cadastro")
+            st.markdown("#### Nova Obra")
             with st.form("new_obra"):
-                nc = st.text_input("Nome Cliente")
+                nc = st.text_input("Cliente")
                 ne = st.text_input("Endereço")
-                nv = st.number_input("VGV (R$)", min_value=0.0)
+                nv = st.number_input("VGV", min_value=0.0)
                 ns = st.selectbox("Status", ["Planejamento", "Em Andamento", "Concluído"])
                 np = st.text_input("Prazo")
-                if st.form_submit_button("Criar Obra", use_container_width=True):
+                if st.form_submit_button("Cadastrar", use_container_width=True):
                     try:
                         conn = get_conn()
-                        idx = len(lista_obras) + 1
-                        conn.worksheet("Obras").append_row([idx, nc, ne, ns, nv, date.today().strftime("%Y-%m-%d"), np])
-                        st.toast("Criado!", icon="🏗️")
-                        st.cache_data.clear()
-                        st.rerun()
+                        conn.worksheet("Obras").append_row([len(lista_obras)+1, nc, ne, ns, nv, date.today().strftime("%Y-%m-%d"), np])
+                        st.toast("Sucesso!"); st.cache_data.clear(); st.rerun()
                     except Exception as e: st.error(f"Erro: {e}")
     with c_view:
         if not df_obras.empty:
             for i, r in df_obras.iterrows():
                 with st.container(border=True):
-                    ci, cnf, cv = st.columns([1, 3, 2])
-                    with ci: st.markdown("# 🏠")
-                    with cnf: st.markdown(f"**{r['Cliente']}**"); st.caption(f"{r['Endereço']} • {r['Status']}")
-                    with cv: st.metric("VGV", fmt_moeda(r['Valor Total']))
+                    c1, c2 = st.columns([3, 1])
+                    c1.markdown(f"**{r['Cliente']}**<br><span style='color:grey'>{r['Status']}</span>", unsafe_allow_html=True)
+                    c2.metric("VGV", fmt_moeda(r['Valor Total']))
