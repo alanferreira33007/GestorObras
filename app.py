@@ -122,12 +122,12 @@ def gerar_pdf(obra, periodo, vgv, custos, lucro, roi, df_cat, df_lanc):
     styles = getSampleStyleSheet()
     
     story.append(Paragraph("RELATÓRIO DE PERFORMANCE", styles["Title"]))
-    story.append(Paragraph(f"Obra: {obra} | Período: {periodo}", styles["Normal"]))
+    story.append(Paragraph(f"Escopo: {obra} | Período: {periodo}", styles["Normal"]))
     story.append(Spacer(1, 20))
 
     data_resumo = [
         ["INDICADOR", "VALOR"],
-        ["VGV (Contrato)", fmt_moeda(vgv)],
+        ["VGV (Total)", fmt_moeda(vgv)],
         ["Custo Total", fmt_moeda(custos)],
         ["Lucro Líquido", fmt_moeda(lucro)],
         ["ROI", f"{roi:.2f}%"]
@@ -269,25 +269,29 @@ if selected == "Dashboard":
     with col_tit:
         st.title("Visão Geral")
     with col_sel:
-        # ATUALIZAÇÃO PONTUAL: ADICIONANDO "SELECIONAR" COMO PADRÃO
-        if lista_obras:
-            opcoes_dash = ["Selecionar"] + lista_obras
-            obra_atual = st.selectbox("Selecione a Obra", opcoes_dash)
+        # LÓGICA DE SELEÇÃO ATUALIZADA
+        opcoes_dash = ["Visão Geral (Todas as Obras)"] + lista_obras
+        selecao = st.selectbox("Selecione o Escopo:", opcoes_dash)
             
-            if obra_atual == "Selecionar":
-                st.info("👆 Selecione uma obra no menu acima para carregar os indicadores.")
-                st.stop()
-        else:
-            st.warning("Cadastre uma obra primeiro.")
-            st.stop()
-            
-    # Filtro Dados
-    row_obra = df_obras[df_obras["Cliente"] == obra_atual].iloc[0]
-    vgv = row_obra["Valor Total"]
+    # LÓGICA DE FILTRAGEM E CONSOLIDAÇÃO
+    if selecao == "Visão Geral (Todas as Obras)":
+        # 1. Modo Consolidado
+        st.markdown("##### 🏢 Consolidado da Empresa")
+        vgv = df_obras["Valor Total"].sum()
+        
+        # Pega TODAS as saídas de TODAS as obras
+        df_saidas = df_fin[df_fin["Tipo"].astype(str).str.contains("Saída|Despesa", case=False, na=False)].copy()
+        
+    else:
+        # 2. Modo Obra Específica
+        st.markdown(f"##### 🏗️ Obra: {selecao}")
+        row_obra = df_obras[df_obras["Cliente"] == selecao].iloc[0]
+        vgv = row_obra["Valor Total"]
+        
+        df_f_obra = df_fin[df_fin["Obra Vinculada"] == selecao].copy()
+        df_saidas = df_f_obra[df_f_obra["Tipo"].astype(str).str.contains("Saída|Despesa", case=False, na=False)].copy()
     
-    df_f_obra = df_fin[df_fin["Obra Vinculada"] == obra_atual].copy()
-    df_saidas = df_f_obra[df_f_obra["Tipo"].astype(str).str.contains("Saída|Despesa", case=False, na=False)].copy()
-    
+    # CÁLCULOS COMUNS (Consolidado ou Específico)
     custos = df_saidas["Valor"].sum()
     lucro = vgv - custos
     roi = (lucro / custos * 100) if custos > 0 else 0
@@ -297,7 +301,7 @@ if selected == "Dashboard":
     c1, c2, c3, c4 = st.columns(4)
     with c1:
         with st.container(border=True):
-            st.metric("VGV (Contrato)", fmt_moeda(vgv))
+            st.metric("VGV Total", fmt_moeda(vgv))
     with c2:
         with st.container(border=True):
             st.metric("Custo Realizado", fmt_moeda(custos), delta=f"{progresso_fin*100:.1f}% gasto", delta_color="inverse")
@@ -313,7 +317,7 @@ if selected == "Dashboard":
     
     with col_main:
         with st.container(border=True):
-            st.subheader("Fluxo de Caixa Acumulado")
+            st.subheader("Curva de Custos Acumulada")
             if not df_saidas.empty:
                 df_evo = df_saidas.sort_values("Data_DT")
                 df_evo["Acumulado"] = df_evo["Valor"].cumsum()
@@ -330,7 +334,6 @@ if selected == "Dashboard":
             st.subheader("Categorias")
             if not df_saidas.empty:
                 df_cat = df_saidas.groupby("Categoria", as_index=False)["Valor"].sum()
-                # CORREÇÃO APLICADA: px.pie no lugar de px.donut
                 fig2 = px.pie(
                     df_cat, 
                     values="Valor", 
@@ -382,8 +385,8 @@ if selected == "Dashboard":
             st.cache_data.clear()
             st.rerun()
         if not df_saidas.empty:
-            pdf_data = gerar_pdf(obra_atual, "Geral", vgv, custos, lucro, roi, df_cat if 'df_cat' in locals() else pd.DataFrame(), df_show)
-            st.download_button("⬇️ Baixar PDF", data=pdf_data, file_name=f"Relatorio_{obra_atual}.pdf", mime="application/pdf", use_container_width=True)
+            pdf_data = gerar_pdf(selecao, "Visão Atual", vgv, custos, lucro, roi, df_cat if 'df_cat' in locals() else pd.DataFrame(), df_show)
+            st.download_button("⬇️ Baixar PDF", data=pdf_data, file_name=f"Relatorio_{selecao}.pdf", mime="application/pdf", use_container_width=True)
 
 # --- PAGINA: FINANCEIRO ---
 elif selected == "Financeiro":
