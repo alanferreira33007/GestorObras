@@ -9,13 +9,10 @@ from database import carregar_dados, salvar_financeiro, salvar_obra
 from relatorios import fmt_moeda, gerar_relatorio_investimentos_pdf, download_pdf_one_click
 
 # =================================================
-# CONFIGURAÇÃO DE PÁGINA
+# CONFIG
 # =================================================
 st.set_page_config(page_title="GESTOR PRO | Business Intelligence", layout="wide")
 
-# =================================================
-# ESTILO
-# =================================================
 st.markdown("""
 <style>
 [data-testid="stMetricValue"] { font-size: 28px; color: #1B4332; }
@@ -31,30 +28,59 @@ div.stButton > button {
 # =================================================
 # FEEDBACK
 # =================================================
-def feedback_sucesso_temporario(texto, segundos=3):
-    box = st.empty()
-    box.success(texto)
-    time.sleep(segundos)
-    box.empty()
+def toast(msg, icon="✅"):
+    st.toast(msg, icon=icon)
 
-def feedback_toast(texto, icon="✅"):
-    st.toast(texto, icon=icon)
+# =================================================
+# FUNÇÃO CENTRAL DE CÁLCULO (CHAVE DO SISTEMA)
+# =================================================
+def calcular_resultado_obra(df_fin, obra, vgv):
+    df = df_fin[df_fin["Obra Vinculada"] == obra].copy()
+
+    if df.empty:
+        return {
+            "custos": 0,
+            "receitas": 0,
+            "lucro": vgv,
+            "roi": 0,
+            "df_saidas": pd.DataFrame(),
+            "df_receitas": pd.DataFrame()
+        }
+
+    df["Valor"] = pd.to_numeric(df["Valor"], errors="coerce").fillna(0)
+
+    df_saidas = df[df["Tipo"].str.contains("Saída", case=False, na=False)]
+    df_receitas = df[df["Tipo"].str.contains("Entrada", case=False, na=False)]
+
+    custos = df_saidas["Valor"].sum()
+    receitas = df_receitas["Valor"].sum()
+
+    lucro = vgv - custos + receitas
+    roi = (lucro / custos * 100) if custos > 0 else 0
+
+    return {
+        "custos": custos,
+        "receitas": receitas,
+        "lucro": lucro,
+        "roi": roi,
+        "df_saidas": df_saidas,
+        "df_receitas": df_receitas
+    }
 
 # =================================================
 # LOGIN
 # =================================================
-if "authenticated" not in st.session_state:
-    st.session_state["authenticated"] = False
+if "auth" not in st.session_state:
+    st.session_state["auth"] = False
 
-if not st.session_state["authenticated"]:
-    _, col, _ = st.columns([1,1,1])
-    with col:
+if not st.session_state["auth"]:
+    _, c, _ = st.columns([1,1,1])
+    with c:
         st.title("🔐 Gestor Pro")
-        pwd = st.text_input("Senha de Acesso", type="password")
-        if st.button("ACESSAR PAINEL"):
+        pwd = st.text_input("Senha", type="password")
+        if st.button("Entrar"):
             if pwd == st.secrets["password"]:
-                st.session_state["authenticated"] = True
-                feedback_toast("Login realizado com sucesso")
+                st.session_state["auth"] = True
                 st.rerun()
             else:
                 st.error("Senha incorreta")
@@ -67,86 +93,80 @@ df_obras, df_fin = carregar_dados()
 lista_obras = df_obras["Cliente"].tolist() if not df_obras.empty else []
 
 # =================================================
-# SIDEBAR
+# MENU
 # =================================================
 with st.sidebar:
-    st.image("https://cdn-icons-png.flaticon.com/512/4222/4222031.png", width=80)
     sel = option_menu(
-        "MENU PRINCIPAL",
+        "MENU",
         ["Investimentos", "Caixa", "Projetos"],
-        icons=["pie-chart-fill", "currency-dollar", "bricks"],
+        icons=["pie-chart", "currency-dollar", "bricks"],
         default_index=0
     )
-    st.divider()
-    if st.button("Sair / Logout"):
-        st.session_state["authenticated"] = False
-        st.rerun()
 
 # =================================================
-# INVESTIMENTOS
+# INVESTIMENTOS (DASHBOARD CONSISTENTE)
 # =================================================
 if sel == "Investimentos":
 
     if df_obras.empty:
-        st.info("Cadastre uma obra para iniciar.")
+        st.info("Cadastre uma obra primeiro.")
         st.stop()
 
-    st.title("📊 Inteligência Financeira")
+    st.title("📊 Dashboard Financeiro da Obra")
 
-    obra_sel = st.selectbox("Selecione a obra:", lista_obras)
+    obra_sel = st.selectbox("Selecione a obra", lista_obras)
     obra = df_obras[df_obras["Cliente"] == obra_sel].iloc[0]
-
     vgv = float(obra["Valor Total"])
-    df_v = df_fin[df_fin["Obra Vinculada"] == obra_sel].copy()
-    df_saidas = df_v[df_v["Tipo"].str.contains("Saída", case=False, na=False)]
 
-    custos = df_saidas["Valor"].sum()
-    lucro = vgv - custos
-    roi = (lucro / custos * 100) if custos > 0 else 0
+    res = calcular_resultado_obra(df_fin, obra_sel, vgv)
 
     c1, c2, c3, c4 = st.columns(4)
     c1.metric("VGV", fmt_moeda(vgv))
-    c2.metric("Custos", fmt_moeda(custos))
-    c3.metric("Lucro", fmt_moeda(lucro))
-    c4.metric("ROI", f"{roi:.1f}%")
+    c2.metric("Custos", fmt_moeda(res["custos"]))
+    c3.metric("Lucro", fmt_moeda(res["lucro"]))
+    c4.metric("ROI", f"{res['roi']:.1f}%")
+
+    perc = res["custos"] / vgv if vgv > 0 else 0
+    st.progress(min(perc, 1.0))
+    st.caption(f"{perc*100:.1f}% do orçamento consumido")
+
+    st.divider()
+
+    if not res["df_saidas"].empty:
+        pie = res["df_saidas"].groupby("Categoria")["Valor"].sum().reset_index()
+        fig = px.pie(pie, values="Valor", names="Categoria", hole=0.4)
+        st.plotly_chart(fig, use_container_width=True)
 
 # =================================================
-# CAIXA (TOTALMENTE ISOLADO)
+# CAIXA (ISOLADO)
 # =================================================
 if sel == "Caixa":
-
-    st.title("💸 Fluxo de Caixa")
 
     if not lista_obras:
         st.info("Cadastre uma obra primeiro.")
         st.stop()
 
+    st.title("💸 Fluxo de Caixa")
     obra_sel = st.selectbox("Selecione a obra", lista_obras)
 
-    st.divider()
-
-    if "abrir_form_caixa" not in st.session_state:
-        st.session_state["abrir_form_caixa"] = False
+    if "novo_lanc" not in st.session_state:
+        st.session_state["novo_lanc"] = False
 
     if st.button("➕ Efetuar Lançamento"):
-        st.session_state["abrir_form_caixa"] = True
+        st.session_state["novo_lanc"] = True
 
-    if st.session_state["abrir_form_caixa"]:
-        with st.form("f_caixa", clear_on_submit=True):
-
+    if st.session_state["novo_lanc"]:
+        with st.form("form_caixa", clear_on_submit=True):
             c1, c2, c3 = st.columns(3)
-            f_data = c1.date_input("Data", value=date.today())
+            f_data = c1.date_input("Data", date.today())
             f_tipo = c2.selectbox("Tipo", ["Saída (Despesa)", "Entrada"])
-            f_cat = c3.selectbox(
-                "Categoria",
-                ["Material", "Mão de Obra", "Serviços", "Impostos", "Outros"]
-            )
+            f_cat = c3.selectbox("Categoria", ["Material","Mão de Obra","Serviços","Impostos","Outros"])
 
             c4, c5 = st.columns(2)
-            f_valor = c4.number_input("Valor R$", min_value=0.0)
+            f_valor = c4.number_input("Valor", min_value=0.0)
             f_desc = c5.text_input("Descrição")
 
-            if st.form_submit_button("SALVAR"):
+            if st.form_submit_button("Salvar"):
                 salvar_financeiro([
                     f_data.strftime("%Y-%m-%d"),
                     f_tipo,
@@ -155,79 +175,51 @@ if sel == "Caixa":
                     f_valor,
                     obra_sel
                 ])
-                feedback_toast("Lançamento salvo 💸")
-                st.session_state["abrir_form_caixa"] = False
+                st.session_state["novo_lanc"] = False
                 st.rerun()
 
     st.divider()
 
-    st.subheader("📋 Últimas Movimentações")
-
     df_vis = df_fin[df_fin["Obra Vinculada"] == obra_sel].copy()
 
     if df_vis.empty:
-        st.info("Nenhuma movimentação registrada.")
+        st.info("Nenhuma movimentação.")
     else:
         df_vis["Data"] = pd.to_datetime(df_vis["Data"]).dt.strftime("%d/%m/%Y")
         df_vis["Valor"] = df_vis["Valor"].apply(fmt_moeda)
 
         st.dataframe(
-            df_vis[["Data", "Tipo", "Categoria", "Descrição", "Valor", "Obra Vinculada"]],
+            df_vis[["Data","Tipo","Categoria","Descrição","Valor","Obra Vinculada"]],
             use_container_width=True,
             hide_index=True
         )
 
 # =================================================
-# PROJETOS (TOTALMENTE ISOLADO)
+# PROJETOS
 # =================================================
 if sel == "Projetos":
 
     st.title("🏗️ Portfólio de Obras")
 
-    with st.expander("➕ Cadastrar Nova Obra", expanded=False):
-        with st.form("f_obra_nova", clear_on_submit=True):
-
-            c1, c2 = st.columns(2)
-            f_nome = c1.text_input("Identificação da Obra *")
-            f_tipo = c2.selectbox(
-                "Tipo de Imóvel",
-                ["Casa térrea", "Casa duplex", "Apartamento", "Outro"]
-            )
-
-            c3, c4 = st.columns(2)
-            f_local = c3.text_input("Localização")
-            f_status = c4.selectbox(
-                "Status",
-                ["Planejamento", "Em execução", "Finalizada", "Vendida"]
-            )
-
-            c5, c6 = st.columns(2)
-            f_vgv = c5.number_input("VGV *", min_value=0.0, step=1000.0)
-            f_custo_prev = c6.number_input("Custo Estimado", min_value=0.0)
-
-            f_inicio = st.date_input("Data de Início", value=date.today())
-
-            if st.form_submit_button("CRIAR OBRA"):
-                if not f_nome or f_vgv <= 0:
-                    st.error("Informe nome e VGV.")
-                else:
-                    salvar_obra([
-                        len(df_obras) + 1,
-                        f_nome,
-                        f_local,
-                        f_tipo,
-                        f_vgv,
-                        f_inicio.strftime("%Y-%m-%d"),
-                        f_status,
-                        f_custo_prev
-                    ])
-                    feedback_toast("Obra cadastrada 🏗️")
-                    st.rerun()
+    with st.expander("➕ Cadastrar Nova Obra"):
+        with st.form("form_obra", clear_on_submit=True):
+            nome = st.text_input("Nome da Obra")
+            vgv = st.number_input("VGV", min_value=0.0)
+            if st.form_submit_button("Salvar"):
+                salvar_obra([
+                    len(df_obras)+1,
+                    nome,
+                    "",
+                    "Casa",
+                    vgv,
+                    date.today().strftime("%Y-%m-%d"),
+                    "Planejamento"
+                ])
+                st.rerun()
 
     st.divider()
 
     if df_obras.empty:
         st.info("Nenhuma obra cadastrada.")
     else:
-        st.subheader("📋 Obras Cadastradas")
         st.dataframe(df_obras, use_container_width=True, hide_index=True)
