@@ -190,3 +190,36 @@ def excluir_lancamento(data, tipo, categoria, descricao, valor, obra):
         ws.append_rows(novas_linhas)
 
     st.cache_data.clear()
+
+def editar_obra(id_obra, cliente, endereco, status, valor_total, data_inicio, prazo):
+    """
+    Atualiza uma obra existente na aba Obras, pelo ID.
+    """
+    db = obter_db()
+    ws = db.worksheet("Obras")
+
+    dados = ws.get_all_values()
+    cabecalho = dados[0]
+    linhas = dados[1:]
+
+    novas_linhas = []
+
+    for linha in linhas:
+        if str(linha[0]) == str(id_obra):
+            novas_linhas.append([
+                id_obra,
+                cliente,
+                endereco,
+                status,
+                valor_total,
+                data_inicio,
+                prazo
+            ])
+        else:
+            novas_linhas.append(linha)
+
+    ws.clear()
+    ws.append_row(cabecalho)
+    ws.append_rows(novas_linhas)
+
+    st.cache_data.clear()
