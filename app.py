@@ -1,24 +1,57 @@
 import streamlit as st
 import pandas as pd
 import plotly.express as px
-from datetime import date, datetime
+from datetime import date
 from streamlit_option_menu import option_menu
 import time
 
 from database import carregar_dados, salvar_financeiro, salvar_obra
-from relatorios import fmt_moeda, gerar_relatorio_investimentos_pdf, download_pdf_one_click
+from relatorios import fmt_moeda
 
 # =================================================
-# CONFIG
+# CONFIGURAÇÃO
 # =================================================
-st.set_page_config(page_title="GESTOR PRO | Business Intelligence", layout="wide")
+st.set_page_config(
+    page_title="GESTOR PRO | Business Intelligence",
+    layout="wide"
+)
 
+# =================================================
+# ESTILO GLOBAL (DASHBOARD)
+# =================================================
 st.markdown("""
 <style>
-[data-testid="stMetricValue"] { font-size: 28px; color: #1B4332; }
+.stApp {
+    background-color: #F8F9FA;
+}
+
+h1, h2, h3 {
+    color: #1B4332;
+}
+
+.card {
+    background-color: #FFFFFF;
+    border-radius: 14px;
+    padding: 20px;
+    box-shadow: 0 4px 10px rgba(0,0,0,0.04);
+    height: 100%;
+}
+
+.card-title {
+    font-size: 14px;
+    color: #6C757D;
+    margin-bottom: 6px;
+}
+
+.card-value {
+    font-size: 26px;
+    font-weight: 700;
+    color: #1B4332;
+}
+
 div.stButton > button {
     width: 100%;
-    height: 3em;
+    height: 45px;
     border-radius: 8px;
     font-weight: 600;
 }
@@ -26,46 +59,22 @@ div.stButton > button {
 """, unsafe_allow_html=True)
 
 # =================================================
-# FEEDBACK
-# =================================================
-def toast(msg, icon="✅"):
-    st.toast(msg, icon=icon)
-
-# =================================================
-# FUNÇÃO CENTRAL DE CÁLCULO (CHAVE DO SISTEMA)
+# FUNÇÃO CENTRAL DE CÁLCULO
 # =================================================
 def calcular_resultado_obra(df_fin, obra, vgv):
     df = df_fin[df_fin["Obra Vinculada"] == obra].copy()
-
-    if df.empty:
-        return {
-            "custos": 0,
-            "receitas": 0,
-            "lucro": vgv,
-            "roi": 0,
-            "df_saidas": pd.DataFrame(),
-            "df_receitas": pd.DataFrame()
-        }
-
     df["Valor"] = pd.to_numeric(df["Valor"], errors="coerce").fillna(0)
 
     df_saidas = df[df["Tipo"].str.contains("Saída", case=False, na=False)]
-    df_receitas = df[df["Tipo"].str.contains("Entrada", case=False, na=False)]
+    df_entradas = df[df["Tipo"].str.contains("Entrada", case=False, na=False)]
 
     custos = df_saidas["Valor"].sum()
-    receitas = df_receitas["Valor"].sum()
+    entradas = df_entradas["Valor"].sum()
 
-    lucro = vgv - custos + receitas
+    lucro = vgv - custos + entradas
     roi = (lucro / custos * 100) if custos > 0 else 0
 
-    return {
-        "custos": custos,
-        "receitas": receitas,
-        "lucro": lucro,
-        "roi": roi,
-        "df_saidas": df_saidas,
-        "df_receitas": df_receitas
-    }
+    return custos, entradas, lucro, roi, df_saidas
 
 # =================================================
 # LOGIN
@@ -74,12 +83,12 @@ if "auth" not in st.session_state:
     st.session_state["auth"] = False
 
 if not st.session_state["auth"]:
-    _, c, _ = st.columns([1,1,1])
-    with c:
-        st.title("🔐 Gestor Pro")
-        pwd = st.text_input("Senha", type="password")
+    col1, col2, col3 = st.columns([1,1,1])
+    with col2:
+        st.markdown("## 🔐 Gestor Pro")
+        senha = st.text_input("Senha de acesso", type="password")
         if st.button("Entrar"):
-            if pwd == st.secrets["password"]:
+            if senha == st.secrets["password"]:
                 st.session_state["auth"] = True
                 st.rerun()
             else:
@@ -93,93 +102,126 @@ df_obras, df_fin = carregar_dados()
 lista_obras = df_obras["Cliente"].tolist() if not df_obras.empty else []
 
 # =================================================
-# MENU
+# SIDEBAR
 # =================================================
 with st.sidebar:
+    st.markdown("### 📊 Gestor Pro")
     sel = option_menu(
-        "MENU",
+        None,
         ["Investimentos", "Caixa", "Projetos"],
-        icons=["pie-chart", "currency-dollar", "bricks"],
+        icons=["bar-chart", "currency-dollar", "bricks"],
         default_index=0
     )
 
 # =================================================
-# INVESTIMENTOS (DASHBOARD CONSISTENTE)
+# INVESTIMENTOS (DASHBOARD)
 # =================================================
 if sel == "Investimentos":
 
-    if df_obras.empty:
-        st.info("Cadastre uma obra primeiro.")
-        st.stop()
+    st.markdown("# 📊 Dashboard Financeiro")
 
-    st.title("📊 Dashboard Financeiro da Obra")
+    if df_obras.empty:
+        st.info("Cadastre uma obra para iniciar.")
+        st.stop()
 
     obra_sel = st.selectbox("Selecione a obra", lista_obras)
     obra = df_obras[df_obras["Cliente"] == obra_sel].iloc[0]
     vgv = float(obra["Valor Total"])
 
-    res = calcular_resultado_obra(df_fin, obra_sel, vgv)
+    custos, entradas, lucro, roi, df_saidas = calcular_resultado_obra(
+        df_fin, obra_sel, vgv
+    )
 
+    # KPIs
     c1, c2, c3, c4 = st.columns(4)
-    c1.metric("VGV", fmt_moeda(vgv))
-    c2.metric("Custos", fmt_moeda(res["custos"]))
-    c3.metric("Lucro", fmt_moeda(res["lucro"]))
-    c4.metric("ROI", f"{res['roi']:.1f}%")
 
-    perc = res["custos"] / vgv if vgv > 0 else 0
-    st.progress(min(perc, 1.0))
-    st.caption(f"{perc*100:.1f}% do orçamento consumido")
+    with c1:
+        st.markdown(f"""
+        <div class="card">
+            <div class="card-title">VGV</div>
+            <div class="card-value">{fmt_moeda(vgv)}</div>
+        </div>
+        """, unsafe_allow_html=True)
+
+    with c2:
+        st.markdown(f"""
+        <div class="card">
+            <div class="card-title">Custos</div>
+            <div class="card-value">{fmt_moeda(custos)}</div>
+        </div>
+        """, unsafe_allow_html=True)
+
+    with c3:
+        st.markdown(f"""
+        <div class="card">
+            <div class="card-title">Lucro</div>
+            <div class="card-value">{fmt_moeda(lucro)}</div>
+        </div>
+        """, unsafe_allow_html=True)
+
+    with c4:
+        st.markdown(f"""
+        <div class="card">
+            <div class="card-title">ROI</div>
+            <div class="card-value">{roi:.1f}%</div>
+        </div>
+        """, unsafe_allow_html=True)
 
     st.divider()
 
-    if not res["df_saidas"].empty:
-        pie = res["df_saidas"].groupby("Categoria")["Valor"].sum().reset_index()
-        fig = px.pie(pie, values="Valor", names="Categoria", hole=0.4)
+    # Gráfico
+    if not df_saidas.empty:
+        st.markdown("### 📉 Distribuição de Custos")
+        pie = df_saidas.groupby("Categoria")["Valor"].sum().reset_index()
+        fig = px.pie(
+            pie,
+            values="Valor",
+            names="Categoria",
+            hole=0.5
+        )
         st.plotly_chart(fig, use_container_width=True)
+    else:
+        st.info("Nenhuma despesa lançada.")
 
 # =================================================
-# CAIXA (ISOLADO)
+# CAIXA
 # =================================================
 if sel == "Caixa":
+
+    st.markdown("# 💸 Fluxo de Caixa")
 
     if not lista_obras:
         st.info("Cadastre uma obra primeiro.")
         st.stop()
 
-    st.title("💸 Fluxo de Caixa")
-    obra_sel = st.selectbox("Selecione a obra", lista_obras)
+    obra_sel = st.selectbox("Obra", lista_obras)
 
-    if "novo_lanc" not in st.session_state:
-        st.session_state["novo_lanc"] = False
+    st.markdown("### ➕ Novo Lançamento")
+    with st.form("form_caixa", clear_on_submit=True):
+        c1, c2, c3 = st.columns(3)
+        data = c1.date_input("Data", date.today())
+        tipo = c2.selectbox("Tipo", ["Saída (Despesa)", "Entrada"])
+        cat = c3.selectbox("Categoria", ["Material", "Mão de Obra", "Serviços", "Impostos", "Outros"])
 
-    if st.button("➕ Efetuar Lançamento"):
-        st.session_state["novo_lanc"] = True
+        c4, c5 = st.columns(2)
+        valor = c4.number_input("Valor", min_value=0.0)
+        desc = c5.text_input("Descrição")
 
-    if st.session_state["novo_lanc"]:
-        with st.form("form_caixa", clear_on_submit=True):
-            c1, c2, c3 = st.columns(3)
-            f_data = c1.date_input("Data", date.today())
-            f_tipo = c2.selectbox("Tipo", ["Saída (Despesa)", "Entrada"])
-            f_cat = c3.selectbox("Categoria", ["Material","Mão de Obra","Serviços","Impostos","Outros"])
-
-            c4, c5 = st.columns(2)
-            f_valor = c4.number_input("Valor", min_value=0.0)
-            f_desc = c5.text_input("Descrição")
-
-            if st.form_submit_button("Salvar"):
-                salvar_financeiro([
-                    f_data.strftime("%Y-%m-%d"),
-                    f_tipo,
-                    f_cat,
-                    f_desc,
-                    f_valor,
-                    obra_sel
-                ])
-                st.session_state["novo_lanc"] = False
-                st.rerun()
+        if st.form_submit_button("Salvar lançamento"):
+            salvar_financeiro([
+                data.strftime("%Y-%m-%d"),
+                tipo,
+                cat,
+                desc,
+                valor,
+                obra_sel
+            ])
+            st.success("Lançamento salvo")
+            st.rerun()
 
     st.divider()
 
+    st.markdown("### 📋 Movimentações")
     df_vis = df_fin[df_fin["Obra Vinculada"] == obra_sel].copy()
 
     if df_vis.empty:
@@ -189,7 +231,7 @@ if sel == "Caixa":
         df_vis["Valor"] = df_vis["Valor"].apply(fmt_moeda)
 
         st.dataframe(
-            df_vis[["Data","Tipo","Categoria","Descrição","Valor","Obra Vinculada"]],
+            df_vis[["Data", "Tipo", "Categoria", "Descrição", "Valor"]],
             use_container_width=True,
             hide_index=True
         )
@@ -199,15 +241,15 @@ if sel == "Caixa":
 # =================================================
 if sel == "Projetos":
 
-    st.title("🏗️ Portfólio de Obras")
+    st.markdown("# 🏗️ Projetos / Obras")
 
     with st.expander("➕ Cadastrar Nova Obra"):
         with st.form("form_obra", clear_on_submit=True):
-            nome = st.text_input("Nome da Obra")
+            nome = st.text_input("Nome da obra")
             vgv = st.number_input("VGV", min_value=0.0)
-            if st.form_submit_button("Salvar"):
+            if st.form_submit_button("Cadastrar"):
                 salvar_obra([
-                    len(df_obras)+1,
+                    len(df_obras) + 1,
                     nome,
                     "",
                     "Casa",
@@ -215,6 +257,7 @@ if sel == "Projetos":
                     date.today().strftime("%Y-%m-%d"),
                     "Planejamento"
                 ])
+                st.success("Obra cadastrada")
                 st.rerun()
 
     st.divider()
@@ -222,4 +265,5 @@ if sel == "Projetos":
     if df_obras.empty:
         st.info("Nenhuma obra cadastrada.")
     else:
+        st.markdown("### 📋 Obras Cadastradas")
         st.dataframe(df_obras, use_container_width=True, hide_index=True)
