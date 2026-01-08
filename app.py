@@ -226,7 +226,7 @@ elif sel == "Projetos":
     # CADASTRO DE NOVA OBRA (CASAS PARA VENDA)
     # =================================================
     with st.expander("➕ Cadastrar Nova Obra", expanded=False):
-        with st.form("f_obra", clear_on_submit=True):
+        with st.form("f_obra_nova", clear_on_submit=True):
 
             c1, c2 = st.columns(2)
             f_nome = c1.text_input("Identificação da Obra / Casa *")
