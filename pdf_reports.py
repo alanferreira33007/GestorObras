@@ -1,5 +1,12 @@
-# pdf_reports.py
-# COPIE exatamente:
-# - NumberedCanvas
-# - fmt_moeda (ou importe do utils)
-# - gerar_relatorio_investimentos_pdf
+def gerar_relatorio_investimentos_pdf(
+    obra,
+    periodo,
+    vgv,
+    custos,
+    lucro,
+    roi,
+    perc_vgv,
+    df_categorias,
+    df_lancamentos,
+):
+    ...
