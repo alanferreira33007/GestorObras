@@ -46,3 +46,25 @@ def salvar_obra(lista_dados):
     db = obter_db()
     db.worksheet("Obras").append_row(lista_dados, value_input_option="USER_ENTERED")
     st.cache_data.clear()
+
+def excluir_obra(nome_obra):
+    """
+    Remove uma obra da aba OBRAS da planilha,
+    regravando todas as linhas, exceto a obra excluída.
+    """
+
+    sh = client.open_by_key(SPREADSHEET_ID)
+    ws_obras = sh.worksheet("OBRAS")
+
+    dados = ws_obras.get_all_values()
+    cabecalho = dados[0]
+    linhas = dados[1:]
+
+    novas_linhas = [
+        linha for linha in linhas if linha[1] != nome_obra
+    ]
+
+    # Limpa tudo e regrava
+    ws_obras.clear()
+    ws_obras.append_row(cabecalho)
+    ws_obras.append_rows(novas_linhas)
