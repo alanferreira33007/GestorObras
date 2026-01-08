@@ -250,3 +250,34 @@ if sel == "Projetos":
     else:
         st.markdown("### 📋 Obras Cadastradas")
         st.dataframe(df_obras, use_container_width=True, hide_index=True)
+
+st.divider()
+st.markdown("## 🗑️ Excluir Obra Cadastrada por Engano")
+
+obra_excluir = st.selectbox(
+    "Selecione a obra",
+    df_obras["Cliente"].tolist()
+)
+
+# Verifica se existe movimentação financeira
+df_mov = df_fin[df_fin["Obra Vinculada"] == obra_excluir]
+
+if not df_mov.empty:
+    st.warning(
+        "⚠️ Esta obra possui lançamentos financeiros e NÃO pode ser excluída."
+    )
+else:
+    st.error("🚨 ATENÇÃO: esta ação é irreversível.")
+
+    confirmacao = st.text_input(
+        f'Digite exatamente **{obra_excluir}** para confirmar'
+    )
+
+    if st.button("❌ EXCLUIR DEFINITIVAMENTE"):
+        if confirmacao != obra_excluir:
+            st.error("Confirmação incorreta. Exclusão cancelada.")
+        else:
+            from database import excluir_obra
+            excluir_obra(obra_excluir)
+            st.success("Obra excluída com sucesso.")
+            st.rerun()
