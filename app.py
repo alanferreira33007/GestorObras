@@ -333,8 +333,3 @@ elif sel == "Projetos":
 
                 feedback_toast("Obra excluída com sucesso", icon="🗑️")
                 st.rerun()
-
-    if df_obras.empty:
-        st.info("Nenhuma obra cadastrada.")
-    else:
-        st.dataframe(df_obras, use_container_width=True)
