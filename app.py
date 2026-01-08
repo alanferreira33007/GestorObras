@@ -9,7 +9,8 @@ from database import (
     salvar_financeiro,
     salvar_obra,
     excluir_obra,
-    excluir_lancamento
+    excluir_lancamento,
+    editar_obra
 )
 
 from relatorios import (
@@ -216,6 +217,74 @@ if sel == "Caixa":
             use_container_width=True,
             hide_index=True
         )
+
+        st.divider()
+st.subheader("✏️ Editar Obra Cadastrada")
+
+obra_editar = st.selectbox(
+    "Selecione a obra para editar",
+    df_obras["Cliente"].tolist(),
+    key="editar_obra_sel"
+)
+
+obra = df_obras[df_obras["Cliente"] == obra_editar].iloc[0]
+
+with st.form("form_editar_obra"):
+    c1, c2 = st.columns(2)
+
+    cliente = c1.text_input(
+        "Nome da Obra / Cliente",
+        value=obra["Cliente"]
+    )
+
+    endereco = c2.text_input(
+        "Endereço",
+        value=obra["Endereço"]
+    )
+
+    c3, c4 = st.columns(2)
+
+    status = c3.selectbox(
+        "Status",
+        ["Planejamento", "Construção", "Finalizada", "Vendida"],
+        index=["Planejamento", "Construção", "Finalizada", "Vendida"].index(
+            obra["Status"]
+        )
+    )
+
+    valor_total = c4.number_input(
+        "Valor Total (VGV)",
+        min_value=0.0,
+        value=float(obra["Valor Total"]),
+        step=1000.0
+    )
+
+    c5, c6 = st.columns(2)
+
+    data_inicio = c5.date_input(
+        "Data de Início",
+        value=pd.to_datetime(obra["Data Início"]).date()
+        if obra["Data Início"] else date.today()
+    )
+
+    prazo = c6.text_input(
+        "Prazo",
+        value=obra["Prazo"]
+    )
+
+    if st.form_submit_button("💾 Salvar Alterações"):
+        editar_obra(
+            id_obra=obra["ID"],
+            cliente=cliente.strip(),
+            endereco=endereco.strip(),
+            status=status,
+            valor_total=valor_total,
+            data_inicio=data_inicio.strftime("%Y-%m-%d"),
+            prazo=prazo.strip()
+        )
+
+        st.success("✅ Obra atualizada com sucesso!")
+        st.rerun()
 
         # ---------- EXCLUSÃO ----------
         st.divider()
