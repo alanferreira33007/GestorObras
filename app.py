@@ -122,41 +122,6 @@ def _df_to_table(df: pd.DataFrame, max_rows=None):
     return t
 
 
-# ----------------------------
-# 0.1) DATA helpers (MELHORIA 1)
-# ----------------------------
-def parse_data_segura(valor):
-    """
-    Converte datas de forma robusta para datetime.
-    Aceita:
-    - YYYY-MM-DD
-    - DD/MM/YYYY
-    - datetime / date
-    Retorna pd.NaT se inválido.
-    """
-    if valor is None or valor == "":
-        return pd.NaT
-
-    if isinstance(valor, (datetime, date)):
-        return pd.to_datetime(valor)
-
-    try:
-        return pd.to_datetime(valor, format="%Y-%m-%d", errors="raise")
-    except Exception:
-        try:
-            return pd.to_datetime(valor, format="%d/%m/%Y", errors="raise")
-        except Exception:
-            return pd.NaT
-
-
-def gerar_relatorio_investimentos_pdf(
-    obra: str,
-    periodo: str,
-    ...
-):
-
-
-
 def gerar_relatorio_investimentos_pdf(
     obra: str,
     periodo: str,
