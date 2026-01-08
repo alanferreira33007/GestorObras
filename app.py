@@ -345,9 +345,7 @@ def carregar_dados():
             df_f = pd.DataFrame(columns=FIN_COLS)
         df_f = ensure_cols(df_f, FIN_COLS)
         df_f["Valor"] = pd.to_numeric(df_f["Valor"], errors="coerce").fillna(0)
-        df_f["Data_DT"] = pd.to_datetime(df_f["Data"], errors="coerce")
-        df_f["Data_BR"] = df_f["Data_DT"].dt.strftime("%d/%m/%Y")
-        df_f.loc[df_f["Data_DT"].isna(), "Data_BR"] = ""
+        df_f = normalize_dates(df_f, "Data")
 
         # Normaliza strings
         for col in ["Tipo", "Categoria", "Descrição", "Obra Vinculada"]:
