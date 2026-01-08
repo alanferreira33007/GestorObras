@@ -14,7 +14,7 @@ from reportlab.lib.pagesizes import A4
 from reportlab.lib import colors
 from reportlab.lib.enums import TA_CENTER, TA_RIGHT, TA_LEFT
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, KeepTogether
 from reportlab.pdfgen import canvas
 from reportlab.lib.units import cm
 
@@ -33,10 +33,8 @@ st.markdown("""
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap');
     html, body, [class*="css"] { font-family: 'Inter', sans-serif; }
     
-    /* Métricas */
     [data-testid="stMetricValue"] { font-size: 1.8rem !important; font-weight: 700; color: #1a1a1a; }
     
-    /* Botões */
     div.stButton > button {
         background-color: #2D6A4F;
         color: white;
@@ -53,7 +51,6 @@ st.markdown("""
         box-shadow: 0 4px 8px rgba(0,0,0,0.2);
     }
     
-    /* Sidebar */
     [data-testid="stSidebar"] { background-color: #f8f9fa; border-right: 1px solid #e9ecef; }
 </style>
 """, unsafe_allow_html=True)
@@ -76,7 +73,7 @@ def safe_float(x) -> float:
     except: return 0.0
 
 # ==============================================================================
-# 3. MOTOR PDF (VISUAL EMPRESARIAL)
+# 3. MOTOR PDF (VISUAL EMPRESARIAL COM TOTAL)
 # ==============================================================================
 class EnterpriseCanvas(canvas.Canvas):
     def __init__(self, *args, **kwargs):
@@ -97,18 +94,15 @@ class EnterpriseCanvas(canvas.Canvas):
 
     def _draw_footer(self, page_count):
         width, height = A4
-        # Linha fina
         self.setStrokeColor(colors.lightgrey)
         self.setLineWidth(0.5)
         self.line(30, 50, width-30, 50)
         
-        # Textos do Rodapé
         self.setFillColor(colors.grey)
         self.setFont("Helvetica", 8)
         self.drawString(30, 35, "GESTOR PRO • Sistema Integrado de Gestão de Obras")
-        self.drawString(30, 25, "Documento confidencial. Uso exclusivo interno.")
+        self.drawString(30, 25, "Relatório contábil gerado automaticamente.")
         
-        # Paginação e Data
         data_hora = datetime.now().strftime("%d/%m/%Y às %H:%M")
         self.drawRightString(width-30, 35, f"Emitido em: {data_hora}")
         self.drawRightString(width-30, 25, f"Página {self.getPageNumber()} de {page_count}")
@@ -122,89 +116,61 @@ def gerar_pdf_empresarial(escopo, periodo, vgv, custos, lucro, roi, df_cat, df_l
     )
     story = []
     
-    # Estilos
     styles = getSampleStyleSheet()
-    # Título do Relatório (Branco sobre Verde)
     style_header_title = ParagraphStyle('HeadTitle', parent=styles['Normal'], fontSize=14, leading=16, textColor=colors.white, fontName='Helvetica-Bold')
     style_header_sub = ParagraphStyle('HeadSub', parent=styles['Normal'], fontSize=9, leading=11, textColor=colors.whitesmoke)
-    
-    # Títulos de Seção
     style_h2 = ParagraphStyle('SecTitle', parent=styles['Heading2'], fontSize=11, textColor=colors.HexColor("#1B4332"), spaceBefore=15, spaceAfter=8, fontName='Helvetica-Bold')
     
-    # --- 1. CABEÇALHO (BANNER) ---
-    # Cria uma tabela para o cabeçalho com fundo colorido
+    # --- 1. CABEÇALHO ---
     titulo = "RELATÓRIO DE PORTFÓLIO" if "Visão Geral" in escopo else f"RELATÓRIO: {escopo.upper()}"
-    
-    header_content = [
-        [Paragraph(titulo, style_header_title), Paragraph(f"PERÍODO DE REFERÊNCIA:<br/>{periodo}", style_header_sub)]
-    ]
-    
+    header_content = [[Paragraph(titulo, style_header_title), Paragraph(f"PERÍODO:<br/>{periodo}", style_header_sub)]]
     t_header = Table(header_content, colWidths=[12*cm, 5*cm])
     t_header.setStyle(TableStyle([
-        ('BACKGROUND', (0,0), (-1,-1), colors.HexColor("#2D6A4F")), # Verde Brand
-        ('TOPPADDING', (0,0), (-1,-1), 15),
-        ('BOTTOMPADDING', (0,0), (-1,-1), 15),
-        ('LEFTPADDING', (0,0), (-1,-1), 15),
-        ('RIGHTPADDING', (0,0), (-1,-1), 15),
+        ('BACKGROUND', (0,0), (-1,-1), colors.HexColor("#2D6A4F")),
+        ('PADDING', (0,0), (-1,-1), 15),
         ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
-        ('ALIGN', (1,0), (1,0), 'RIGHT'), # Data alinhada à direita
+        ('ALIGN', (1,0), (1,0), 'RIGHT'),
         ('ROUNDEDCORNERS', [4, 4, 4, 4]),
     ]))
     story.append(t_header)
     story.append(Spacer(1, 15))
     
-    # --- 2. RESUMO EXECUTIVO (KPIs) ---
-    story.append(Paragraph("RESUMO EXECUTIVO", style_h2))
-    
+    # --- 2. RESUMO (KPIs) ---
+    story.append(Paragraph("RESUMO FINANCEIRO", style_h2))
     perc_gasto = (custos/vgv*100) if vgv > 0 else 0
-    
-    # Dados da tabela de resumo
     resumo_data = [
-        ["VGV (CONTRATO)", "CUSTO REALIZADO", "LUCRO PROJETADO", "MARGEM ROI", "% EXECUTADO"],
+        ["ORÇAMENTO (VGV)", "GASTO TOTAL", "SALDO / LUCRO", "ROI", "CONSUMO"],
         [fmt_moeda(vgv), fmt_moeda(custos), fmt_moeda(lucro), f"{roi:.1f}%", f"{perc_gasto:.1f}%"]
     ]
-    
     t_resumo = Table(resumo_data, colWidths=[3.7*cm]*5)
     t_resumo.setStyle(TableStyle([
-        # Cabeçalho da tabela
-        ('FONTNAME', (0,0), (-1,0), 'Helvetica-Bold'),
+        ('FONTNAME', (0,0), (-1,-1), 'Helvetica-Bold'),
         ('FONTSIZE', (0,0), (-1,0), 7),
         ('TEXTCOLOR', (0,0), (-1,0), colors.grey),
         ('ALIGN', (0,0), (-1,-1), 'CENTER'),
-        # Linha de Valores
-        ('FONTNAME', (0,1), (-1,1), 'Helvetica-Bold'),
         ('FONTSIZE', (0,1), (-1,1), 10),
         ('TEXTCOLOR', (0,1), (-1,1), colors.black),
-        # Bordas e Fundo
         ('BACKGROUND', (0,0), (-1,1), colors.HexColor("#F8F9FA")),
         ('BOX', (0,0), (-1,-1), 0.5, colors.lightgrey),
-        ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
-        ('TOPPADDING', (0,0), (-1,-1), 8),
-        ('BOTTOMPADDING', (0,0), (-1,-1), 8),
+        ('PADDING', (0,0), (-1,-1), 8),
     ]))
     story.append(t_resumo)
     story.append(Spacer(1, 15))
     
     # --- 3. CATEGORIAS ---
     if not df_cat.empty:
-        story.append(Paragraph("DETALHAMENTO POR CENTRO DE CUSTO", style_h2))
-        
-        # Prepara dados
+        story.append(Paragraph("DISTRIBUIÇÃO POR CATEGORIA", style_h2))
         df_c = df_cat.copy()
         df_c["Valor"] = df_c["Valor"].apply(fmt_moeda)
-        # Adiciona % do total
         df_c["%"] = (df_cat["Valor"] / custos * 100).apply(lambda x: f"{x:.1f}%")
-        
-        # Converte para lista
-        cat_data = [["CATEGORIA", "VALOR GASTO", "% DO TOTAL"]] + df_c[["Categoria", "Valor", "%"]].values.tolist()
-        
+        cat_data = [["CATEGORIA", "VALOR", "%"]] + df_c[["Categoria", "Valor", "%"]].values.tolist()
         t_cat = Table(cat_data, colWidths=[10*cm, 4*cm, 3*cm], hAlign='LEFT')
         t_cat.setStyle(TableStyle([
             ('FONTNAME', (0,0), (-1,0), 'Helvetica-Bold'),
             ('FONTSIZE', (0,0), (-1,0), 8),
             ('TEXTCOLOR', (0,0), (-1,0), colors.white),
-            ('BACKGROUND', (0,0), (-1,0), colors.HexColor("#40916C")), # Verde médio
-            ('ALIGN', (1,0), (-1,-1), 'RIGHT'), # Valores à direita
+            ('BACKGROUND', (0,0), (-1,0), colors.HexColor("#40916C")),
+            ('ALIGN', (1,0), (-1,-1), 'RIGHT'),
             ('GRID', (0,0), (-1,-1), 0.25, colors.lightgrey),
             ('ROWBACKGROUNDS', (0,1), (-1,-1), [colors.white, colors.whitesmoke]),
             ('PADDING', (0,0), (-1,-1), 6),
@@ -213,57 +179,79 @@ def gerar_pdf_empresarial(escopo, periodo, vgv, custos, lucro, roi, df_cat, df_l
         story.append(Spacer(1, 15))
         
     # --- 4. EXTRATO FINANCEIRO ---
-    story.append(Paragraph("EXTRATO DE MOVIMENTAÇÕES (SAÍDAS)", style_h2))
+    story.append(Paragraph("EXTRATO DE LANÇAMENTOS", style_h2))
     
     if not df_lanc.empty:
-        # Prepara Tabela
         df_l = df_lanc.copy()
-        # Formata valor
         df_l["Valor"] = df_l["Valor"].apply(fmt_moeda)
-        # Seleciona colunas
         cols_sel = ["Data", "Categoria", "Descrição", "Valor"]
         data_lanc = [cols_sel] + df_l[cols_sel].values.tolist()
         
+        # ADICIONA LINHA DE TOTAL NA TABELA
+        data_lanc.append(["", "", "TOTAL REGISTRADO NESTA PÁGINA:", fmt_moeda(custos)])
+        
         t_lanc = Table(data_lanc, colWidths=[2.5*cm, 3.5*cm, 8*cm, 3*cm])
-        t_lanc.setStyle(TableStyle([
+        
+        # Estilo base
+        estilo_tabela = [
             ('FONTNAME', (0,0), (-1,0), 'Helvetica-Bold'),
             ('FONTSIZE', (0,0), (-1,0), 8),
             ('TEXTCOLOR', (0,0), (-1,0), colors.white),
             ('BACKGROUND', (0,0), (-1,0), colors.HexColor("#2D6A4F")),
             ('FONTSIZE', (0,1), (-1,-1), 8),
-            ('ALIGN', (-1,0), (-1,-1), 'RIGHT'), # Valor à direita
-            ('GRID', (0,0), (-1,-1), 0.25, colors.lightgrey),
-            ('ROWBACKGROUNDS', (0,1), (-1,-1), [colors.white, colors.whitesmoke]),
+            ('ALIGN', (-1,0), (-1,-1), 'RIGHT'),
+            ('GRID', (0,0), (-1,-2), 0.25, colors.lightgrey), # Grid até a penultima linha
+            ('ROWBACKGROUNDS', (0,1), (-1,-2), [colors.white, colors.whitesmoke]),
             ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
-        ]))
+        ]
+        
+        # Estilo da Última Linha (Total na Tabela)
+        estilo_total_linha = [
+            ('FONTNAME', (0,-1), (-1,-1), 'Helvetica-Bold'),
+            ('BACKGROUND', (0,-1), (-1,-1), colors.HexColor("#e9ecef")), # Cinza claro destaque
+            ('TEXTCOLOR', (2,-1), (2,-1), colors.black), # Texto do label
+            ('TEXTCOLOR', (-1,-1), (-1,-1), colors.black), # Valor
+            ('ALIGN', (2,-1), (2,-1), 'RIGHT'),
+            ('SPAN', (2,-1), (2,-1)), # Apenas cosmético
+            ('LINEABOVE', (0,-1), (-1,-1), 1, colors.black), # Linha preta forte acima do total
+        ]
+        
+        t_lanc.setStyle(TableStyle(estilo_tabela + estilo_total_linha))
         story.append(t_lanc)
     else:
         story.append(Paragraph("Nenhum lançamento no período.", styles['Normal']))
 
     story.append(Spacer(1, 25))
 
-    # --- 5. BLOCO DE TOTALIZAÇÃO (THE BOTTOM LINE) ---
-    # Tabela de fechamento estilo Fatura
-    total_lbl = Paragraph("<b>TOTAL ACUMULADO (PERÍODO)</b>", ParagraphStyle('TLabel', parent=styles['Normal'], textColor=colors.white, alignment=TA_RIGHT))
-    total_val = Paragraph(f"<b>{fmt_moeda(custos)}</b>", ParagraphStyle('TVal', parent=styles['Normal'], textColor=colors.white, fontSize=12, alignment=TA_RIGHT))
+    # --- 5. BLOCO DE TOTALIZAÇÃO FINAL (DESTAQUE MÁXIMO) ---
+    # Usando KeepTogether para não quebrar página no total
+    bloco_total = []
     
+    total_lbl = Paragraph("<b>TOTAL GASTO ATÉ A EMISSÃO</b>", ParagraphStyle('TLabel', parent=styles['Normal'], textColor=colors.black, fontSize=10, alignment=TA_RIGHT))
+    total_val = Paragraph(f"<b>{fmt_moeda(custos)}</b>", ParagraphStyle('TVal', parent=styles['Normal'], textColor=colors.white, fontSize=14, alignment=TA_RIGHT))
+    
+    # Tabela de 2 colunas: Texto | Valor
+    # Cor de Fundo do Valor: Preto ou Azul Escuro para contraste total
     data_total = [[total_lbl, total_val]]
-    
     t_total = Table(data_total, colWidths=[12*cm, 5*cm])
     t_total.setStyle(TableStyle([
-        ('BACKGROUND', (0,0), (-1,-1), colors.HexColor("#1A1C1E")), # Fundo Escuro
-        ('TOPPADDING', (0,0), (-1,-1), 10),
-        ('BOTTOMPADDING', (0,0), (-1,-1), 10),
+        ('BACKGROUND', (1,0), (1,0), colors.HexColor("#1A1C1E")), # Fundo valor
+        ('BACKGROUND', (0,0), (0,0), colors.white), # Fundo label
+        ('LINEBELOW', (0,0), (1,0), 2, colors.HexColor("#1A1C1E")), # Linha grossa embaixo
+        ('TOPPADDING', (0,0), (-1,-1), 12),
+        ('BOTTOMPADDING', (0,0), (-1,-1), 12),
         ('RIGHTPADDING', (0,0), (-1,-1), 10),
+        ('ALIGN', (0,0), (-1,-1), 'RIGHT'),
     ]))
-    story.append(t_total)
+    bloco_total.append(t_total)
+    story.append(KeepTogether(bloco_total))
     
     story.append(Spacer(1, 40))
 
     # --- 6. ASSINATURAS ---
     sig_data = [
         ["_______________________________________", "_______________________________________"],
-        ["GESTOR RESPONSÁVEL", "APROVAÇÃO DIRETORIA"],
+        ["GESTOR RESPONSÁVEL", "DIRETORIA FINANCEIRA"],
         [f"Data: {date.today().strftime('%d/%m/%Y')}", "Data: ____/____/________"]
     ]
     t_sig = Table(sig_data, colWidths=[8.5*cm, 8.5*cm])
@@ -275,7 +263,6 @@ def gerar_pdf_empresarial(escopo, periodo, vgv, custos, lucro, roi, df_cat, df_l
     ]))
     story.append(t_sig)
     
-    # Gera
     doc.build(story, canvasmaker=EnterpriseCanvas)
     return buffer.getvalue()
 
@@ -416,7 +403,7 @@ if sel == "Dashboard":
         st.write("")
         st.markdown("---")
         
-        # PDF Generator Call
+        # PDF Call
         dmin = df_show["Data_DT"].min().strftime("%d/%m/%Y")
         dmax = df_show["Data_DT"].max().strftime("%d/%m/%Y")
         per_str = f"De {dmin} até {dmax}"
@@ -428,7 +415,7 @@ if sel == "Dashboard":
         )
         
         st.download_button(
-            label="📄 BAIXAR RELATÓRIO PDF EMPRESARIAL",
+            label="📄 BAIXAR RELATÓRIO OFICIAL (COM TOTAL)",
             data=pdf_data,
             file_name=f"Relatorio_{escopo}_{date.today()}.pdf",
             mime="application/pdf",
