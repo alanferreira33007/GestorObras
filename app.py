@@ -161,7 +161,7 @@ def gerar_pdf(obra, periodo, vgv, custos, lucro, roi, df_cat, df_lanc):
     return buffer.getvalue()
 
 # ==============================================================================
-# 3. CONEXÃO E DADOS (COM DADOS FICTÍCIOS DE SEGURANÇA)
+# 3. CONEXÃO E DADOS
 # ==============================================================================
 OBRAS_COLS = ["ID", "Cliente", "Endereço", "Status", "Valor Total", "Data Início", "Prazo"]
 FIN_COLS   = ["Data", "Tipo", "Categoria", "Descrição", "Valor", "Obra Vinculada"]
@@ -191,9 +191,9 @@ def load_data():
         # Financeiro
         df_f = pd.DataFrame(db.worksheet("Financeiro").get_all_records())
         
-        # MODO DEMO: Se vazio, cria dados
+        # MODO DEMO
         if df_f.empty or len(df_f) < 2:
-            st.toast("Modo Demo: Gerando dados fictícios para visualização", icon="ℹ️")
+            st.toast("Modo Demo: Dados fictícios ativos", icon="ℹ️")
             fake_data = []
             obra_nome = df_o.iloc[0]["Cliente"]
             for i in range(10):
@@ -206,7 +206,6 @@ def load_data():
                     "Obra Vinculada": obra_nome
                 })
             df_f = pd.DataFrame(fake_data)
-
         else:
             for c in FIN_COLS: 
                 if c not in df_f.columns: df_f[c] = None
@@ -270,8 +269,14 @@ if selected == "Dashboard":
     with col_tit:
         st.title("Visão Geral")
     with col_sel:
+        # ATUALIZAÇÃO PONTUAL: ADICIONANDO "SELECIONAR" COMO PADRÃO
         if lista_obras:
-            obra_atual = st.selectbox("Selecione a Obra", lista_obras)
+            opcoes_dash = ["Selecionar"] + lista_obras
+            obra_atual = st.selectbox("Selecione a Obra", opcoes_dash)
+            
+            if obra_atual == "Selecionar":
+                st.info("👆 Selecione uma obra no menu acima para carregar os indicadores.")
+                st.stop()
         else:
             st.warning("Cadastre uma obra primeiro.")
             st.stop()
@@ -325,7 +330,7 @@ if selected == "Dashboard":
             st.subheader("Categorias")
             if not df_saidas.empty:
                 df_cat = df_saidas.groupby("Categoria", as_index=False)["Valor"].sum()
-                # CORREÇÃO AQUI: px.pie ao invés de px.donut
+                # CORREÇÃO APLICADA: px.pie no lugar de px.donut
                 fig2 = px.pie(
                     df_cat, 
                     values="Valor", 
