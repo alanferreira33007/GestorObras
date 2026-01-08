@@ -3,16 +3,11 @@ import pandas as pd
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 import json
+from datetime import date
 
-# Definição das colunas padrão
+# Configurações de colunas
 OBRAS_COLS = ["ID", "Cliente", "Endereço", "Status", "Valor Total", "Data Início", "Prazo"]
 FIN_COLS   = ["Data", "Tipo", "Categoria", "Descrição", "Valor", "Obra Vinculada"]
-
-def ensure_cols(df: pd.DataFrame, cols: list) -> pd.DataFrame:
-    for c in cols:
-        if c not in df.columns:
-            df[c] = None
-    return df[cols]
 
 @st.cache_resource
 def obter_db():
@@ -21,30 +16,31 @@ def obter_db():
     client = gspread.authorize(ServiceAccountCredentials.from_json_keyfile_dict(creds_json, scope))
     return client.open("GestorObras_DB")
 
-@st.cache_data(ttl=10)
+@st.cache_data(ttl=5)
 def carregar_dados():
-    try:
-        db = obter_db()
-        # Carrega aba Obras
-        ws_o = db.worksheet("Obras")
-        df_o = pd.DataFrame(ws_o.get_all_records())
-        if df_o.empty:
-            df_o = pd.DataFrame(columns=OBRAS_COLS)
-        df_o = ensure_cols(df_o, OBRAS_COLS)
-        df_o["ID"] = pd.to_numeric(df_o["ID"], errors="coerce")
-        df_o["Valor Total"] = pd.to_numeric(df_o["Valor Total"], errors="coerce").fillna(0)
+    db = obter_db()
+    # Carrega Obras
+    ws_o = db.worksheet("Obras")
+    df_o = pd.DataFrame(ws_o.get_all_records())
+    if df_o.empty: df_o = pd.DataFrame(columns=OBRAS_COLS)
+    df_o["Valor Total"] = pd.to_numeric(df_o["Valor Total"], errors="coerce").fillna(0)
 
-        # Carrega aba Financeiro
-        ws_f = db.worksheet("Financeiro")
-        df_f = pd.DataFrame(ws_f.get_all_records())
-        if df_f.empty:
-            df_f = pd.DataFrame(columns=FIN_COLS)
-        df_f = ensure_cols(df_f, FIN_COLS)
-        df_f["Valor"] = pd.to_numeric(df_f["Valor"], errors="coerce").fillna(0)
-        df_f["Data_DT"] = pd.to_datetime(df_f["Data"], errors="coerce")
-        df_f["Data_BR"] = df_f["Data_DT"].dt.strftime("%d/%m/%Y").fillna("")
-        
-        return df_o, df_f
-    except Exception as e:
-        st.error(f"Erro de Conexão com o Google Sheets: {e}")
-        return pd.DataFrame(columns=OBRAS_COLS), pd.DataFrame(columns=FIN_COLS)
+    # Carrega Financeiro
+    ws_f = db.worksheet("Financeiro")
+    df_f = pd.DataFrame(ws_f.get_all_records())
+    if df_f.empty: df_f = pd.DataFrame(columns=FIN_COLS)
+    df_f["Valor"] = pd.to_numeric(df_f["Valor"], errors="coerce").fillna(0)
+    df_f["Data_DT"] = pd.to_datetime(df_f["Data"], errors="coerce")
+    df_f["Data_BR"] = df_f["Data_DT"].dt.strftime("%d/%m/%Y").fillna("")
+    
+    return df_o, df_f
+
+def salvar_financeiro(lista_dados):
+    db = obter_db()
+    db.worksheet("Financeiro").append_row(lista_dados, value_input_option="USER_ENTERED")
+    st.cache_data.clear() # Limpa o cache para os novos dados aparecerem na hora
+
+def salvar_obra(lista_dados):
+    db = obter_db()
+    db.worksheet("Obras").append_row(lista_dados, value_input_option="USER_ENTERED")
+    st.cache_data.clear()
