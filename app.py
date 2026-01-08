@@ -294,6 +294,23 @@ def ensure_cols(df: pd.DataFrame, cols: list[str]) -> pd.DataFrame:
             df[c] = None
     return df[cols]
 
+def normalize_dates(df: pd.DataFrame, col_data: str = "Data") -> pd.DataFrame:
+    """
+    Garante colunas:
+    - Data_DT (datetime)
+    - Data_BR (dd/mm/yyyy)
+    """
+    if col_data not in df.columns:
+        df["Data_DT"] = pd.NaT
+        df["Data_BR"] = ""
+        return df
+
+    df["Data_DT"] = pd.to_datetime(df[col_data], errors="coerce")
+    df["Data_BR"] = df["Data_DT"].dt.strftime("%d/%m/%Y")
+    df.loc[df["Data_DT"].isna(), "Data_BR"] = ""
+
+    return df
+
 
 # ----------------------------
 # 3) DB (Google Sheets)
