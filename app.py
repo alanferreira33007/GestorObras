@@ -1,102 +1,151 @@
 import streamlit as st
 import pandas as pd
 import plotly.express as px
+import plotly.graph_objects as go
 from datetime import date
 from streamlit_option_menu import option_menu
 
+# Nossas peças separadas
 from database import carregar_dados, salvar_financeiro, salvar_obra
 from relatorios import fmt_moeda, gerar_relatorio_investimentos_pdf, download_pdf_one_click
 
-st.set_page_config(page_title="GESTOR PRO | Master", layout="wide")
+# Configuração de página
+st.set_page_config(page_title="GESTOR PRO | Business Intelligence", layout="wide")
 
-# LOGIN
+# --- ESTILIZAÇÃO INTERFACE ---
+st.markdown("""
+<style>
+    [data-testid="stMetricValue"] { font-size: 28px; color: #1B4332; }
+    .main-cards { background-color: #FFFFFF; border-radius: 15px; padding: 20px; border: 1px solid #E9ECEF; box-shadow: 0 4px 6px rgba(0,0,0,0.02); }
+    div.stButton > button { width: 100%; border-radius: 5px; height: 3em; }
+</style>
+""", unsafe_allow_html=True)
+
+# --- LOGIN (Simplificado) ---
 if "authenticated" not in st.session_state: st.session_state["authenticated"] = False
 if not st.session_state["authenticated"]:
-    with st.form("login"):
-        st.title("🔐 Acesso")
-        pwd = st.text_input("Senha", type="password")
-        if st.form_submit_button("Entrar"):
+    _, col, _ = st.columns([1,1,1])
+    with col:
+        st.title("🔐 Gestor Pro")
+        pwd = st.text_input("Senha de Acesso", type="password")
+        if st.button("ACESSAR PAINEL"):
             if pwd == st.secrets["password"]:
                 st.session_state["authenticated"] = True
                 st.rerun()
-            else: st.error("Senha incorreta.")
+            else: st.error("Senha Incorreta")
     st.stop()
 
-# DADOS
+# --- CARREGAMENTO ---
 df_obras, df_fin = carregar_dados()
 lista_obras = df_obras["Cliente"].unique().tolist()
 
 with st.sidebar:
-    sel = option_menu("GESTOR PRO", ["Investimentos", "Caixa", "Projetos"], 
-                     icons=["graph-up", "wallet2", "building"])
-    if st.button("Sair"):
+    st.image("https://cdn-icons-png.flaticon.com/512/4222/4222031.png", width=80)
+    sel = option_menu("MENU PRINCIPAL", ["Investimentos", "Caixa", "Projetos"], 
+                     icons=["pie-chart-fill", "currency-dollar", "bricks"], menu_icon="cast", default_index=0)
+    st.divider()
+    if st.button("Sair / Logout"):
         st.session_state["authenticated"] = False
         st.rerun()
 
-# TELA INVESTIMENTOS
+# --- TELA 1: INVESTIMENTOS (O NOVO DASHBOARD) ---
 if sel == "Investimentos":
-    st.header("📊 Performance e ROI")
+    st.title("📊 BI - Inteligência de Obra")
+    
     if not lista_obras:
-        st.info("Cadastre uma obra primeiro.")
+        st.info("Nenhuma obra encontrada. Cadastre em 'Projetos'.")
     else:
-        obra_sel = st.selectbox("Selecione a obra", lista_obras)
+        # Topo: Seleção e Relatório
+        c_obra, c_rel = st.columns([3, 1])
+        obra_sel = c_obra.selectbox("Selecione a unidade de análise:", lista_obras)
+        
+        # Filtro de Dados
         obra_row = df_obras[df_obras["Cliente"] == obra_sel].iloc[0]
         vgv = float(obra_row["Valor Total"])
-        
         df_v = df_fin[df_fin["Obra Vinculada"] == obra_sel].copy()
         df_saidas = df_v[df_v["Tipo"].str.contains("Saída", case=False, na=False)]
         
         custos = float(df_saidas["Valor"].sum())
         lucro = vgv - custos
         roi = (lucro / custos * 100) if custos > 0 else 0
-        
-        c1, c2, c3, c4 = st.columns(4)
-        c1.metric("VGV", fmt_moeda(vgv))
-        c2.metric("Custo Total", fmt_moeda(custos))
-        c3.metric("Lucro", fmt_moeda(lucro))
-        c4.metric("ROI", f"{roi:.1f}%")
+        perc_gasto = (custos / vgv) if vgv > 0 else 0
 
-        # Gráfico
-        if not df_saidas.empty:
-            st.subheader("Custos por Categoria")
-            df_cat = df_saidas.groupby("Categoria")["Valor"].sum().reset_index()
-            fig = px.bar(df_cat, x="Categoria", y="Valor", color_discrete_sequence=['#2D6A4F'])
-            st.plotly_chart(fig, use_container_width=True)
+        # Botão de Relatório no topo direito
+        if c_rel.button("⬇️ Gerar PDF"):
+            pdf = gerar_relatorio_investimentos_pdf(obra_sel, vgv, custos, lucro, roi, df_saidas)
+            download_pdf_one_click(pdf, f"Dashboard_{obra_sel}.pdf")
 
-        # --- O BOTÃO QUE ESTAVA FALTANDO ---
         st.divider()
-        col_pdf, _ = st.columns([1, 3])
-        if col_pdf.button("⬇️ BAIXAR RELATÓRIO PDF"):
-            with st.spinner("Gerando arquivo..."):
-                pdf_arquivo = gerar_relatorio_investimentos_pdf(obra_sel, vgv, custos, lucro, roi, df_saidas)
-                nome_arquivo = f"Relatorio_{obra_sel}_{date.today().strftime('%d_%m_%Y')}.pdf"
-                download_pdf_one_click(pdf_arquivo, nome_arquivo)
-                st.success("Download iniciado!")
 
-# TELA CAIXA
+        # KPIs PRINCIPAIS
+        kpi1, kpi2, kpi3, kpi4 = st.columns(4)
+        kpi1.metric("Valor Contrato (VGV)", fmt_moeda(vgv))
+        kpi2.metric("Custo Acumulado", fmt_moeda(custos), delta=f"{(perc_gasto*100):.1f}% do total", delta_color="inverse")
+        kpi3.metric("Lucro Estimado", fmt_moeda(lucro))
+        kpi4.metric("ROI Atual", f"{roi:.1f}%")
+
+        # BARRA DE CONSUMO DO ORÇAMENTO
+        st.write(f"**Consumo do Orçamento (VGV):** {perc_gasto*100:.1f}%")
+        st.progress(min(perc_gasto, 1.0))
+
+        st.divider()
+
+        # GRÁFICOS
+        col_graf1, col_graf2 = st.columns(2)
+
+        with col_graf1:
+            st.subheader("🔥 Distribuição por Categoria")
+            if not df_saidas.empty:
+                df_pie = df_saidas.groupby("Categoria")["Valor"].sum().reset_index()
+                fig_pie = px.pie(df_pie, values='Valor', names='Categoria', hole=.4,
+                                 color_discrete_sequence=px.colors.sequential.Greens_r)
+                fig_pie.update_layout(margin=dict(t=0, b=0, l=0, r=0))
+                st.plotly_chart(fig_pie, use_container_width=True)
+            else:
+                st.info("Sem dados de saída.")
+
+        with col_graf2:
+            st.subheader("📈 Evolução de Gastos")
+            if not df_saidas.empty:
+                df_saidas['Data_DT'] = pd.to_datetime(df_saidas['Data_DT'])
+                df_evol = df_saidas.sort_values("Data_DT").copy()
+                df_evol["Acumulado"] = df_evol["Valor"].cumsum()
+                fig_line = px.line(df_evol, x="Data_DT", y="Acumulado", markers=True,
+                                  line_shape="spline", render_mode="svg")
+                fig_line.update_traces(line_color='#2D6A4F')
+                st.plotly_chart(fig_line, use_container_width=True)
+
+# --- TELA 2: CAIXA ---
 elif sel == "Caixa":
-    st.header("💸 Caixa")
-    with st.expander("➕ Novo Lançamento"):
+    st.title("💸 Fluxo de Caixa")
+    with st.expander("📝 Novo Lançamento", expanded=False):
         with st.form("f_caixa", clear_on_submit=True):
-            f_data = st.date_input("Data", value=date.today())
-            f_tipo = st.selectbox("Tipo", ["Saída (Despesa)", "Entrada"])
-            f_cat = st.selectbox("Categoria", ["Material", "Mão de Obra", "Serviços", "Impostos", "Outros"])
-            f_obra = st.selectbox("Obra", lista_obras if lista_obras else ["Geral"])
-            f_valor = st.number_input("Valor", min_value=0.0)
+            c1, c2, c3 = st.columns(3)
+            f_data = c1.date_input("Data", value=date.today())
+            f_tipo = c2.selectbox("Tipo", ["Saída (Despesa)", "Entrada"])
+            f_cat = c3.selectbox("Categoria", ["Material", "Mão de Obra", "Serviços", "Impostos", "Outros"])
+            c4, c5 = st.columns(2)
+            f_obra = c4.selectbox("Obra", lista_obras if lista_obras else ["Geral"])
+            f_valor = c5.number_input("Valor R$", min_value=0.0)
             f_desc = st.text_input("Descrição")
-            if st.form_submit_button("REGISTRAR"):
+            if st.form_submit_button("SALVAR NO GOOGLE SHEETS"):
                 salvar_financeiro([f_data.strftime("%Y-%m-%d"), f_tipo, f_cat, f_desc, f_valor, f_obra])
+                st.toast("Lançamento realizado!", icon="✅")
                 st.rerun()
-    st.dataframe(df_fin.sort_values("Data_DT", ascending=False), use_container_width=True)
 
-# TELA PROJETOS
+    st.subheader("Últimas Movimentações")
+    st.dataframe(df_fin.sort_values("Data_DT", ascending=False), use_container_width=True, hide_index=True)
+
+# --- TELA 3: PROJETOS ---
 elif sel == "Projetos":
-    st.header("🏗️ Projetos")
-    with st.expander("➕ Nova Obra"):
+    st.title("🏗️ Portfólio de Obras")
+    with st.expander("➕ Cadastrar Nova Obra"):
         with st.form("f_obra", clear_on_submit=True):
-            f_nome = st.text_input("Nome/Cliente")
-            f_vgv = st.number_input("VGV", min_value=0.0)
-            if st.form_submit_button("CADASTRAR"):
+            f_nome = st.text_input("Nome do Cliente / Identificação da Obra")
+            f_vgv = st.number_input("Valor Total do Contrato (VGV)", min_value=0.0)
+            if st.form_submit_button("CRIAR PROJETO"):
                 salvar_obra([len(df_obras)+1, f_nome, "", "Construção", f_vgv, date.today().strftime("%Y-%m-%d"), ""])
+                st.toast("Obra cadastrada!", icon="🏗️")
                 st.rerun()
-    st.dataframe(df_obras, use_container_width=True)
+    st.subheader("Status das Obras")
+    st.dataframe(df_obras, use_container_width=True, hide_index=True)
