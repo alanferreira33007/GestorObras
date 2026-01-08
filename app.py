@@ -12,9 +12,9 @@ import random
 # Bibliotecas PDF (ReportLab)
 from reportlab.lib.pagesizes import A4
 from reportlab.lib import colors
-from reportlab.lib.enums import TA_CENTER, TA_RIGHT, TA_LEFT
+from reportlab.lib.enums import TA_CENTER, TA_RIGHT, TA_LEFT, TA_JUSTIFY
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, Image
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
 from reportlab.pdfgen import canvas
 from reportlab.lib.units import cm
 
@@ -105,7 +105,7 @@ class NumberedCanvas(canvas.Canvas):
         self.line(30, 40, width-30, 40)
         self.setFillColor(colors.darkgrey)
         self.setFont("Helvetica", 8)
-        self.drawString(30, 25, f"{self.footer_txt} • Gerado em {datetime.now().strftime('%d/%m/%Y %H:%M')}")
+        self.drawString(30, 25, f"{self.footer_txt} • Documento gerado eletronicamente em {datetime.now().strftime('%d/%m/%Y às %H:%M')}")
         self.drawRightString(width-30, 25, f"Pág. {self.getPageNumber()} de {page_count}")
 
 def gerar_pdf_detalhado(nome_escopo, periodo_str, vgv, custos, lucro, roi, df_cat, df_lanc):
@@ -122,14 +122,14 @@ def gerar_pdf_detalhado(nome_escopo, periodo_str, vgv, custos, lucro, roi, df_ca
     style_title = ParagraphStyle('CustomTitle', parent=styles['Heading1'], fontSize=16, textColor=colors.white, alignment=TA_LEFT, leading=20)
     style_subtitle = ParagraphStyle('CustomSub', parent=styles['Normal'], fontSize=10, textColor=colors.whitesmoke, alignment=TA_LEFT)
     style_section = ParagraphStyle('Section', parent=styles['Heading2'], fontSize=12, textColor=colors.HexColor("#2D6A4F"), spaceBefore=15, spaceAfter=10)
-    
-    # 1. CABEÇALHO COLORIDO (Header Block)
-    # Título muda dinamicamente se for Visão Geral ou Obra Única
-    titulo_relatorio = "RELATÓRIO DE PORTFÓLIO (CONSOLIDADO)" if "Visão Geral" in nome_escopo else f"RELATÓRIO DE OBRA: {nome_escopo.upper()}"
+    style_normal = ParagraphStyle('NormalAdj', parent=styles['Normal'], fontSize=9, leading=12)
+
+    # 1. CABEÇALHO COLORIDO
+    titulo_relatorio = "RELATÓRIO DE PORTFÓLIO (CONSOLIDADO)" if "Visão Geral" in nome_escopo else f"RELATÓRIO FINANCEIRO: {nome_escopo.upper()}"
     
     header_data = [[
         Paragraph(f"<b>{titulo_relatorio}</b>", style_title),
-        Paragraph(f"Período Analisado:<br/>{periodo_str}", style_subtitle)
+        Paragraph(f"Período de Análise:<br/>{periodo_str}", style_subtitle)
     ]]
     
     t_head = Table(header_data, colWidths=[12*cm, 5*cm])
@@ -139,15 +139,13 @@ def gerar_pdf_detalhado(nome_escopo, periodo_str, vgv, custos, lucro, roi, df_ca
         ('BOTTOMPADDING', (0,0), (-1,-1), 15),
         ('LEFTPADDING', (0,0), (-1,-1), 15),
         ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
-        ('ROUNDEDCORNERS', [6, 6, 6, 6]), # Bordas arredondadas no cabeçalho
+        ('ROUNDEDCORNERS', [6, 6, 6, 6]),
     ]))
     story.append(t_head)
     story.append(Spacer(1, 15))
 
-    # 2. CARTÕES DE RESUMO (KPIs Horizontal)
+    # 2. CARTÕES DE RESUMO (KPIs)
     story.append(Paragraph("Resumo Executivo", style_section))
-    
-    # Prepara dados
     perc_gasto = (custos/vgv*100) if vgv > 0 else 0
     kpi_data = [
         ["VGV (Contrato)", "Custo Realizado", "Lucro Estimado", "ROI", "% Executado"],
@@ -160,8 +158,8 @@ def gerar_pdf_detalhado(nome_escopo, periodo_str, vgv, custos, lucro, roi, df_ca
         ('TEXTCOLOR', (0,0), (-1,0), colors.black),
         ('FONTNAME', (0,0), (-1,0), 'Helvetica-Bold'),
         ('ALIGN', (0,0), (-1,-1), 'CENTER'),
-        ('FONTSIZE', (0,0), (-1,0), 8), # Títulos menores
-        ('FONTSIZE', (0,1), (-1,1), 10), # Valores maiores
+        ('FONTSIZE', (0,0), (-1,0), 8),
+        ('FONTSIZE', (0,1), (-1,1), 10),
         ('BOTTOMPADDING', (0,0), (-1,-1), 8),
         ('TOPPADDING', (0,0), (-1,-1), 8),
         ('GRID', (0,0), (-1,-1), 0.5, colors.white),
@@ -170,12 +168,11 @@ def gerar_pdf_detalhado(nome_escopo, periodo_str, vgv, custos, lucro, roi, df_ca
     story.append(t_kpi)
     story.append(Spacer(1, 15))
 
-    # 3. CATEGORIAS (Se houver)
+    # 3. CATEGORIAS
     if not df_cat.empty:
         story.append(Paragraph("Detalhamento por Categoria de Custo", style_section))
         df_c = df_cat.copy()
         df_c["Valor"] = df_c["Valor"].apply(fmt_moeda)
-        # Adiciona cabeçalho
         cat_data = [["Categoria", "Total Gasto"]] + df_c.values.tolist()
         
         t_cat = Table(cat_data, colWidths=[12*cm, 5*cm], hAlign='LEFT')
@@ -183,46 +180,89 @@ def gerar_pdf_detalhado(nome_escopo, periodo_str, vgv, custos, lucro, roi, df_ca
             ('BACKGROUND', (0,0), (-1,0), colors.HexColor("#40916C")),
             ('TEXTCOLOR', (0,0), (-1,0), colors.white),
             ('FONTNAME', (0,0), (-1,0), 'Helvetica-Bold'),
-            ('ROWBACKGROUNDS', (0,1), (-1,-1), [colors.whitesmoke, colors.white]), # Efeito Zebrado
+            ('ROWBACKGROUNDS', (0,1), (-1,-1), [colors.whitesmoke, colors.white]),
             ('GRID', (0,0), (-1,-1), 0.25, colors.lightgrey),
-            ('ALIGN', (1,0), (1,-1), 'RIGHT'), # Alinha valores à direita
+            ('ALIGN', (1,0), (1,-1), 'RIGHT'),
             ('LEFTPADDING', (0,0), (-1,-1), 6),
         ]))
         story.append(t_cat)
         story.append(Spacer(1, 15))
 
     # 4. EXTRATO DE LANÇAMENTOS
-    story.append(Paragraph(f"Extrato Detalhado de Lançamentos ({len(df_lanc)} registros)", style_section))
+    story.append(Paragraph(f"Extrato Detalhado ({len(df_lanc)} registros)", style_section))
     
     if not df_lanc.empty:
         df_l = df_lanc.copy()
-        # Formata para impressão
         if "Valor" in df_l.columns: df_l["Valor"] = df_l["Valor"].apply(fmt_moeda)
-        
-        # Seleciona colunas úteis para PDF
         cols_pdf = ["Data", "Categoria", "Descrição", "Valor"]
-        # Garante que as colunas existem
         cols_final = [c for c in cols_pdf if c in df_l.columns]
-        
         data_lanc = [cols_final] + df_l[cols_final].values.tolist()
         
-        # Tabela Lançamentos
         t_lanc = Table(data_lanc, colWidths=[2.5*cm, 3.5*cm, 8*cm, 3*cm])
         t_lanc.setStyle(TableStyle([
             ('BACKGROUND', (0,0), (-1,0), colors.HexColor("#2D6A4F")),
             ('TEXTCOLOR', (0,0), (-1,0), colors.white),
             ('FONTNAME', (0,0), (-1,0), 'Helvetica-Bold'),
-            ('FONTSIZE', (0,0), (-1,-1), 8), # Fonte menor para caber
-            ('ROWBACKGROUNDS', (0,1), (-1,-1), [colors.whitesmoke, colors.white]), # Efeito Zebrado
+            ('FONTSIZE', (0,0), (-1,-1), 8),
+            ('ROWBACKGROUNDS', (0,1), (-1,-1), [colors.whitesmoke, colors.white]),
             ('GRID', (0,0), (-1,-1), 0.25, colors.lightgrey),
-            ('ALIGN', (-1,0), (-1,-1), 'RIGHT'), # Valor à direita
+            ('ALIGN', (-1,0), (-1,-1), 'RIGHT'),
             ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
         ]))
         story.append(t_lanc)
     else:
-        story.append(Paragraph("Nenhum lançamento registrado no período.", styles['Normal']))
+        story.append(Paragraph("Nenhum lançamento registrado no período.", style_normal))
 
-    # Constrói o PDF
+    story.append(Spacer(1, 20))
+
+    # =========================================================
+    # 5. FECHAMENTO FINANCEIRO E ASSINATURAS (NOVO)
+    # =========================================================
+    
+    # Caixa Total
+    total_data = [
+        ["FECHAMENTO DO PERÍODO", ""],
+        ["TOTAL ACUMULADO GASTO ATÉ A DATA DE EMISSÃO:", fmt_moeda(custos)]
+    ]
+    
+    t_total = Table(total_data, colWidths=[12*cm, 5*cm], hAlign='RIGHT')
+    t_total.setStyle(TableStyle([
+        # Linha 1 (Título invisível ou discreto)
+        ('FONTSIZE', (0,0), (-1,0), 6),
+        ('TEXTCOLOR', (0,0), (-1,0), colors.white),
+        # Linha 2 (O Total pra valer)
+        ('BACKGROUND', (0,1), (-1,1), colors.HexColor("#1a1a1a")), # Fundo Preto/Cinza Escuro
+        ('TEXTCOLOR', (0,1), (-1,1), colors.white),
+        ('FONTNAME', (0,1), (-1,1), 'Helvetica-Bold'),
+        ('FONTSIZE', (0,1), (-1,1), 12),
+        ('ALIGN', (1,1), (1,1), 'RIGHT'), # Valor à direita
+        ('RIGHTPADDING', (0,0), (-1,-1), 10),
+        ('TOPPADDING', (0,0), (-1,-1), 8),
+        ('BOTTOMPADDING', (0,0), (-1,-1), 8),
+    ]))
+    story.append(t_total)
+    
+    story.append(Spacer(1, 40))
+
+    # Campos de Assinatura
+    sig_data = [
+        ["_______________________________________", "_______________________________________"],
+        ["Gestor Responsável", "Aprovação Financeira"],
+        [f"Data: {date.today().strftime('%d/%m/%Y')}", "Data: ____/____/________"]
+    ]
+    t_sig = Table(sig_data, colWidths=[8.5*cm, 8.5*cm])
+    t_sig.setStyle(TableStyle([
+        ('ALIGN', (0,0), (-1,-1), 'CENTER'),
+        ('FONTNAME', (0,1), (-1,-1), 'Helvetica-Bold'),
+        ('FONTSIZE', (0,1), (-1,-1), 9),
+        ('TOPPADDING', (0,1), (-1,-1), 5),
+    ]))
+    story.append(t_sig)
+
+    # Termo legal
+    story.append(Spacer(1, 20))
+    story.append(Paragraph("<i>* Este relatório é gerado automaticamente pelo sistema GESTOR PRO com base nos lançamentos efetuados até o momento da emissão. Valores sujeitos a conferência.</i>", ParagraphStyle('Legal', parent=styles['Normal'], fontSize=7, textColor=colors.grey, alignment=TA_CENTER)))
+
     doc.build(
         story, 
         canvasmaker=lambda *args, **kwargs: NumberedCanvas(*args, footer_txt="Gestor Pro Enterprise", **kwargs)
@@ -385,14 +425,14 @@ if selected == "Dashboard":
             }
         )
         
-        # Lógica para o Período no PDF
+        # Define período para o relatório
         d_min = df_saidas["Data_DT"].min().strftime("%d/%m/%Y")
         d_max = df_saidas["Data_DT"].max().strftime("%d/%m/%Y")
         periodo_pdf = f"De {d_min} até {d_max}"
         
         st.write("")
         st.markdown("---")
-        # GERAÇÃO DO PDF OTIMIZADA
+        
         pdf_bytes = gerar_pdf_detalhado(
             nome_escopo=selecao,
             periodo_str=periodo_pdf,
