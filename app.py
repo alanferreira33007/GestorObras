@@ -334,25 +334,6 @@ elif sel == "Projetos":
                 feedback_toast("Obra excluída com sucesso", icon="🗑️")
                 st.rerun()
 
-
-    with st.expander("➕ Cadastrar Nova Obra"):
-        with st.form("f_obra", clear_on_submit=True):
-            f_nome = st.text_input("Nome do Cliente / Identificação da Obra")
-            f_vgv = st.number_input("Valor Total do Contrato (VGV)", min_value=0.0)
-
-            if st.form_submit_button("CRIAR PROJETO"):
-                salvar_obra([
-                    len(df_obras) + 1,
-                    f_nome,
-                    "",
-                    "Construção",
-                    f_vgv,
-                    date.today().strftime("%Y-%m-%d"),
-                    ""
-                ])
-                feedback_toast("Obra cadastrada com sucesso", icon="🏗️")
-                st.rerun()
-
     if df_obras.empty:
         st.info("Nenhuma obra cadastrada.")
     else:
