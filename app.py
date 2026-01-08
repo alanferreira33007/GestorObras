@@ -109,7 +109,7 @@ with st.sidebar:
     )
 
 # =================================================
-# INVESTIMENTOS (DASHBOARD + PDF)
+# INVESTIMENTOS
 # =================================================
 if sel == "Investimentos":
 
@@ -127,74 +127,33 @@ if sel == "Investimentos":
         df_fin, obra_sel, vgv
     )
 
-    # KPIs
     c1, c2, c3, c4 = st.columns(4)
 
-    with c1:
-        st.markdown(f"""
-        <div class="card">
-            <div class="card-title">VGV</div>
-            <div class="card-value">{fmt_moeda(vgv)}</div>
-        </div>
-        """, unsafe_allow_html=True)
-
-    with c2:
-        st.markdown(f"""
-        <div class="card">
-            <div class="card-title">Custos</div>
-            <div class="card-value">{fmt_moeda(custos)}</div>
-        </div>
-        """, unsafe_allow_html=True)
-
-    with c3:
-        st.markdown(f"""
-        <div class="card">
-            <div class="card-title">Lucro</div>
-            <div class="card-value">{fmt_moeda(lucro)}</div>
-        </div>
-        """, unsafe_allow_html=True)
-
-    with c4:
-        st.markdown(f"""
-        <div class="card">
-            <div class="card-title">ROI</div>
-            <div class="card-value">{roi:.1f}%</div>
-        </div>
-        """, unsafe_allow_html=True)
+    c1.markdown(f"<div class='card'><div class='card-title'>VGV</div><div class='card-value'>{fmt_moeda(vgv)}</div></div>", unsafe_allow_html=True)
+    c2.markdown(f"<div class='card'><div class='card-title'>Custos</div><div class='card-value'>{fmt_moeda(custos)}</div></div>", unsafe_allow_html=True)
+    c3.markdown(f"<div class='card'><div class='card-title'>Lucro</div><div class='card-value'>{fmt_moeda(lucro)}</div></div>", unsafe_allow_html=True)
+    c4.markdown(f"<div class='card'><div class='card-title'>ROI</div><div class='card-value'>{roi:.1f}%</div></div>", unsafe_allow_html=True)
 
     st.divider()
 
-    # ===============================
-    # BOTÃO PDF (RESTAURADO)
-    # ===============================
-    col_pdf, col_info = st.columns([1, 3])
-
+    col_pdf, col_info = st.columns([1,3])
     with col_pdf:
         if st.button("📄 Exportar Relatório em PDF"):
             pdf = gerar_relatorio_investimentos_pdf(
-                obra_sel,
-                vgv,
-                custos,
-                lucro,
-                roi,
-                df_saidas
+                obra_sel, vgv, custos, lucro, roi, df_saidas
             )
             nome_pdf = f"Relatorio_{obra_sel}_{datetime.now():%Y-%m-%d}.pdf"
             download_pdf_one_click(pdf, nome_pdf)
 
     with col_info:
-        st.caption("📌 O relatório reflete exatamente os dados exibidos no dashboard.")
+        st.caption("📌 Relatório baseado nos dados exibidos acima.")
 
     st.divider()
 
-    # GRÁFICO
     if not df_saidas.empty:
-        st.markdown("### 📉 Distribuição de Custos")
         pie = df_saidas.groupby("Categoria")["Valor"].sum().reset_index()
         fig = px.pie(pie, values="Valor", names="Categoria", hole=0.5)
         st.plotly_chart(fig, use_container_width=True)
-    else:
-        st.info("Nenhuma despesa lançada.")
 
 # =================================================
 # CAIXA
@@ -209,15 +168,11 @@ if sel == "Caixa":
 
     obra_sel = st.selectbox("Obra", lista_obras)
 
-    st.markdown("### ➕ Novo Lançamento")
     with st.form("form_caixa", clear_on_submit=True):
         c1, c2, c3 = st.columns(3)
         data = c1.date_input("Data", date.today())
         tipo = c2.selectbox("Tipo", ["Saída (Despesa)", "Entrada"])
-        cat = c3.selectbox(
-            "Categoria",
-            ["Material", "Mão de Obra", "Serviços", "Impostos", "Outros"]
-        )
+        cat = c3.selectbox("Categoria", ["Material", "Mão de Obra", "Serviços", "Impostos", "Outros"])
 
         c4, c5 = st.columns(2)
         valor = c4.number_input("Valor", min_value=0.0)
@@ -237,44 +192,56 @@ if sel == "Caixa":
 
     st.divider()
 
-    st.markdown("### 📋 Movimentações")
     df_vis = df_fin[df_fin["Obra Vinculada"] == obra_sel].copy()
-
-    if df_vis.empty:
-        st.info("Nenhuma movimentação.")
-    else:
+    if not df_vis.empty:
         df_vis["Data"] = pd.to_datetime(df_vis["Data"]).dt.strftime("%d/%m/%Y")
         df_vis["Valor"] = df_vis["Valor"].apply(fmt_moeda)
-
         st.dataframe(
-            df_vis[["Data", "Tipo", "Categoria", "Descrição", "Valor"]],
+            df_vis[["Data","Tipo","Categoria","Descrição","Valor"]],
             use_container_width=True,
             hide_index=True
         )
 
 # =================================================
-# PROJETOS
+# PROJETOS (CADASTRO COMPLETO RESTAURADO)
 # =================================================
 if sel == "Projetos":
 
     st.markdown("# 🏗️ Projetos / Obras")
 
-    with st.expander("➕ Cadastrar Nova Obra"):
-        with st.form("form_obra", clear_on_submit=True):
-            nome = st.text_input("Nome da obra")
-            vgv = st.number_input("VGV", min_value=0.0)
-            if st.form_submit_button("Cadastrar"):
-                salvar_obra([
-                    len(df_obras) + 1,
-                    nome,
-                    "",
-                    "Casa",
-                    vgv,
-                    date.today().strftime("%Y-%m-%d"),
-                    "Planejamento"
-                ])
-                st.success("Obra cadastrada")
-                st.rerun()
+    with st.expander("➕ Cadastrar Nova Obra", expanded=False):
+        with st.form("form_obra_completo", clear_on_submit=True):
+
+            c1, c2 = st.columns(2)
+            nome = c1.text_input("Identificação da Obra *")
+            tipo = c2.selectbox("Tipo de Imóvel", ["Casa térrea","Casa duplex","Apartamento","Outro"])
+
+            c3, c4 = st.columns(2)
+            local = c3.text_input("Localização")
+            status = c4.selectbox("Status", ["Planejamento","Em execução","Finalizada","Vendida"])
+
+            c5, c6 = st.columns(2)
+            vgv = c5.number_input("VGV *", min_value=0.0, step=1000.0)
+            custo_prev = c6.number_input("Custo estimado", min_value=0.0, step=1000.0)
+
+            inicio = st.date_input("Data de início", value=date.today())
+
+            if st.form_submit_button("Cadastrar Obra"):
+                if not nome or vgv <= 0:
+                    st.error("Informe o nome da obra e um VGV válido.")
+                else:
+                    salvar_obra([
+                        len(df_obras) + 1,
+                        nome,
+                        local,
+                        tipo,
+                        vgv,
+                        inicio.strftime("%Y-%m-%d"),
+                        status,
+                        custo_prev
+                    ])
+                    st.success("Obra cadastrada com sucesso")
+                    st.rerun()
 
     st.divider()
 
