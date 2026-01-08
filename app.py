@@ -1,5 +1,3 @@
-
-
 import streamlit as st
 import pandas as pd
 import gspread
@@ -79,8 +77,7 @@ def safe_float(x) -> float:
 # ==============================================================================
 class EnterpriseCanvas(canvas.Canvas):
     def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self._saved_page_states = []
+        super().__init__(*args, **kwargs)<br>        self._saved_page_states = []
 
     def showPage(self):
         self._saved_page_states.append(dict(self.__dict__))
@@ -124,7 +121,6 @@ def gerar_pdf_empresarial(escopo, periodo, vgv, custos, lucro, roi, df_cat, df_l
     style_h2 = ParagraphStyle('SecTitle', parent=styles['Heading2'], fontSize=11, textColor=colors.HexColor("#1B4332"), spaceBefore=15, spaceAfter=8, fontName='Helvetica-Bold')
     
     # --- 1. CABEÇALHO DINÂMICO ---
-    # Define se é Portfólio ou Obra Individual
     if "Visão Geral" in escopo:
         titulo_principal = "RELATÓRIO DE PORTFÓLIO (CONSOLIDADO)"
     else:
@@ -226,8 +222,6 @@ def gerar_pdf_empresarial(escopo, periodo, vgv, custos, lucro, roi, df_cat, df_l
 
     # --- 5. BLOCO DE TOTALIZAÇÃO FINAL (DESTAQUE) ---
     bloco_total = []
-    
-    # Texto Explícito sobre o Total Gasto
     msg_total = "TOTAL ACUMULADO GASTO (ATÉ EMISSÃO)"
     
     total_lbl = Paragraph(f"<b>{msg_total}</b>", ParagraphStyle('TLabel', parent=styles['Normal'], textColor=colors.black, fontSize=10, alignment=TA_RIGHT))
@@ -236,7 +230,7 @@ def gerar_pdf_empresarial(escopo, periodo, vgv, custos, lucro, roi, df_cat, df_l
     data_total = [[total_lbl, total_val]]
     t_total = Table(data_total, colWidths=[12*cm, 5*cm])
     t_total.setStyle(TableStyle([
-        ('BACKGROUND', (1,0), (1,0), colors.HexColor("#1A1C1E")), # Valor Preto/Escuro
+        ('BACKGROUND', (1,0), (1,0), colors.HexColor("#1A1C1E")), 
         ('BACKGROUND', (0,0), (0,0), colors.white), 
         ('LINEBELOW', (0,0), (1,0), 2, colors.HexColor("#1A1C1E")),
         ('TOPPADDING', (0,0), (-1,-1), 12),
@@ -270,6 +264,7 @@ def gerar_pdf_empresarial(escopo, periodo, vgv, custos, lucro, roi, df_cat, df_l
 # ==============================================================================
 # 4. DADOS E CONEXÃO
 # ==============================================================================
+# IMPORTANTE: Estas colunas devem bater com as colunas do seu Google Sheets
 OBRAS_COLS = ["ID", "Cliente", "Endereço", "Status", "Valor Total", "Data Início", "Prazo"]
 FIN_COLS   = ["Data", "Tipo", "Categoria", "Descrição", "Valor", "Obra Vinculada"]
 CATS       = ["Material", "Mão de Obra", "Serviços", "Administrativo", "Impostos", "Outros"]
@@ -447,16 +442,85 @@ elif sel == "Financeiro":
         dview = df_fin[df_fin["Obra Vinculada"].isin(fob)] if fob else df_fin
         st.dataframe(dview.sort_values("Data_DT", ascending=False), use_container_width=True, hide_index=True)
 
-# --- OBRAS ---
+# --- OBRAS (ATUALIZADO E MELHORADO) ---
 elif sel == "Obras":
-    st.title("Obras")
-    c1, c2 = st.columns([1,2])
-    with c1:
-        with st.form("fobra"):
-            nc = st.text_input("Nome")
-            ne = st.text_input("Endereço")
-            nv = st.number_input("VGV", min_value=0.0)
-            st.form_submit_button("Cadastrar") 
-            # (Lógica simplificada para visualização, manter a sua de insert)
-    with c2:
-        st.dataframe(df_obras, use_container_width=True, hide_index=True, column_config={"Valor Total": st.column_config.NumberColumn(format="R$ %.2f")})
+    st.title("📂 Gestão de Obras")
+    st.markdown("---")
+
+    # 1. FORMULÁRIO DE CADASTRO MELHORADO
+    st.subheader("Novo Cadastro")
+    with st.container():
+        # Moldura visual (Form)
+        with st.form("f_obra_simples", clear_on_submit=True):
+            
+            # Linha 1: Identificação Principal
+            c1, c2 = st.columns([3, 1])
+            nome_obra = c1.text_input("Nome do Empreendimento / Cliente", placeholder="Ex: Casa Jd. Imperial - Lote 12")
+            status = c2.selectbox("Status", ["Planejamento", "Em Obras", "Acabamento", "Finalizada", "Vendida"])
+
+            # Linha 2: Endereço
+            endereco = st.text_input("Endereço / Localização", placeholder="Rua, Bairro, Cidade")
+
+            # Linha 3: Dados Financeiros e Prazos
+            c3, c4, c5 = st.columns(3)
+            # VGV = Valor Geral de Venda (quanto vale a casa)
+            valor_venda = c3.number_input("Valor de Venda (VGV)", min_value=0.0, step=1000.0, format="%.2f")
+            data_inicio = c4.date_input("Data de Início", value=date.today())
+            prazo = c5.text_input("Previsão de Entrega", placeholder="Ex: Dezembro/2024")
+
+            st.markdown("<br>", unsafe_allow_html=True)
+            
+            # Botão de Ação
+            if st.form_submit_button("✅ CADASTRAR OBRA", use_container_width=True):
+                if not nome_obra:
+                    st.warning("Por favor, preencha o nome da obra.")
+                else:
+                    try:
+                        conn = get_conn()
+                        ws = conn.worksheet("Obras")
+
+                        # Lógica para gerar ID automático
+                        ids_existentes = pd.to_numeric(df_obras["ID"], errors="coerce").fillna(0)
+                        novo_id = int(ids_existentes.max()) + 1 if not ids_existentes.empty else 1
+
+                        # Salvando na ordem exata das suas colunas originais
+                        ws.append_row([
+                            novo_id,
+                            nome_obra.strip(),
+                            endereco.strip(),
+                            status,
+                            float(valor_venda),
+                            data_inicio.strftime("%Y-%m-%d"),
+                            prazo.strip()
+                        ])
+                        
+                        st.toast(f"Obra '{nome_obra}' cadastrada com sucesso!", icon="🏗️")
+                        st.cache_data.clear() # Limpa cache para atualizar a tabela
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"Erro ao salvar: {e}")
+
+    # 2. TABELA DE VISUALIZAÇÃO
+    st.markdown("---")
+    st.subheader("📋 Obras em Carteira")
+    
+    if not df_obras.empty:
+        # Prepara visualização
+        df_show = df_obras.copy()
+        
+        # Garante que VGV é número para formatar corretamente
+        df_show["Valor Total"] = pd.to_numeric(df_show["Valor Total"], errors="coerce").fillna(0)
+        
+        st.dataframe(
+            df_show, 
+            use_container_width=True, 
+            hide_index=True,
+            column_config={
+                "ID": st.column_config.NumberColumn("Cod.", width="small"),
+                "Valor Total": st.column_config.NumberColumn("Valor de Venda", format="R$ %.2f"),
+                "Data Início": st.column_config.DateColumn("Início", format="DD/MM/YYYY"),
+                "Status": st.column_config.SelectboxColumn("Status", options=["Planejamento", "Em Obras", "Finalizada"], disabled=True)
+            }
+        )
+    else:
+        st.info("Nenhuma obra cadastrada ainda.")
