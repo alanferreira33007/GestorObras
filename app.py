@@ -308,11 +308,13 @@ def calcular_indicadores(vgv: float, df_saidas: pd.DataFrame) -> dict:
     """
     Retorna indicadores financeiros padronizados.
     """
-    custos = float(df_saidas["Valor"].sum()) if not df_saidas.empty else 0.0
-    lucro = vgv - custos
+    indicadores = calcular_indicadores(vgv, df_saidas)
 
-    roi = (lucro / custos * 100) if custos > 0 else 0.0
-    perc_vgv = (custos / vgv * 100) if vgv > 0 else 0.0
+custos = indicadores["custos"]
+lucro = indicadores["lucro"]
+roi = indicadores["roi"]
+perc_vgv = indicadores["perc_vgv"]
+
 
     return {
         "custos": custos,
