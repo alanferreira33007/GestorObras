@@ -1,3 +1,4 @@
+
 import streamlit as st
 import pandas as pd
 import gspread
@@ -294,42 +295,6 @@ def ensure_cols(df: pd.DataFrame, cols: list[str]) -> pd.DataFrame:
             df[c] = None
     return df[cols]
 
-def normalize_dates(df: pd.DataFrame, col_data: str = "Data") -> pd.DataFrame:
-    """
-    Garante colunas:
-    - Data_DT (datetime)
-    - Data_BR (dd/mm/yyyy)
-    """
-    if col_data not in df.columns:
-        df["Data_DT"] = pd.NaT
-        df["Data_BR"] = ""
-        return df
-def calcular_indicadores(vgv: float, df_saidas: pd.DataFrame) -> dict:
-    """
-    Retorna indicadores financeiros padronizados.
-    """
-    indicadores = calcular_indicadores(vgv, df_saidas)
-
-custos = indicadores["custos"]
-lucro = indicadores["lucro"]
-roi = indicadores["roi"]
-perc_vgv = indicadores["perc_vgv"]
-
-
-    return {
-        "custos": custos,
-        "lucro": lucro,
-        "roi": roi,
-        "perc_vgv": perc_vgv,
-    }
-
-
-    df["Data_DT"] = pd.to_datetime(df[col_data], errors="coerce")
-    df["Data_BR"] = df["Data_DT"].dt.strftime("%d/%m/%Y")
-    df.loc[df["Data_DT"].isna(), "Data_BR"] = ""
-
-    return df
-
 
 # ----------------------------
 # 3) DB (Google Sheets)
@@ -364,7 +329,9 @@ def carregar_dados():
             df_f = pd.DataFrame(columns=FIN_COLS)
         df_f = ensure_cols(df_f, FIN_COLS)
         df_f["Valor"] = pd.to_numeric(df_f["Valor"], errors="coerce").fillna(0)
-        df_f = normalize_dates(df_f, "Data")
+        df_f["Data_DT"] = pd.to_datetime(df_f["Data"], errors="coerce")
+        df_f["Data_BR"] = df_f["Data_DT"].dt.strftime("%d/%m/%Y")
+        df_f.loc[df_f["Data_DT"].isna(), "Data_BR"] = ""
 
         # Normaliza strings
         for col in ["Tipo", "Categoria", "Descrição", "Obra Vinculada"]:
