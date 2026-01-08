@@ -304,6 +304,23 @@ def normalize_dates(df: pd.DataFrame, col_data: str = "Data") -> pd.DataFrame:
         df["Data_DT"] = pd.NaT
         df["Data_BR"] = ""
         return df
+def calcular_indicadores(vgv: float, df_saidas: pd.DataFrame) -> dict:
+    """
+    Retorna indicadores financeiros padronizados.
+    """
+    custos = float(df_saidas["Valor"].sum()) if not df_saidas.empty else 0.0
+    lucro = vgv - custos
+
+    roi = (lucro / custos * 100) if custos > 0 else 0.0
+    perc_vgv = (custos / vgv * 100) if vgv > 0 else 0.0
+
+    return {
+        "custos": custos,
+        "lucro": lucro,
+        "roi": roi,
+        "perc_vgv": perc_vgv,
+    }
+
 
     df["Data_DT"] = pd.to_datetime(df[col_data], errors="coerce")
     df["Data_BR"] = df["Data_DT"].dt.strftime("%d/%m/%Y")
