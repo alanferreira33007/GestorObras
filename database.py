@@ -31,9 +31,6 @@ FIN_COLS = [
 # =================================================
 @st.cache_resource
 def obter_db():
-    """
-    Retorna a planilha GestorObras_DB já autenticada.
-    """
     creds_json = json.loads(
         st.secrets["gcp_service_account"]["json_content"],
         strict=False
@@ -112,9 +109,6 @@ def carregar_dados():
 # SALVAR DADOS
 # =================================================
 def salvar_financeiro(lista_dados):
-    """
-    Salva um lançamento financeiro na aba Financeiro.
-    """
     db = obter_db()
     db.worksheet("Financeiro").append_row(
         lista_dados,
@@ -123,9 +117,6 @@ def salvar_financeiro(lista_dados):
     st.cache_data.clear()
 
 def salvar_obra(lista_dados):
-    """
-    Salva uma nova obra na aba Obras.
-    """
     db = obter_db()
     db.worksheet("Obras").append_row(
         lista_dados,
@@ -134,13 +125,9 @@ def salvar_obra(lista_dados):
     st.cache_data.clear()
 
 # =================================================
-# EXCLUSÃO DE OBRA
+# EXCLUSÃO DE OBRA (ESTÁVEL)
 # =================================================
 def excluir_obra(nome_obra):
-    """
-    Remove uma obra da aba Obras,
-    regravando todas as linhas, exceto a obra excluída.
-    """
     db = obter_db()
     ws = db.worksheet("Obras")
 
@@ -161,13 +148,9 @@ def excluir_obra(nome_obra):
     st.cache_data.clear()
 
 # =================================================
-# EXCLUSÃO DE LANÇAMENTO FINANCEIRO
+# EXCLUSÃO DE LANÇAMENTO FINANCEIRO (ESTÁVEL)
 # =================================================
 def excluir_lancamento(data, tipo, categoria, descricao, valor, obra):
-    """
-    Remove UM lançamento financeiro específico da aba Financeiro.
-    Remove apenas a primeira ocorrência encontrada.
-    """
     db = obter_db()
     ws = db.worksheet("Financeiro")
 
@@ -192,61 +175,6 @@ def excluir_lancamento(data, tipo, categoria, descricao, valor, obra):
             continue
 
         novas_linhas.append(linha)
-
-    ws.clear()
-    ws.append_row(cabecalho)
-    if novas_linhas:
-        ws.append_rows(novas_linhas, value_input_option="USER_ENTERED")
-
-    st.cache_data.clear()
-
-# =================================================
-# EDIÇÃO DE OBRA (CORRIGIDA)
-# =================================================
-def editar_obra(id_obra, cliente, endereco, status, valor_total, data_inicio, prazo):
-    """
-    Atualiza uma obra existente na aba Obras, pelo ID.
-    Todos os valores são convertidos para tipos simples
-    (str / float), evitando erro de serialização JSON.
-    """
-    db = obter_db()
-    ws = db.worksheet("Obras")
-
-    dados = ws.get_all_values()
-    cabecalho = dados[0]
-    linhas = dados[1:]
-
-    novas_linhas = []
-
-    # -------------------------
-    # NORMALIZAÇÃO SEGURA
-    # -------------------------
-    id_obra = str(id_obra)
-    cliente = str(cliente)
-    endereco = str(endereco)
-    status = str(status)
-    valor_total = float(valor_total) if valor_total else 0.0
-    prazo = str(prazo)
-
-    if hasattr(data_inicio, "strftime"):
-        data_inicio = data_inicio.strftime("%Y-%m-%d")
-    else:
-        data_inicio = str(data_inicio)
-
-    for linha in linhas:
-        if str(linha[0]) == id_obra:
-            novas_linhas.append([
-                id_obra,
-                cliente,
-                endereco,
-                status,
-                valor_total,
-                data_inicio,
-                prazo
-            ])
-        else:
-            # garante que linhas antigas não carreguem objetos inválidos
-            novas_linhas.append([str(x) for x in linha])
 
     ws.clear()
     ws.append_row(cabecalho)
