@@ -180,7 +180,6 @@ def load_data():
         # Obras
         df_o = pd.DataFrame(db.worksheet("Obras").get_all_records())
         if df_o.empty:
-            # Cria Obra Demo se vazio
             df_o = pd.DataFrame([{
                 "ID": 1, "Cliente": "Obra Modelo (Demo)", "Endereço": "Rua Exemplo, 100", 
                 "Status": "Em Andamento", "Valor Total": 500000.0, "Data Início": "2024-01-01", "Prazo": "2024-12-31"
@@ -192,7 +191,7 @@ def load_data():
         # Financeiro
         df_f = pd.DataFrame(db.worksheet("Financeiro").get_all_records())
         
-        # SE VAZIO, CRIA DADOS FAKES PARA O GRÁFICO APARECER
+        # MODO DEMO: Se vazio, cria dados
         if df_f.empty or len(df_f) < 2:
             st.toast("Modo Demo: Gerando dados fictícios para visualização", icon="ℹ️")
             fake_data = []
@@ -267,7 +266,6 @@ with st.sidebar:
 
 # --- PAGINA: DASHBOARD ---
 if selected == "Dashboard":
-    # 1. Header e Filtros
     col_tit, col_sel = st.columns([2, 1])
     with col_tit:
         st.title("Visão Geral")
@@ -283,8 +281,6 @@ if selected == "Dashboard":
     vgv = row_obra["Valor Total"]
     
     df_f_obra = df_fin[df_fin["Obra Vinculada"] == obra_atual].copy()
-    
-    # Filtro seguro para pegar Saídas (Case insensitive e tratando NaNs)
     df_saidas = df_f_obra[df_f_obra["Tipo"].astype(str).str.contains("Saída|Despesa", case=False, na=False)].copy()
     
     custos = df_saidas["Valor"].sum()
@@ -307,13 +303,12 @@ if selected == "Dashboard":
         with st.container(border=True):
             st.metric("ROI", f"{roi:.1f}%")
 
-    # 3. Gráficos (FORÇANDO EXIBIÇÃO)
+    # 3. Gráficos
     col_main, col_side = st.columns([2, 1])
     
     with col_main:
         with st.container(border=True):
             st.subheader("Fluxo de Caixa Acumulado")
-            # Mesmo se vazio, cria um gráfico zerado para não ficar buraco
             if not df_saidas.empty:
                 df_evo = df_saidas.sort_values("Data_DT")
                 df_evo["Acumulado"] = df_evo["Valor"].cumsum()
@@ -330,12 +325,18 @@ if selected == "Dashboard":
             st.subheader("Categorias")
             if not df_saidas.empty:
                 df_cat = df_saidas.groupby("Categoria", as_index=False)["Valor"].sum()
-                fig2 = px.donut(df_cat, values="Valor", names="Categoria", hole=0.6, color_discrete_sequence=px.colors.sequential.Greens_r)
+                # CORREÇÃO AQUI: px.pie ao invés de px.donut
+                fig2 = px.pie(
+                    df_cat, 
+                    values="Valor", 
+                    names="Categoria", 
+                    hole=0.6, 
+                    color_discrete_sequence=px.colors.sequential.Greens_r
+                )
                 fig2.update_layout(showlegend=False, margin=dict(t=0, l=0, r=0, b=0), height=250)
                 fig2.add_annotation(text=f"{len(df_cat)}<br>Cats", x=0.5, y=0.5, showarrow=False, font_size=14)
                 st.plotly_chart(fig2, use_container_width=True)
                 
-                # Mini tabela
                 st.dataframe(
                     df_cat.sort_values("Valor", ascending=False).head(3), 
                     use_container_width=True, 
