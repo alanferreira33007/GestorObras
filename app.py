@@ -667,7 +667,3 @@ elif sel == "Projetos":
         df_o_ex = df_obras[["Cliente", "Endereço", "Status", "Valor Total", "Data Início", "Prazo"]].copy()
         df_o_ex["Valor Total"] = df_o_ex["Valor Total"].apply(fmt_moeda)
         st.dataframe(df_o_ex, use_container_width=True, hide_index=True)
-
-
-
-Vamos melhorar esse código
