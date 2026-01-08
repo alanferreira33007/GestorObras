@@ -68,3 +68,37 @@ def excluir_obra(nome_obra):
     ws_obras.clear()
     ws_obras.append_row(cabecalho)
     ws_obras.append_rows(novas_linhas)
+
+def excluir_lancamento(data, tipo, categoria, descricao, valor, obra):
+    """
+    Remove um lançamento financeiro específico da aba FINANCEIRO
+    """
+
+    sh = client.open_by_key(SPREADSHEET_ID)
+    ws = sh.worksheet("FINANCEIRO")
+
+    dados = ws.get_all_values()
+    cabecalho = dados[0]
+    linhas = dados[1:]
+
+    novas_linhas = []
+    removido = False
+
+    for linha in linhas:
+        if (
+            linha[0] == data and
+            linha[1] == tipo and
+            linha[2] == categoria and
+            linha[3] == descricao and
+            str(linha[4]) == str(valor) and
+            linha[5] == obra and
+            not removido
+        ):
+            removido = True
+            continue
+        novas_linhas.append(linha)
+
+    ws.clear()
+    ws.append_row(cabecalho)
+    ws.append_rows(novas_linhas)
+
