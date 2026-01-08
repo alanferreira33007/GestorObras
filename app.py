@@ -1,12 +1,12 @@
 import streamlit as st
 import pandas as pd
 import plotly.express as px
-from datetime import date
+from datetime import date, datetime
 from streamlit_option_menu import option_menu
 import time
 
 from database import carregar_dados, salvar_financeiro, salvar_obra
-from relatorios import fmt_moeda
+from relatorios import fmt_moeda, gerar_relatorio_investimentos_pdf, download_pdf_one_click
 
 # =================================================
 # CONFIGURAÇÃO
@@ -17,17 +17,13 @@ st.set_page_config(
 )
 
 # =================================================
-# ESTILO GLOBAL (DASHBOARD)
+# ESTILO GLOBAL
 # =================================================
 st.markdown("""
 <style>
-.stApp {
-    background-color: #F8F9FA;
-}
+.stApp { background-color: #F8F9FA; }
 
-h1, h2, h3 {
-    color: #1B4332;
-}
+h1, h2, h3 { color: #1B4332; }
 
 .card {
     background-color: #FFFFFF;
@@ -40,7 +36,6 @@ h1, h2, h3 {
 .card-title {
     font-size: 14px;
     color: #6C757D;
-    margin-bottom: 6px;
 }
 
 .card-value {
@@ -83,8 +78,8 @@ if "auth" not in st.session_state:
     st.session_state["auth"] = False
 
 if not st.session_state["auth"]:
-    col1, col2, col3 = st.columns([1,1,1])
-    with col2:
+    c1, c2, c3 = st.columns([1,1,1])
+    with c2:
         st.markdown("## 🔐 Gestor Pro")
         senha = st.text_input("Senha de acesso", type="password")
         if st.button("Entrar"):
@@ -114,7 +109,7 @@ with st.sidebar:
     )
 
 # =================================================
-# INVESTIMENTOS (DASHBOARD)
+# INVESTIMENTOS (DASHBOARD + PDF)
 # =================================================
 if sel == "Investimentos":
 
@@ -169,16 +164,34 @@ if sel == "Investimentos":
 
     st.divider()
 
-    # Gráfico
+    # ===============================
+    # BOTÃO PDF (RESTAURADO)
+    # ===============================
+    col_pdf, col_info = st.columns([1, 3])
+
+    with col_pdf:
+        if st.button("📄 Exportar Relatório em PDF"):
+            pdf = gerar_relatorio_investimentos_pdf(
+                obra_sel,
+                vgv,
+                custos,
+                lucro,
+                roi,
+                df_saidas
+            )
+            nome_pdf = f"Relatorio_{obra_sel}_{datetime.now():%Y-%m-%d}.pdf"
+            download_pdf_one_click(pdf, nome_pdf)
+
+    with col_info:
+        st.caption("📌 O relatório reflete exatamente os dados exibidos no dashboard.")
+
+    st.divider()
+
+    # GRÁFICO
     if not df_saidas.empty:
         st.markdown("### 📉 Distribuição de Custos")
         pie = df_saidas.groupby("Categoria")["Valor"].sum().reset_index()
-        fig = px.pie(
-            pie,
-            values="Valor",
-            names="Categoria",
-            hole=0.5
-        )
+        fig = px.pie(pie, values="Valor", names="Categoria", hole=0.5)
         st.plotly_chart(fig, use_container_width=True)
     else:
         st.info("Nenhuma despesa lançada.")
@@ -201,7 +214,10 @@ if sel == "Caixa":
         c1, c2, c3 = st.columns(3)
         data = c1.date_input("Data", date.today())
         tipo = c2.selectbox("Tipo", ["Saída (Despesa)", "Entrada"])
-        cat = c3.selectbox("Categoria", ["Material", "Mão de Obra", "Serviços", "Impostos", "Outros"])
+        cat = c3.selectbox(
+            "Categoria",
+            ["Material", "Mão de Obra", "Serviços", "Impostos", "Outros"]
+        )
 
         c4, c5 = st.columns(2)
         valor = c4.number_input("Valor", min_value=0.0)
