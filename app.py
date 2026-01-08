@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
-from datetime import date
+from datetime import date, datetime
 from streamlit_option_menu import option_menu
 
 # Nossas peças separadas
@@ -36,7 +36,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ----------------------------
-# LOGIN (SIMPLIFICADO)
+# LOGIN
 # ----------------------------
 if "authenticated" not in st.session_state:
     st.session_state["authenticated"] = False
@@ -61,7 +61,7 @@ df_obras, df_fin = carregar_dados()
 lista_obras = df_obras["Cliente"].unique().tolist() if not df_obras.empty else []
 
 # ----------------------------
-# SIDEBAR / MENU
+# SIDEBAR
 # ----------------------------
 with st.sidebar:
     st.image("https://cdn-icons-png.flaticon.com/512/4222/4222031.png", width=80)
@@ -81,7 +81,7 @@ with st.sidebar:
         st.rerun()
 
 # ----------------------------
-# TRAVA DE SEGURANÇA (BUG CORRIGIDO)
+# TRAVA DE SEGURANÇA
 # ----------------------------
 if df_obras.empty and sel != "Projetos":
     st.info(
@@ -99,6 +99,10 @@ if sel == "Investimentos":
     if not lista_obras:
         st.info("Nenhuma obra encontrada. Cadastre em 'Projetos'.")
     else:
+        # Estado para controle do PDF
+        if "gerando_pdf" not in st.session_state:
+            st.session_state["gerando_pdf"] = False
+
         c_obra, c_rel = st.columns([3, 1])
         obra_sel = c_obra.selectbox("Selecione a unidade de análise:", lista_obras)
 
@@ -113,11 +117,26 @@ if sel == "Investimentos":
         roi = (lucro / custos * 100) if custos > 0 else 0
         perc_gasto = (custos / vgv) if vgv > 0 else 0
 
-        if c_rel.button("⬇️ Gerar PDF"):
-            pdf = gerar_relatorio_investimentos_pdf(
-                obra_sel, vgv, custos, lucro, roi, df_saidas
-            )
-            download_pdf_one_click(pdf, f"Dashboard_{obra_sel}.pdf")
+        pode_gerar_pdf = not df_saidas.empty
+
+        # ----------------------------
+        # BOTÃO GERAR PDF (MELHORADO)
+        # ----------------------------
+        if c_rel.button(
+            "⬇️ Gerar PDF",
+            disabled=not pode_gerar_pdf or st.session_state["gerando_pdf"]
+        ):
+            st.session_state["gerando_pdf"] = True
+
+            with st.spinner("Gerando relatório em PDF..."):
+                pdf = gerar_relatorio_investimentos_pdf(
+                    obra_sel, vgv, custos, lucro, roi, df_saidas
+                )
+
+                nome_pdf = f"Relatorio_{obra_sel}_{datetime.now():%Y-%m-%d}.pdf"
+                download_pdf_one_click(pdf, nome_pdf)
+
+            st.session_state["gerando_pdf"] = False
 
         st.divider()
 
