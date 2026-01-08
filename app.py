@@ -222,6 +222,119 @@ elif sel == "Caixa":
 elif sel == "Projetos":
     st.title("🏗️ Portfólio de Obras")
 
+    # =================================================
+    # CADASTRO DE NOVA OBRA (CASAS PARA VENDA)
+    # =================================================
+    with st.expander("➕ Cadastrar Nova Obra", expanded=False):
+        with st.form("f_obra", clear_on_submit=True):
+
+            c1, c2 = st.columns(2)
+            f_nome = c1.text_input("Identificação da Obra / Casa *")
+            f_tipo = c2.selectbox(
+                "Tipo de Imóvel",
+                ["Casa térrea", "Casa duplex", "Apartamento", "Outro"]
+            )
+
+            c3, c4 = st.columns(2)
+            f_local = c3.text_input("Localização (bairro / cidade)")
+            f_status = c4.selectbox(
+                "Status da Obra",
+                ["Planejamento", "Em execução", "Finalizada", "Vendida"]
+            )
+
+            c5, c6 = st.columns(2)
+            f_vgv = c5.number_input(
+                "Valor de Venda Previsto (VGV) *",
+                min_value=0.0,
+                step=1000.0
+            )
+            f_custo_prev = c6.number_input(
+                "Custo Estimado Inicial",
+                min_value=0.0,
+                step=1000.0
+            )
+
+            f_inicio = st.date_input(
+                "Data de Início da Obra",
+                value=date.today()
+            )
+
+            if st.form_submit_button("CRIAR OBRA"):
+                if not f_nome.strip():
+                    st.error("⚠️ Informe a identificação da obra.")
+                elif f_vgv <= 0:
+                    st.error("⚠️ O VGV deve ser maior que zero.")
+                else:
+                    salvar_obra([
+                        len(df_obras) + 1,                  # ID
+                        f_nome.strip(),                     # Cliente / Obra
+                        f_local.strip(),                    # Localização
+                        f_tipo,                             # Tipo
+                        f_vgv,                              # VGV
+                        f_inicio.strftime("%Y-%m-%d"),      # Data início
+                        f_status,                           # Status
+                        f_custo_prev                        # Custo estimado
+                    ])
+                    feedback_toast("Obra cadastrada com sucesso", icon="🏗️")
+                    st.rerun()
+
+    st.divider()
+
+    # =================================================
+    # LISTAGEM DE OBRAS
+    # =================================================
+    if df_obras.empty:
+        st.info("Nenhuma obra cadastrada.")
+        st.stop()
+
+    st.subheader("📋 Obras Cadastradas")
+    st.dataframe(df_obras, use_container_width=True)
+
+    st.divider()
+
+    # =================================================
+    # EXCLUSÃO SEGURA DE OBRA
+    # =================================================
+    st.subheader("🗑️ Excluir Obra Cadastrada por Engano")
+
+    obra_excluir = st.selectbox(
+        "Selecione a obra que deseja excluir",
+        df_obras["Cliente"].tolist()
+    )
+
+    # Verifica se há lançamentos financeiros vinculados
+    df_mov_obra = df_fin[df_fin["Obra Vinculada"] == obra_excluir]
+
+    if not df_mov_obra.empty:
+        st.warning(
+            "⚠️ Esta obra possui movimentações financeiras e não pode ser excluída."
+        )
+    else:
+        st.error(
+            "🚨 ATENÇÃO: esta ação é irreversível."
+        )
+        confirmacao = st.text_input(
+            f'Digite exatamente "{obra_excluir}" para confirmar a exclusão'
+        )
+
+        if st.button("❌ EXCLUIR DEFINITIVAMENTE"):
+            if confirmacao != obra_excluir:
+                st.error("Confirmação incorreta. Exclusão cancelada.")
+            else:
+                df_obras_filtrado = df_obras[
+                    df_obras["Cliente"] != obra_excluir
+                ]
+
+                # Regrava toda a base de obras
+                salvar_obra(
+                    df_obras_filtrado.values.tolist(),
+                    sobrescrever=True
+                )
+
+                feedback_toast("Obra excluída com sucesso", icon="🗑️")
+                st.rerun()
+
+
     with st.expander("➕ Cadastrar Nova Obra"):
         with st.form("f_obra", clear_on_submit=True):
             f_nome = st.text_input("Nome do Cliente / Identificação da Obra")
