@@ -183,8 +183,31 @@ if sel == "Investimentos":
 elif sel == "Caixa":
     st.title("💸 Fluxo de Caixa")
 
-    with st.expander("📝 Novo Lançamento", expanded=False):
+    # ===============================
+    # SELEÇÃO DA OBRA
+    # ===============================
+    obra_sel = st.selectbox(
+        "Selecione a obra para lançamento",
+        lista_obras if lista_obras else ["Geral"]
+    )
+
+    st.divider()
+
+    # ===============================
+    # CONTROLE DE ABERTURA DO FORM
+    # ===============================
+    if "abrir_form_caixa" not in st.session_state:
+        st.session_state["abrir_form_caixa"] = False
+
+    if st.button("➕ Efetuar Lançamento"):
+        st.session_state["abrir_form_caixa"] = True
+
+    # ===============================
+    # FORMULÁRIO DE LANÇAMENTO
+    # ===============================
+    if st.session_state["abrir_form_caixa"]:
         with st.form("f_caixa", clear_on_submit=True):
+
             c1, c2, c3 = st.columns(3)
             f_data = c1.date_input("Data", value=date.today())
             f_tipo = c2.selectbox("Tipo", ["Saída (Despesa)", "Entrada"])
@@ -194,27 +217,35 @@ elif sel == "Caixa":
             )
 
             c4, c5 = st.columns(2)
-            f_obra = c4.selectbox("Obra", lista_obras if lista_obras else ["Geral"])
-            f_valor = c5.number_input("Valor R$", min_value=0.0)
-            f_desc = st.text_input("Descrição")
+            f_valor = c4.number_input("Valor R$", min_value=0.0)
+            f_desc = c5.text_input("Descrição")
 
-            if st.form_submit_button("SALVAR NO GOOGLE SHEETS"):
+            if st.form_submit_button("SALVAR LANÇAMENTO"):
                 salvar_financeiro([
                     f_data.strftime("%Y-%m-%d"),
                     f_tipo,
                     f_cat,
                     f_desc,
                     f_valor,
-                    f_obra
+                    obra_sel
                 ])
-                feedback_toast("Lançamento salvo com sucesso")
+
+                feedback_toast("Lançamento salvo com sucesso 💸")
+                st.session_state["abrir_form_caixa"] = False
                 st.rerun()
 
-    st.subheader("Últimas Movimentações")
+    st.divider()
+
+    # ===============================
+    # LISTAGEM DE MOVIMENTAÇÕES
+    # ===============================
+    st.subheader("📋 Últimas Movimentações")
+
     if df_fin.empty:
         st.info("Nenhuma movimentação registrada.")
     else:
-        st.dataframe(df_fin, use_container_width=True)
+        df_filtrado = df_fin[df_fin["Obra Vinculada"] == obra_sel]
+        st.dataframe(df_filtrado, use_container_width=True)
 
 # =================================================
 # TELA: PROJETOS
