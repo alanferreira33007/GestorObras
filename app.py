@@ -4,6 +4,7 @@ import plotly.express as px
 import plotly.graph_objects as go
 from datetime import date, datetime
 from streamlit_option_menu import option_menu
+import time
 
 from database import carregar_dados, salvar_financeiro, salvar_obra
 from relatorios import fmt_moeda, gerar_relatorio_investimentos_pdf, download_pdf_one_click
@@ -29,6 +30,18 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # -------------------------------------------------
+# HELPERS DE FEEDBACK (PADRÃO DO APP)
+# -------------------------------------------------
+def feedback_sucesso_temporario(texto: str, segundos: int = 3):
+    box = st.empty()
+    box.success(texto)
+    time.sleep(segundos)
+    box.empty()
+
+def feedback_toast(texto: str, icon: str = "✅"):
+    st.toast(texto, icon=icon)
+
+# -------------------------------------------------
 # LOGIN
 # -------------------------------------------------
 if "authenticated" not in st.session_state:
@@ -42,6 +55,7 @@ if not st.session_state["authenticated"]:
         if st.button("ACESSAR PAINEL"):
             if pwd == st.secrets["password"]:
                 st.session_state["authenticated"] = True
+                feedback_toast("Login realizado com sucesso")
                 st.rerun()
             else:
                 st.error("Senha incorreta")
@@ -67,6 +81,7 @@ with st.sidebar:
     st.divider()
     if st.button("Sair / Logout"):
         st.session_state["authenticated"] = False
+        feedback_toast("Logout realizado", icon="👋")
         st.rerun()
 
 # -------------------------------------------------
@@ -110,11 +125,10 @@ if sel == "Investimentos":
 
     st.divider()
 
-    # -------------------------------------------------
-    # BOTÃO PDF — AGORA VISUALMENTE MELHOR
-    # -------------------------------------------------
+    # ----------------------------
+    # BOTÃO PDF (PADRONIZADO)
+    # ----------------------------
     pode_gerar_pdf = not df_saidas.empty
-
     col_btn, col_msg = st.columns([1, 2])
 
     with col_btn:
@@ -123,7 +137,6 @@ if sel == "Investimentos":
             disabled=not pode_gerar_pdf or st.session_state["gerando_pdf"]
         ):
             st.session_state["gerando_pdf"] = True
-
             with st.spinner("Gerando relatório executivo..."):
                 pdf = gerar_relatorio_investimentos_pdf(
                     obra_sel, vgv, custos, lucro, roi, df_saidas
@@ -131,45 +144,103 @@ if sel == "Investimentos":
                 nome_pdf = f"Relatorio_{obra_sel}_{datetime.now():%Y-%m-%d}.pdf"
                 download_pdf_one_click(pdf, nome_pdf)
 
-            st.success("✅ Relatório PDF gerado com sucesso!")
+            feedback_sucesso_temporario("📄 Relatório PDF gerado com sucesso!")
             st.session_state["gerando_pdf"] = False
 
     with col_msg:
         if not pode_gerar_pdf:
             st.warning("⚠️ O relatório será liberado após o lançamento de despesas.")
         else:
-            st.caption("📌 O relatório reflete **exclusivamente esta obra**, com dados atualizados.")
+            st.caption("📌 O relatório reflete exclusivamente esta obra.")
 
     st.divider()
 
     # GRÁFICOS
     c1, c2 = st.columns(2)
-
     with c1:
         st.subheader("Distribuição de Custos")
         if not df_saidas.empty:
             pie = df_saidas.groupby("Categoria")["Valor"].sum().reset_index()
             fig = px.pie(pie, values="Valor", names="Categoria", hole=.4)
             st.plotly_chart(fig, use_container_width=True)
+        else:
+            st.info("Sem despesas lançadas.")
 
     with c2:
         st.subheader("Evolução de Gastos")
         if not df_saidas.empty:
             df_saidas["Data_DT"] = pd.to_datetime(df_saidas["Data_DT"])
-            df_saidas["Acumulado"] = df_saidas.sort_values("Data_DT")["Valor"].cumsum()
+            df_saidas = df_saidas.sort_values("Data_DT")
+            df_saidas["Acumulado"] = df_saidas["Valor"].cumsum()
             fig = px.line(df_saidas, x="Data_DT", y="Acumulado", markers=True)
             st.plotly_chart(fig, use_container_width=True)
+        else:
+            st.info("Sem histórico de gastos.")
 
 # =================================================
 # TELA: CAIXA
 # =================================================
 elif sel == "Caixa":
     st.title("💸 Fluxo de Caixa")
-    st.dataframe(df_fin, use_container_width=True)
+
+    with st.expander("📝 Novo Lançamento", expanded=False):
+        with st.form("f_caixa", clear_on_submit=True):
+            c1, c2, c3 = st.columns(3)
+            f_data = c1.date_input("Data", value=date.today())
+            f_tipo = c2.selectbox("Tipo", ["Saída (Despesa)", "Entrada"])
+            f_cat = c3.selectbox(
+                "Categoria",
+                ["Material", "Mão de Obra", "Serviços", "Impostos", "Outros"]
+            )
+
+            c4, c5 = st.columns(2)
+            f_obra = c4.selectbox("Obra", lista_obras if lista_obras else ["Geral"])
+            f_valor = c5.number_input("Valor R$", min_value=0.0)
+            f_desc = st.text_input("Descrição")
+
+            if st.form_submit_button("SALVAR NO GOOGLE SHEETS"):
+                salvar_financeiro([
+                    f_data.strftime("%Y-%m-%d"),
+                    f_tipo,
+                    f_cat,
+                    f_desc,
+                    f_valor,
+                    f_obra
+                ])
+                feedback_toast("Lançamento salvo com sucesso")
+                st.rerun()
+
+    st.subheader("Últimas Movimentações")
+    if df_fin.empty:
+        st.info("Nenhuma movimentação registrada.")
+    else:
+        st.dataframe(df_fin, use_container_width=True)
 
 # =================================================
 # TELA: PROJETOS
 # =================================================
 elif sel == "Projetos":
-    st.title("🏗️ Projetos")
-    st.dataframe(df_obras, use_container_width=True)
+    st.title("🏗️ Portfólio de Obras")
+
+    with st.expander("➕ Cadastrar Nova Obra"):
+        with st.form("f_obra", clear_on_submit=True):
+            f_nome = st.text_input("Nome do Cliente / Identificação da Obra")
+            f_vgv = st.number_input("Valor Total do Contrato (VGV)", min_value=0.0)
+
+            if st.form_submit_button("CRIAR PROJETO"):
+                salvar_obra([
+                    len(df_obras) + 1,
+                    f_nome,
+                    "",
+                    "Construção",
+                    f_vgv,
+                    date.today().strftime("%Y-%m-%d"),
+                    ""
+                ])
+                feedback_toast("Obra cadastrada com sucesso", icon="🏗️")
+                st.rerun()
+
+    if df_obras.empty:
+        st.info("Nenhuma obra cadastrada.")
+    else:
+        st.dataframe(df_obras, use_container_width=True)
