@@ -27,7 +27,7 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# CSS Minimalista e Limpo
+# CSS: Botões Maiores e Mais Robustos
 st.markdown("""
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600&display=swap');
@@ -36,32 +36,37 @@ st.markdown("""
         font-family: 'Inter', sans-serif;
     }
     
-    /* Ajuste de métricas */
+    /* Metrics */
     [data-testid="stMetricValue"] {
         font-size: 1.8rem !important;
         font-weight: 700;
         color: #1a1a1a;
     }
-    [data-testid="stMetricLabel"] {
-        font-size: 0.9rem;
-        color: #666;
-    }
-
-    /* Botões Premium */
+    
+    /* BOTÕES GRANDES E CHAMATIVOS */
     div.stButton > button {
         background-color: #2D6A4F;
         color: white;
         border: none;
         border-radius: 8px;
-        padding: 0.5rem 1rem;
+        padding: 0.75rem 1rem; /* Mais altura */
+        font-size: 1rem;       /* Texto maior */
         font-weight: 600;
         transition: all 0.3s ease;
+        box-shadow: 0 2px 5px rgba(0,0,0,0.1);
     }
     div.stButton > button:hover {
         background-color: #1B4332;
-        box-shadow: 0 4px 12px rgba(45, 106, 79, 0.2);
+        transform: translateY(-2px);
+        box-shadow: 0 6px 12px rgba(45, 106, 79, 0.3);
     }
     
+    /* Botão secundário (se houver) */
+    div.stButton > button:active {
+        background-color: #1B4332;
+        transform: translateY(0px);
+    }
+
     /* Sidebar */
     [data-testid="stSidebar"] {
         background-color: #f8f9fa;
@@ -176,8 +181,6 @@ def get_conn():
 def load_data():
     try:
         db = get_conn()
-        
-        # Obras
         df_o = pd.DataFrame(db.worksheet("Obras").get_all_records())
         if df_o.empty:
             df_o = pd.DataFrame([{
@@ -188,10 +191,7 @@ def load_data():
             for c in OBRAS_COLS: 
                 if c not in df_o.columns: df_o[c] = None
         
-        # Financeiro
         df_f = pd.DataFrame(db.worksheet("Financeiro").get_all_records())
-        
-        # MODO DEMO
         if df_f.empty or len(df_f) < 2:
             st.toast("Modo Demo: Dados fictícios ativos", icon="ℹ️")
             fake_data = []
@@ -210,11 +210,9 @@ def load_data():
             for c in FIN_COLS: 
                 if c not in df_f.columns: df_f[c] = None
         
-        # Tipagem
         df_o["Valor Total"] = df_o["Valor Total"].apply(safe_float)
         df_f["Valor"] = df_f["Valor"].apply(safe_float)
         df_f["Data_DT"] = pd.to_datetime(df_f["Data"], errors="coerce")
-        
         return df_o, df_f
     except Exception as e:
         st.error(f"Erro de conexão: {e}")
@@ -225,7 +223,6 @@ def load_data():
 # ==============================================================================
 if "auth" not in st.session_state: st.session_state.auth = False
 
-# LOGIN SCREEN
 if not st.session_state.auth:
     col1, col2, col3 = st.columns([1,1,1])
     with col2:
@@ -236,15 +233,12 @@ if not st.session_state.auth:
             if pwd == st.secrets["password"]:
                 st.session_state.auth = True
                 st.rerun()
-            else:
-                st.error("Acesso negado.")
+            else: st.error("Acesso negado.")
     st.stop()
 
-# --- CARGA DADOS ---
 df_obras, df_fin = load_data()
 lista_obras = df_obras["Cliente"].unique().tolist() if not df_obras.empty else []
 
-# --- SIDEBAR ---
 with st.sidebar:
     st.markdown("### 🏢 GESTOR PRO")
     selected = option_menu(
@@ -263,70 +257,73 @@ with st.sidebar:
         st.session_state.auth = False
         st.rerun()
 
-# --- PAGINA: DASHBOARD ---
+# --- DASHBOARD ---
 if selected == "Dashboard":
-    col_tit, col_sel = st.columns([2, 1])
+    
+    # ---------------------------------------------------------
+    # LAYOUT DE TOPO: Título + Seletor + Botão Atualizar (GRANDE)
+    # ---------------------------------------------------------
+    col_tit, col_sel, col_upd = st.columns([1.5, 2, 0.8])
+    
     with col_tit:
         st.title("Visão Geral")
+        
     with col_sel:
-        # LÓGICA DE SELEÇÃO ATUALIZADA
-        opcoes_dash = ["Visão Geral (Todas as Obras)"] + lista_obras
-        selecao = st.selectbox("Selecione o Escopo:", opcoes_dash)
+        # Seletor centralizado
+        if lista_obras:
+            opcoes_dash = ["Visão Geral (Todas as Obras)"] + lista_obras
+            selecao = st.selectbox("Selecione o Escopo:", opcoes_dash, label_visibility="collapsed")
+        else:
+            st.warning("Cadastre uma obra primeiro.")
+            st.stop()
             
-    # LÓGICA DE FILTRAGEM E CONSOLIDAÇÃO
+    with col_upd:
+        # Botão ATUALIZAR no topo, grande e alinhado
+        if st.button("🔄 Atualizar Dados", use_container_width=True):
+            st.cache_data.clear()
+            st.rerun()
+
+    # ---------------------------------------------------------
+    # PROCESSAMENTO DE DADOS
+    # ---------------------------------------------------------
     if selecao == "Visão Geral (Todas as Obras)":
-        # 1. Modo Consolidado
         st.markdown("##### 🏢 Consolidado da Empresa")
         vgv = df_obras["Valor Total"].sum()
-        
-        # Pega TODAS as saídas de TODAS as obras
         df_saidas = df_fin[df_fin["Tipo"].astype(str).str.contains("Saída|Despesa", case=False, na=False)].copy()
-        
     else:
-        # 2. Modo Obra Específica
         st.markdown(f"##### 🏗️ Obra: {selecao}")
         row_obra = df_obras[df_obras["Cliente"] == selecao].iloc[0]
         vgv = row_obra["Valor Total"]
-        
         df_f_obra = df_fin[df_fin["Obra Vinculada"] == selecao].copy()
         df_saidas = df_f_obra[df_f_obra["Tipo"].astype(str).str.contains("Saída|Despesa", case=False, na=False)].copy()
     
-    # CÁLCULOS COMUNS (Consolidado ou Específico)
     custos = df_saidas["Valor"].sum()
     lucro = vgv - custos
     roi = (lucro / custos * 100) if custos > 0 else 0
     progresso_fin = (custos / vgv) if vgv > 0 else 0
     
-    # 2. KPIs
+    # KPIs
     c1, c2, c3, c4 = st.columns(4)
     with c1:
-        with st.container(border=True):
-            st.metric("VGV Total", fmt_moeda(vgv))
+        with st.container(border=True): st.metric("VGV Total", fmt_moeda(vgv))
     with c2:
-        with st.container(border=True):
-            st.metric("Custo Realizado", fmt_moeda(custos), delta=f"{progresso_fin*100:.1f}% gasto", delta_color="inverse")
+        with st.container(border=True): st.metric("Custo Realizado", fmt_moeda(custos), delta=f"{progresso_fin*100:.1f}% gasto", delta_color="inverse")
     with c3:
-        with st.container(border=True):
-            st.metric("Lucro Estimado", fmt_moeda(lucro))
+        with st.container(border=True): st.metric("Lucro Estimado", fmt_moeda(lucro))
     with c4:
-        with st.container(border=True):
-            st.metric("ROI", f"{roi:.1f}%")
+        with st.container(border=True): st.metric("ROI", f"{roi:.1f}%")
 
-    # 3. Gráficos
+    # Gráficos
     col_main, col_side = st.columns([2, 1])
-    
     with col_main:
         with st.container(border=True):
-            st.subheader("Curva de Custos Acumulada")
+            st.subheader("Curva de Custos")
             if not df_saidas.empty:
                 df_evo = df_saidas.sort_values("Data_DT")
                 df_evo["Acumulado"] = df_evo["Valor"].cumsum()
                 fig = px.area(df_evo, x="Data_DT", y="Acumulado", color_discrete_sequence=["#2D6A4F"])
-            else:
-                fig = px.area(title="Sem dados para exibir")
-                
+            else: fig = px.area(title="Sem dados")
             fig.update_layout(plot_bgcolor="white", margin=dict(t=20, l=10, r=10, b=10), height=350)
-            fig.update_yaxes(gridcolor="#f0f0f0")
             st.plotly_chart(fig, use_container_width=True)
 
     with col_side:
@@ -334,139 +331,102 @@ if selected == "Dashboard":
             st.subheader("Categorias")
             if not df_saidas.empty:
                 df_cat = df_saidas.groupby("Categoria", as_index=False)["Valor"].sum()
-                fig2 = px.pie(
-                    df_cat, 
-                    values="Valor", 
-                    names="Categoria", 
-                    hole=0.6, 
-                    color_discrete_sequence=px.colors.sequential.Greens_r
-                )
+                fig2 = px.pie(df_cat, values="Valor", names="Categoria", hole=0.6, color_discrete_sequence=px.colors.sequential.Greens_r)
                 fig2.update_layout(showlegend=False, margin=dict(t=0, l=0, r=0, b=0), height=250)
-                fig2.add_annotation(text=f"{len(df_cat)}<br>Cats", x=0.5, y=0.5, showarrow=False, font_size=14)
                 st.plotly_chart(fig2, use_container_width=True)
-                
-                st.dataframe(
-                    df_cat.sort_values("Valor", ascending=False).head(3), 
-                    use_container_width=True, 
-                    hide_index=True,
-                    column_config={"Valor": st.column_config.NumberColumn(format="R$ %.2f")}
-                )
-            else:
-                st.info("Sem categorias")
+                st.dataframe(df_cat.sort_values("Valor", ascending=False).head(3), use_container_width=True, hide_index=True, column_config={"Valor": st.column_config.NumberColumn(format="R$ %.2f")})
+            else: st.info("Sem categorias")
     
-    # 4. Tabela e Botão
+    # Tabela
     st.markdown("### Últimos Lançamentos")
-    c_tab, c_btn = st.columns([4, 1])
-    with c_tab:
-        if not df_saidas.empty:
-            df_show = df_saidas[["Data", "Categoria", "Descrição", "Valor"]].sort_values("Data", ascending=False)
-            st.dataframe(
-                df_show,
-                use_container_width=True,
-                hide_index=True,
-                height=300,
-                column_config={
-                    "Valor": st.column_config.ProgressColumn(
-                        "Valor (R$)", 
-                        format="R$ %.2f", 
-                        min_value=0, 
-                        max_value=float(df_show["Valor"].max())
-                    ),
-                    "Data": st.column_config.DateColumn("Data", format="DD/MM/YYYY")
-                }
-            )
-        else:
-            st.info("Nenhum lançamento registrado.")
-            
-    with c_btn:
-        st.write("") 
-        st.write("")
-        if st.button("🔄 Atualizar"):
-            st.cache_data.clear()
-            st.rerun()
-        if not df_saidas.empty:
-            pdf_data = gerar_pdf(selecao, "Visão Atual", vgv, custos, lucro, roi, df_cat if 'df_cat' in locals() else pd.DataFrame(), df_show)
-            st.download_button("⬇️ Baixar PDF", data=pdf_data, file_name=f"Relatorio_{selecao}.pdf", mime="application/pdf", use_container_width=True)
-
-# --- PAGINA: FINANCEIRO ---
-elif selected == "Financeiro":
-    st.title("Movimentações")
-    
-    with st.expander("➕ Novo Lançamento", expanded=True):
-        with st.form("form_fin", clear_on_submit=True):
-            col_a, col_b = st.columns(2)
-            with col_a:
-                f_data = st.date_input("Data", date.today())
-                f_tipo = st.selectbox("Tipo", ["Saída (Despesa)", "Entrada"])
-                f_cat = st.selectbox("Categoria", CATS)
-            with col_b:
-                f_obra = st.selectbox("Obra", lista_obras if lista_obras else ["Geral"])
-                f_val = st.number_input("Valor", min_value=0.0, step=100.0)
-                f_desc = st.text_input("Descrição")
-            
-            if st.form_submit_button("Salvar Lançamento", use_container_width=True):
-                try:
-                    conn = get_conn()
-                    conn.worksheet("Financeiro").append_row([
-                        f_data.strftime("%Y-%m-%d"), f_tipo, f_cat, f_desc, f_val, f_obra
-                    ])
-                    st.toast("Salvo com sucesso!", icon="✅")
-                    st.cache_data.clear()
-                    st.rerun()
-                except Exception as e:
-                    st.error(f"Erro: {e}")
-
-    st.markdown("### Histórico Completo")
-    if not df_fin.empty:
-        col_f1, col_f2 = st.columns(2)
-        filtro_obra = col_f1.multiselect("Filtrar por Obra", lista_obras)
-        df_grid = df_fin.copy()
-        if filtro_obra:
-            df_grid = df_grid[df_grid["Obra Vinculada"].isin(filtro_obra)]
-        
+    if not df_saidas.empty:
+        df_show = df_saidas[["Data", "Categoria", "Descrição", "Valor"]].sort_values("Data", ascending=False)
         st.dataframe(
-            df_grid.sort_values("Data_DT", ascending=False),
-            use_container_width=True,
-            hide_index=True,
+            df_show, use_container_width=True, hide_index=True, height=300,
             column_config={
-                "Valor": st.column_config.NumberColumn("Valor", format="R$ %.2f"),
-                "Data_DT": None,
+                "Valor": st.column_config.ProgressColumn("Valor (R$)", format="R$ %.2f", min_value=0, max_value=float(df_show["Valor"].max())),
                 "Data": st.column_config.DateColumn("Data", format="DD/MM/YYYY")
             }
         )
+    else: st.info("Nenhum lançamento registrado.")
+            
+    # ---------------------------------------------------------
+    # BOTÃO PDF: FINAL DA PÁGINA (GRANDE E LARGO)
+    # ---------------------------------------------------------
+    st.write("")
+    st.markdown("---")
+    if not df_saidas.empty:
+        # Gera o PDF em memória
+        pdf_data = gerar_pdf(selecao, "Visão Atual", vgv, custos, lucro, roi, df_cat if 'df_cat' in locals() else pd.DataFrame(), df_show)
+        
+        # Coluna centralizada ou full width
+        st.download_button(
+            label="⬇️ BAIXAR RELATÓRIO PDF COMPLETO",
+            data=pdf_data,
+            file_name=f"Relatorio_{selecao}.pdf",
+            mime="application/pdf",
+            use_container_width=True,  # OCUPA A LARGURA TODA
+            help="Clique para baixar o relatório detalhado deste período"
+        )
 
-# --- PAGINA: OBRAS ---
+# --- FINANCEIRO ---
+elif selected == "Financeiro":
+    st.title("Movimentações")
+    with st.expander("➕ Novo Lançamento", expanded=True):
+        with st.form("form_fin", clear_on_submit=True):
+            c1, c2 = st.columns(2)
+            with c1:
+                f_dt = st.date_input("Data", date.today())
+                f_tp = st.selectbox("Tipo", ["Saída (Despesa)", "Entrada"])
+                f_ct = st.selectbox("Categoria", CATS)
+            with c2:
+                f_ob = st.selectbox("Obra", lista_obras if lista_obras else ["Geral"])
+                f_vl = st.number_input("Valor", min_value=0.0, step=100.0)
+                f_dc = st.text_input("Descrição")
+            if st.form_submit_button("Salvar Lançamento", use_container_width=True):
+                try:
+                    conn = get_conn()
+                    conn.worksheet("Financeiro").append_row([f_dt.strftime("%Y-%m-%d"), f_tp, f_ct, f_dc, f_vl, f_ob])
+                    st.toast("Salvo!", icon="✅")
+                    st.cache_data.clear()
+                    st.rerun()
+                except Exception as e: st.error(f"Erro: {e}")
+
+    st.markdown("### Histórico Completo")
+    if not df_fin.empty:
+        cf1, cf2 = st.columns(2)
+        fo = cf1.multiselect("Filtrar por Obra", lista_obras)
+        dg = df_fin.copy()
+        if fo: dg = dg[dg["Obra Vinculada"].isin(fo)]
+        st.dataframe(dg.sort_values("Data_DT", ascending=False), use_container_width=True, hide_index=True, column_config={"Valor": st.column_config.NumberColumn("Valor", format="R$ %.2f"), "Data_DT": None, "Data": st.column_config.DateColumn("Data", format="DD/MM/YYYY")})
+
+# --- OBRAS ---
 elif selected == "Obras":
     st.title("Portfólio de Obras")
-    col_form, col_view = st.columns([1, 2])
-    with col_form:
+    c_form, c_view = st.columns([1, 2])
+    with c_form:
         with st.container(border=True):
             st.markdown("#### Cadastro")
             with st.form("new_obra"):
-                n_cli = st.text_input("Nome do Cliente")
-                n_end = st.text_input("Endereço")
-                n_vgv = st.number_input("Valor VGV (R$)", min_value=0.0)
-                n_sts = st.selectbox("Status", ["Planejamento", "Em Andamento", "Concluído"])
-                n_prz = st.text_input("Prazo")
+                nc = st.text_input("Nome Cliente")
+                ne = st.text_input("Endereço")
+                nv = st.number_input("VGV (R$)", min_value=0.0)
+                ns = st.selectbox("Status", ["Planejamento", "Em Andamento", "Concluído"])
+                np = st.text_input("Prazo")
                 if st.form_submit_button("Criar Obra", use_container_width=True):
                     try:
                         conn = get_conn()
                         idx = len(lista_obras) + 1
-                        conn.worksheet("Obras").append_row([
-                            idx, n_cli, n_end, n_sts, n_vgv, date.today().strftime("%Y-%m-%d"), n_prz
-                        ])
-                        st.toast("Obra criada!", icon="🏗️")
+                        conn.worksheet("Obras").append_row([idx, nc, ne, ns, nv, date.today().strftime("%Y-%m-%d"), np])
+                        st.toast("Criado!", icon="🏗️")
                         st.cache_data.clear()
                         st.rerun()
                     except Exception as e: st.error(f"Erro: {e}")
-
-    with col_view:
+    with c_view:
         if not df_obras.empty:
-            for i, row in df_obras.iterrows():
+            for i, r in df_obras.iterrows():
                 with st.container(border=True):
-                    c_img, c_info, c_val = st.columns([1, 3, 2])
-                    with c_img: st.markdown("# 🏠")
-                    with c_info:
-                        st.markdown(f"**{row['Cliente']}**")
-                        st.caption(f"{row['Endereço']} • {row['Status']}")
-                    with c_val: st.metric("VGV", fmt_moeda(row['Valor Total']))
+                    ci, cnf, cv = st.columns([1, 3, 2])
+                    with ci: st.markdown("# 🏠")
+                    with cnf: st.markdown(f"**{r['Cliente']}**"); st.caption(f"{r['Endereço']} • {r['Status']}")
+                    with cv: st.metric("VGV", fmt_moeda(r['Valor Total']))
