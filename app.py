@@ -3,10 +3,20 @@ import pandas as pd
 import plotly.express as px
 from datetime import date, datetime
 from streamlit_option_menu import option_menu
-import time
 
-from database import carregar_dados, salvar_financeiro, salvar_obra
-from relatorios import fmt_moeda, gerar_relatorio_investimentos_pdf, download_pdf_one_click
+from database import (
+    carregar_dados,
+    salvar_financeiro,
+    salvar_obra,
+    excluir_obra,
+    excluir_lancamento
+)
+
+from relatorios import (
+    fmt_moeda,
+    gerar_relatorio_investimentos_pdf,
+    download_pdf_one_click
+)
 
 # =================================================
 # CONFIGURAÇÃO
@@ -30,7 +40,6 @@ h1, h2, h3 { color: #1B4332; }
     border-radius: 14px;
     padding: 20px;
     box-shadow: 0 4px 10px rgba(0,0,0,0.04);
-    height: 100%;
 }
 
 .card-title {
@@ -128,7 +137,6 @@ if sel == "Investimentos":
     )
 
     c1, c2, c3, c4 = st.columns(4)
-
     c1.markdown(f"<div class='card'><div class='card-title'>VGV</div><div class='card-value'>{fmt_moeda(vgv)}</div></div>", unsafe_allow_html=True)
     c2.markdown(f"<div class='card'><div class='card-title'>Custos</div><div class='card-value'>{fmt_moeda(custos)}</div></div>", unsafe_allow_html=True)
     c3.markdown(f"<div class='card'><div class='card-title'>Lucro</div><div class='card-value'>{fmt_moeda(lucro)}</div></div>", unsafe_allow_html=True)
@@ -156,7 +164,7 @@ if sel == "Investimentos":
         st.plotly_chart(fig, use_container_width=True)
 
 # =================================================
-# CAIXA
+# CAIXA (COM EXCLUSÃO DE LANÇAMENTO)
 # =================================================
 if sel == "Caixa":
 
@@ -168,6 +176,7 @@ if sel == "Caixa":
 
     obra_sel = st.selectbox("Obra", lista_obras)
 
+    # ---------- NOVO LANÇAMENTO ----------
     with st.form("form_caixa", clear_on_submit=True):
         c1, c2, c3 = st.columns(3)
         data = c1.date_input("Data", date.today())
@@ -192,25 +201,65 @@ if sel == "Caixa":
 
     st.divider()
 
+    # ---------- LISTAGEM ----------
     df_vis = df_fin[df_fin["Obra Vinculada"] == obra_sel].copy()
-    if not df_vis.empty:
-        df_vis["Data"] = pd.to_datetime(df_vis["Data"]).dt.strftime("%d/%m/%Y")
-        df_vis["Valor"] = df_vis["Valor"].apply(fmt_moeda)
+
+    if df_vis.empty:
+        st.info("Nenhuma movimentação.")
+    else:
+        df_vis["Data_BR"] = pd.to_datetime(df_vis["Data"]).dt.strftime("%d/%m/%Y")
+        df_vis["Valor_BR"] = df_vis["Valor"].apply(fmt_moeda)
+
+        st.markdown("### 📋 Movimentações")
         st.dataframe(
-            df_vis[["Data","Tipo","Categoria","Descrição","Valor"]],
+            df_vis[["Data_BR","Tipo","Categoria","Descrição","Valor_BR"]],
             use_container_width=True,
             hide_index=True
         )
 
+        # ---------- EXCLUSÃO ----------
+        st.divider()
+        st.markdown("## 🗑️ Excluir Lançamento")
+
+        df_vis["ID"] = (
+            df_vis["Data"].astype(str) + "|" +
+            df_vis["Tipo"] + "|" +
+            df_vis["Categoria"] + "|" +
+            df_vis["Descrição"] + "|" +
+            df_vis["Valor"].astype(str)
+        )
+
+        lanc_sel = st.selectbox("Selecione o lançamento", df_vis["ID"].tolist())
+        lanc = df_vis[df_vis["ID"] == lanc_sel].iloc[0]
+
+        st.warning("🚨 Esta ação é irreversível.")
+        confirm = st.text_input("Digite EXCLUIR para confirmar")
+
+        if st.button("❌ Excluir lançamento"):
+            if confirm != "EXCLUIR":
+                st.error("Confirmação incorreta.")
+            else:
+                excluir_lancamento(
+                    data=lanc["Data"],
+                    tipo=lanc["Tipo"],
+                    categoria=lanc["Categoria"],
+                    descricao=lanc["Descrição"],
+                    valor=lanc["Valor"],
+                    obra=lanc["Obra Vinculada"]
+                )
+                st.success("Lançamento excluído com sucesso.")
+                st.rerun()
+
 # =================================================
-# PROJETOS (CADASTRO COMPLETO RESTAURADO)
+# PROJETOS (COM EXCLUSÃO DE OBRA)
 # =================================================
 if sel == "Projetos":
 
     st.markdown("# 🏗️ Projetos / Obras")
 
-    with st.expander("➕ Cadastrar Nova Obra", expanded=False):
-        with st.form("form_obra_completo", clear_on_submit=True):
+    # ---------- CADASTRO ----------
+    with st.expander("➕ Cadastrar Nova Obra"):
+        with st.form("form_obra", clear_on_submit=True):
 
             c1, c2 = st.columns(2)
             nome = c1.text_input("Identificação da Obra *")
@@ -227,57 +276,48 @@ if sel == "Projetos":
             inicio = st.date_input("Data de início", value=date.today())
 
             if st.form_submit_button("Cadastrar Obra"):
-                if not nome or vgv <= 0:
-                    st.error("Informe o nome da obra e um VGV válido.")
-                else:
-                    salvar_obra([
-                        len(df_obras) + 1,
-                        nome,
-                        local,
-                        tipo,
-                        vgv,
-                        inicio.strftime("%Y-%m-%d"),
-                        status,
-                        custo_prev
-                    ])
-                    st.success("Obra cadastrada com sucesso")
-                    st.rerun()
+                salvar_obra([
+                    len(df_obras) + 1,
+                    nome,
+                    local,
+                    tipo,
+                    vgv,
+                    inicio.strftime("%Y-%m-%d"),
+                    status,
+                    custo_prev
+                ])
+                st.success("Obra cadastrada")
+                st.rerun()
 
     st.divider()
 
+    # ---------- LISTAGEM ----------
     if df_obras.empty:
         st.info("Nenhuma obra cadastrada.")
     else:
         st.markdown("### 📋 Obras Cadastradas")
         st.dataframe(df_obras, use_container_width=True, hide_index=True)
 
-st.divider()
-st.markdown("## 🗑️ Excluir Obra Cadastrada por Engano")
+        # ---------- EXCLUSÃO ----------
+        st.divider()
+        st.markdown("## 🗑️ Excluir Obra")
 
-obra_excluir = st.selectbox(
-    "Selecione a obra",
-    df_obras["Cliente"].tolist()
-)
+        obra_excluir = st.selectbox(
+            "Selecione a obra",
+            df_obras["Cliente"].tolist()
+        )
 
-# Verifica se existe movimentação financeira
-df_mov = df_fin[df_fin["Obra Vinculada"] == obra_excluir]
+        df_mov = df_fin[df_fin["Obra Vinculada"] == obra_excluir]
 
-if not df_mov.empty:
-    st.warning(
-        "⚠️ Esta obra possui lançamentos financeiros e NÃO pode ser excluída."
-    )
-else:
-    st.error("🚨 ATENÇÃO: esta ação é irreversível.")
-
-    confirmacao = st.text_input(
-        f'Digite exatamente **{obra_excluir}** para confirmar'
-    )
-
-    if st.button("❌ EXCLUIR DEFINITIVAMENTE"):
-        if confirmacao != obra_excluir:
-            st.error("Confirmação incorreta. Exclusão cancelada.")
+        if not df_mov.empty:
+            st.warning("⚠️ Esta obra possui lançamentos financeiros e não pode ser excluída.")
         else:
-            from database import excluir_obra
-            excluir_obra(obra_excluir)
-            st.success("Obra excluída com sucesso.")
-            st.rerun()
+            confirm = st.text_input(f'Digite "{obra_excluir}" para confirmar')
+
+            if st.button("❌ Excluir obra definitivamente"):
+                if confirm != obra_excluir:
+                    st.error("Confirmação incorreta.")
+                else:
+                    excluir_obra(obra_excluir)
+                    st.success("Obra excluída com sucesso.")
+                    st.rerun()
