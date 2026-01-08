@@ -37,6 +37,12 @@ if not st.session_state["authenticated"]:
 
 # --- CARREGAMENTO ---
 df_obras, df_fin = carregar_dados()
+# --- MELHORIA 1: TRAVA DE SEGURANÇA ---
+if df_obras.empty:
+    st.info("👋 Bem-vindo ao GESTOR PRO! Para começar, vá até a aba 'Projetos' e cadastre sua primeira obra.")
+    # Se o usuário não estiver na aba de Projetos, paramos a execução aqui
+    if sel != "Projetos":
+        st.stop()
 lista_obras = df_obras["Cliente"].unique().tolist()
 
 with st.sidebar:
