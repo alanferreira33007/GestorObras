@@ -5,9 +5,10 @@ from oauth2client.service_account import ServiceAccountCredentials
 import json
 import plotly.express as px
 import plotly.graph_objects as go
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from streamlit_option_menu import option_menu
 import io
+import random
 
 # PDF Libs
 from reportlab.lib.pagesizes import A4
@@ -29,16 +30,10 @@ st.set_page_config(
 # CSS Minimalista e Limpo
 st.markdown("""
 <style>
-    /* Fonte Geral */
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600&display=swap');
     
     html, body, [class*="css"] {
         font-family: 'Inter', sans-serif;
-    }
-    
-    /* Remover cabeçalho padrão do Streamlit */
-    header[data-testid="stHeader"] {
-        background-color: rgba(0,0,0,0);
     }
     
     /* Ajuste de métricas */
@@ -126,12 +121,10 @@ def gerar_pdf(obra, periodo, vgv, custos, lucro, roi, df_cat, df_lanc):
     story = []
     styles = getSampleStyleSheet()
     
-    # Título
     story.append(Paragraph("RELATÓRIO DE PERFORMANCE", styles["Title"]))
     story.append(Paragraph(f"Obra: {obra} | Período: {periodo}", styles["Normal"]))
     story.append(Spacer(1, 20))
 
-    # Tabela Resumo
     data_resumo = [
         ["INDICADOR", "VALOR"],
         ["VGV (Contrato)", fmt_moeda(vgv)],
@@ -151,7 +144,6 @@ def gerar_pdf(obra, periodo, vgv, custos, lucro, roi, df_cat, df_lanc):
     story.append(t)
     story.append(Spacer(1, 20))
 
-    # Tabela Categorias
     story.append(Paragraph("Detalhamento por Categoria", styles["Heading3"]))
     if not df_cat.empty:
         df_c = df_cat.copy()
@@ -169,7 +161,7 @@ def gerar_pdf(obra, periodo, vgv, custos, lucro, roi, df_cat, df_lanc):
     return buffer.getvalue()
 
 # ==============================================================================
-# 3. CONEXÃO E DADOS
+# 3. CONEXÃO E DADOS (COM DADOS FICTÍCIOS DE SEGURANÇA)
 # ==============================================================================
 OBRAS_COLS = ["ID", "Cliente", "Endereço", "Status", "Valor Total", "Data Início", "Prazo"]
 FIN_COLS   = ["Data", "Tipo", "Categoria", "Descrição", "Valor", "Obra Vinculada"]
@@ -184,16 +176,38 @@ def get_conn():
 def load_data():
     try:
         db = get_conn()
+        
         # Obras
         df_o = pd.DataFrame(db.worksheet("Obras").get_all_records())
-        if df_o.empty: df_o = pd.DataFrame(columns=OBRAS_COLS)
+        if df_o.empty:
+            # Cria Obra Demo se vazio
+            df_o = pd.DataFrame([{
+                "ID": 1, "Cliente": "Obra Modelo (Demo)", "Endereço": "Rua Exemplo, 100", 
+                "Status": "Em Andamento", "Valor Total": 500000.0, "Data Início": "2024-01-01", "Prazo": "2024-12-31"
+            }])
         else: 
             for c in OBRAS_COLS: 
                 if c not in df_o.columns: df_o[c] = None
         
         # Financeiro
         df_f = pd.DataFrame(db.worksheet("Financeiro").get_all_records())
-        if df_f.empty: df_f = pd.DataFrame(columns=FIN_COLS)
+        
+        # SE VAZIO, CRIA DADOS FAKES PARA O GRÁFICO APARECER
+        if df_f.empty or len(df_f) < 2:
+            st.toast("Modo Demo: Gerando dados fictícios para visualização", icon="ℹ️")
+            fake_data = []
+            obra_nome = df_o.iloc[0]["Cliente"]
+            for i in range(10):
+                fake_data.append({
+                    "Data": (date.today() - timedelta(days=i*5)).strftime("%Y-%m-%d"),
+                    "Tipo": "Saída (Despesa)",
+                    "Categoria": random.choice(CATS),
+                    "Descrição": f"Compra Simulação {i+1}",
+                    "Valor": random.uniform(1000, 5000),
+                    "Obra Vinculada": obra_nome
+                })
+            df_f = pd.DataFrame(fake_data)
+
         else:
             for c in FIN_COLS: 
                 if c not in df_f.columns: df_f[c] = None
@@ -219,7 +233,6 @@ if not st.session_state.auth:
     with col2:
         st.markdown("<br><br>", unsafe_allow_html=True)
         st.markdown("<h1 style='text-align: center; color: #2D6A4F;'>GESTOR PRO</h1>", unsafe_allow_html=True)
-        st.markdown("<p style='text-align: center; color: grey;'>Sistema de Inteligência de Obras</p>", unsafe_allow_html=True)
         pwd = st.text_input("Senha de Acesso", type="password")
         if st.button("ACESSAR PAINEL", use_container_width=True):
             if pwd == st.secrets["password"]:
@@ -247,9 +260,7 @@ with st.sidebar:
             "nav-link-selected": {"background-color": "#2D6A4F"},
         }
     )
-    
     st.markdown("---")
-    st.caption(f"📅 Hoje: {date.today().strftime('%d/%m/%Y')}")
     if st.button("Sair"):
         st.session_state.auth = False
         st.rerun()
@@ -272,14 +283,16 @@ if selected == "Dashboard":
     vgv = row_obra["Valor Total"]
     
     df_f_obra = df_fin[df_fin["Obra Vinculada"] == obra_atual].copy()
-    df_saidas = df_f_obra[df_f_obra["Tipo"].str.contains("Saída", na=False)].copy()
+    
+    # Filtro seguro para pegar Saídas (Case insensitive e tratando NaNs)
+    df_saidas = df_f_obra[df_f_obra["Tipo"].astype(str).str.contains("Saída|Despesa", case=False, na=False)].copy()
     
     custos = df_saidas["Valor"].sum()
     lucro = vgv - custos
     roi = (lucro / custos * 100) if custos > 0 else 0
     progresso_fin = (custos / vgv) if vgv > 0 else 0
     
-    # 2. KPIs (Cards com Borda)
+    # 2. KPIs
     c1, c2, c3, c4 = st.columns(4)
     with c1:
         with st.container(border=True):
@@ -289,27 +302,28 @@ if selected == "Dashboard":
             st.metric("Custo Realizado", fmt_moeda(custos), delta=f"{progresso_fin*100:.1f}% gasto", delta_color="inverse")
     with c3:
         with st.container(border=True):
-            st.metric("Lucro Estimado", fmt_moeda(lucro), delta="Margem Bruta")
+            st.metric("Lucro Estimado", fmt_moeda(lucro))
     with c4:
         with st.container(border=True):
-            st.metric("ROI", f"{roi:.1f}%", delta="Retorno")
+            st.metric("ROI", f"{roi:.1f}%")
 
-    # 3. Gráficos (Layout Assimétrico)
+    # 3. Gráficos (FORÇANDO EXIBIÇÃO)
     col_main, col_side = st.columns([2, 1])
     
     with col_main:
         with st.container(border=True):
             st.subheader("Fluxo de Caixa Acumulado")
+            # Mesmo se vazio, cria um gráfico zerado para não ficar buraco
             if not df_saidas.empty:
                 df_evo = df_saidas.sort_values("Data_DT")
                 df_evo["Acumulado"] = df_evo["Valor"].cumsum()
-                
                 fig = px.area(df_evo, x="Data_DT", y="Acumulado", color_discrete_sequence=["#2D6A4F"])
-                fig.update_layout(plot_bgcolor="white", margin=dict(t=10, l=10, r=10, b=10), height=350)
-                fig.update_yaxes(gridcolor="#f0f0f0")
-                st.plotly_chart(fig, use_container_width=True)
             else:
-                st.info("Sem dados para exibir gráfico.")
+                fig = px.area(title="Sem dados para exibir")
+                
+            fig.update_layout(plot_bgcolor="white", margin=dict(t=20, l=10, r=10, b=10), height=350)
+            fig.update_yaxes(gridcolor="#f0f0f0")
+            st.plotly_chart(fig, use_container_width=True)
 
     with col_side:
         with st.container(border=True):
@@ -318,21 +332,21 @@ if selected == "Dashboard":
                 df_cat = df_saidas.groupby("Categoria", as_index=False)["Valor"].sum()
                 fig2 = px.donut(df_cat, values="Valor", names="Categoria", hole=0.6, color_discrete_sequence=px.colors.sequential.Greens_r)
                 fig2.update_layout(showlegend=False, margin=dict(t=0, l=0, r=0, b=0), height=250)
-                # Texto no centro do Donut
                 fig2.add_annotation(text=f"{len(df_cat)}<br>Cats", x=0.5, y=0.5, showarrow=False, font_size=14)
                 st.plotly_chart(fig2, use_container_width=True)
                 
-                # Mini tabela abaixo do gráfico
+                # Mini tabela
                 st.dataframe(
                     df_cat.sort_values("Valor", ascending=False).head(3), 
                     use_container_width=True, 
                     hide_index=True,
                     column_config={"Valor": st.column_config.NumberColumn(format="R$ %.2f")}
                 )
+            else:
+                st.info("Sem categorias")
     
-    # 4. Tabela Detalhada e Botão
+    # 4. Tabela e Botão
     st.markdown("### Últimos Lançamentos")
-    
     c_tab, c_btn = st.columns([4, 1])
     with c_tab:
         if not df_saidas.empty:
@@ -361,26 +375,21 @@ if selected == "Dashboard":
         if st.button("🔄 Atualizar"):
             st.cache_data.clear()
             st.rerun()
-            
-        # PDF Button
         if not df_saidas.empty:
             pdf_data = gerar_pdf(obra_atual, "Geral", vgv, custos, lucro, roi, df_cat if 'df_cat' in locals() else pd.DataFrame(), df_show)
-            st.download_button("⬇️ Baixar Relatório", data=pdf_data, file_name=f"Relatorio_{obra_atual}.pdf", mime="application/pdf", use_container_width=True)
+            st.download_button("⬇️ Baixar PDF", data=pdf_data, file_name=f"Relatorio_{obra_atual}.pdf", mime="application/pdf", use_container_width=True)
 
 # --- PAGINA: FINANCEIRO ---
 elif selected == "Financeiro":
     st.title("Movimentações")
     
-    # Usando st.popover (se o streamlit for recente) ou Expander para inserção limpa
     with st.expander("➕ Novo Lançamento", expanded=True):
         with st.form("form_fin", clear_on_submit=True):
             col_a, col_b = st.columns(2)
-            
             with col_a:
                 f_data = st.date_input("Data", date.today())
                 f_tipo = st.selectbox("Tipo", ["Saída (Despesa)", "Entrada"])
                 f_cat = st.selectbox("Categoria", CATS)
-            
             with col_b:
                 f_obra = st.selectbox("Obra", lista_obras if lista_obras else ["Geral"])
                 f_val = st.number_input("Valor", min_value=0.0, step=100.0)
@@ -398,13 +407,10 @@ elif selected == "Financeiro":
                 except Exception as e:
                     st.error(f"Erro: {e}")
 
-    # Tabela Full
     st.markdown("### Histórico Completo")
     if not df_fin.empty:
-        # Filtros de Tabela
         col_f1, col_f2 = st.columns(2)
         filtro_obra = col_f1.multiselect("Filtrar por Obra", lista_obras)
-        
         df_grid = df_fin.copy()
         if filtro_obra:
             df_grid = df_grid[df_grid["Obra Vinculada"].isin(filtro_obra)]
@@ -415,7 +421,7 @@ elif selected == "Financeiro":
             hide_index=True,
             column_config={
                 "Valor": st.column_config.NumberColumn("Valor", format="R$ %.2f"),
-                "Data_DT": None, # Oculta coluna auxiliar
+                "Data_DT": None,
                 "Data": st.column_config.DateColumn("Data", format="DD/MM/YYYY")
             }
         )
@@ -423,9 +429,7 @@ elif selected == "Financeiro":
 # --- PAGINA: OBRAS ---
 elif selected == "Obras":
     st.title("Portfólio de Obras")
-    
     col_form, col_view = st.columns([1, 2])
-    
     with col_form:
         with st.container(border=True):
             st.markdown("#### Cadastro")
@@ -435,7 +439,6 @@ elif selected == "Obras":
                 n_vgv = st.number_input("Valor VGV (R$)", min_value=0.0)
                 n_sts = st.selectbox("Status", ["Planejamento", "Em Andamento", "Concluído"])
                 n_prz = st.text_input("Prazo")
-                
                 if st.form_submit_button("Criar Obra", use_container_width=True):
                     try:
                         conn = get_conn()
@@ -446,20 +449,15 @@ elif selected == "Obras":
                         st.toast("Obra criada!", icon="🏗️")
                         st.cache_data.clear()
                         st.rerun()
-                    except Exception as e:
-                        st.error(f"Erro: {e}")
+                    except Exception as e: st.error(f"Erro: {e}")
 
     with col_view:
         if not df_obras.empty:
             for i, row in df_obras.iterrows():
                 with st.container(border=True):
                     c_img, c_info, c_val = st.columns([1, 3, 2])
-                    with c_img:
-                        st.markdown("# 🏠")
+                    with c_img: st.markdown("# 🏠")
                     with c_info:
                         st.markdown(f"**{row['Cliente']}**")
                         st.caption(f"{row['Endereço']} • {row['Status']}")
-                    with c_val:
-                        st.metric("VGV", fmt_moeda(row['Valor Total']))
-        else:
-            st.info("Nenhuma obra cadastrada.")
+                    with c_val: st.metric("VGV", fmt_moeda(row['Valor Total']))
