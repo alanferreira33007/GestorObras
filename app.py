@@ -120,9 +120,6 @@ def _df_to_table(df: pd.DataFrame, max_rows=None):
         )
     )
     return t
-    def _df_to_table(df: pd.DataFrame, max_rows=None):
-    ...
-    return t
 
 
 # ----------------------------
