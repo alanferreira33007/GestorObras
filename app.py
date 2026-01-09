@@ -415,19 +415,20 @@ with st.sidebar:
     """, unsafe_allow_html=True)
 
 # ==============================================================================
-# 7. GERENCIAMENTO DE DADOS (COM MEMÓRIA PERSISTENTE)
+# 7. GERENCIAMENTO DE DADOS (COM MEMÓRIA PERSISTENTE OTIMIZADA)
 # ==============================================================================
 # Verifica se os dados já estão na sessão. Se não, carrega e salva.
-# Isso evita o delay do load_data a cada clique na sidebar.
-if "data_obras" not in st.session_state or "data_fin" not in st.session_state:
+# A diferença é que agora o SPINNER só aparece se os dados NÃO estiverem na memória.
+if "data_obras" in st.session_state and "data_fin" in st.session_state:
+    # Carregamento silencioso e instantâneo
+    df_obras = st.session_state["data_obras"]
+    df_fin = st.session_state["data_fin"]
+else:
+    # Apenas no primeiro acesso mostra o loading
     with st.spinner("Sincronizando dados..."):
-        o, f = load_data()
-        st.session_state["data_obras"] = o
-        st.session_state["data_fin"] = f
-
-# Usa os dados da memória
-df_obras = st.session_state["data_obras"]
-df_fin = st.session_state["data_fin"]
+        df_obras, df_fin = load_data()
+        st.session_state["data_obras"] = df_obras
+        st.session_state["data_fin"] = df_fin
 
 lista_obras = df_obras["Cliente"].unique().tolist() if not df_obras.empty else []
 
