@@ -93,7 +93,8 @@ def safe_float(x) -> float:
 # ==============================================================================
 class EnterpriseCanvas(canvas.Canvas):
     def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)<br>        self._saved_page_states = []
+        super().__init__(*args, **kwargs)
+        self._saved_page_states = []
 
     def showPage(self):
         self._saved_page_states.append(dict(self.__dict__))
