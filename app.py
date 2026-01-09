@@ -286,7 +286,8 @@ def get_conn():
     creds = json.loads(st.secrets["gcp_service_account"]["json_content"], strict=False)
     return gspread.authorize(ServiceAccountCredentials.from_json_keyfile_dict(creds, ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"])).open("GestorObras_DB")
 
-@st.cache_data(ttl=60)
+# AQUI: TTL AJUSTADO PARA 120 SEGUNDOS (2 MINUTOS)
+@st.cache_data(ttl=120)
 def load_data():
     try:
         db = get_conn()
@@ -359,7 +360,10 @@ if not st.session_state.auth:
         
     st.stop()
 
-df_obras, df_fin = load_data()
+# --- CARREGAMENTO DE DADOS COM SPINNER PARA MELHORAR PERCEPÇÃO DE VELOCIDADE ---
+with st.spinner("Carregando carteira de obras e financeiro..."):
+    df_obras, df_fin = load_data()
+
 lista_obras = df_obras["Cliente"].unique().tolist() if not df_obras.empty else []
 
 with st.sidebar:
@@ -486,6 +490,7 @@ elif sel == "Financeiro":
                 opcoes_obras = [""] + lista_obras
                 ob = st.selectbox("Obra *", opcoes_obras, key="k_fin_obra")
                 
+                # AQUI: Mudança para number_input (Bloqueia letras)
                 vl = st.number_input("Valor R$ *", min_value=0.0, format="%.2f", step=100.0, value=st.session_state.k_fin_valor, key="k_fin_valor_input")
                 
                 dc = st.text_input("Descrição *", value=st.session_state.k_fin_desc, key="k_fin_desc")
@@ -581,6 +586,8 @@ elif sel == "Obras":
             st.markdown("#### 3. Viabilidade Financeira e Prazos")
             c8, c9, c10, c11 = st.columns(4)
             
+            # AQUI: Mudança de volta para number_input (Bloqueia letras)
+            # Usei step=100.0 para facilitar preencher valores altos, mas aceita centavos se digitar
             with c8: custo_previsto = st.number_input("Orçamento (Custo) *", min_value=0.0, format="%.2f", step=1000.0, value=st.session_state.k_ob_custo, key="k_ob_custo_input")
             with c9: valor_venda = st.number_input("VGV (Venda) *", min_value=0.0, format="%.2f", step=1000.0, value=st.session_state.k_ob_vgv, key="k_ob_vgv_input")
             
