@@ -286,7 +286,6 @@ def get_conn():
     creds = json.loads(st.secrets["gcp_service_account"]["json_content"], strict=False)
     return gspread.authorize(ServiceAccountCredentials.from_json_keyfile_dict(creds, ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"])).open("GestorObras_DB")
 
-# AQUI: TTL AJUSTADO PARA 120 SEGUNDOS (2 MINUTOS)
 @st.cache_data(ttl=120)
 def load_data():
     try:
@@ -423,7 +422,8 @@ if sel == "Dashboard":
         st.subheader("Categorias")
         if not df_show.empty:
             df_cat = df_show.groupby("Categoria", as_index=False)["Valor"].sum()
-            fig2 = px.pie(df_cat, values="Valor", names="Categoria", hole=0.6, color_discrete_sequence=px.colors.sequential.Greens_r)
+            # AQUI: MUDANÇA PARA 'BOLD' (CORES DISTINTAS)
+            fig2 = px.pie(df_cat, values="Valor", names="Categoria", hole=0.6, color_discrete_sequence=px.colors.qualitative.Bold)
             fig2.update_layout(showlegend=False, margin=dict(t=0,l=0,r=0,b=0), height=200)
             st.plotly_chart(fig2, use_container_width=True)
             st.dataframe(df_cat.sort_values("Valor", ascending=False).head(3), use_container_width=True, hide_index=True, column_config={"Valor": st.column_config.NumberColumn(format="R$ %.2f")})
