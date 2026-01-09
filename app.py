@@ -22,9 +22,9 @@ from reportlab.lib.units import cm
 # 1. CONFIGURAÇÃO VISUAL (UI)
 # ==============================================================================
 st.set_page_config(
-    page_title="GESTOR PRO | Enterprise",
+    page_title="GESTOR PRO | Incorporadora",
     layout="wide",
-    page_icon="🏢",
+    page_icon="🏗️",
     initial_sidebar_state="expanded"
 )
 
@@ -73,11 +73,12 @@ def safe_float(x) -> float:
     except: return 0.0
 
 # ==============================================================================
-# 3. MOTOR PDF (ENTERPRISE V5 - COM TÍTULOS DINÂMICOS)
+# 3. MOTOR PDF (ENTERPRISE V5)
 # ==============================================================================
 class EnterpriseCanvas(canvas.Canvas):
     def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)<br>        self._saved_page_states = []
+        super().__init__(*args, **kwargs)
+        self._saved_page_states = []
 
     def showPage(self):
         self._saved_page_states.append(dict(self.__dict__))
@@ -264,8 +265,12 @@ def gerar_pdf_empresarial(escopo, periodo, vgv, custos, lucro, roi, df_cat, df_l
 # ==============================================================================
 # 4. DADOS E CONEXÃO
 # ==============================================================================
-# IMPORTANTE: Estas colunas devem bater com as colunas do seu Google Sheets
-OBRAS_COLS = ["ID", "Cliente", "Endereço", "Status", "Valor Total", "Data Início", "Prazo"]
+# ATENÇÃO: Adicione as colunas novas manualmente no seu Google Sheets (Aba Obras)
+OBRAS_COLS = [
+    "ID", "Cliente", "Endereço", "Status", "Valor Total", 
+    "Data Início", "Prazo", "Area Construida", "Area Terreno", 
+    "Quartos", "Custo Previsto"
+]
 FIN_COLS   = ["Data", "Tipo", "Categoria", "Descrição", "Valor", "Obra Vinculada"]
 CATS       = ["Material", "Mão de Obra", "Serviços", "Administrativo", "Impostos", "Outros"]
 
@@ -278,35 +283,35 @@ def get_conn():
 def load_data():
     try:
         db = get_conn()
-        df_o = pd.DataFrame(db.worksheet("Obras").get_all_records())
+        ws_o = db.worksheet("Obras")
+        raw_o = ws_o.get_all_records()
+        df_o = pd.DataFrame(raw_o)
+        
         if df_o.empty:
-            df_o = pd.DataFrame([{"ID":1,"Cliente":"Obra Modelo","Endereço":"-","Status":"Ativa","Valor Total":500000.0,"Data Início":"2024-01-01","Prazo":"2024-12-31"}])
+            df_o = pd.DataFrame(columns=OBRAS_COLS)
         else:
+            # Garante que todas as colunas existem
             for c in OBRAS_COLS: 
                 if c not in df_o.columns: df_o[c] = None
         
-        df_f = pd.DataFrame(db.worksheet("Financeiro").get_all_records())
-        # Demo Data se vazio
-        if df_f.empty or len(df_f) < 2:
-            fake = []
-            onome = df_o.iloc[0]["Cliente"]
-            for i in range(15):
-                fake.append({
-                    "Data": (date.today()-timedelta(days=i*2)).strftime("%Y-%m-%d"),
-                    "Tipo": "Saída (Despesa)",
-                    "Categoria": random.choice(CATS),
-                    "Descrição": f"Material {i+1}",
-                    "Valor": random.uniform(200, 2000),
-                    "Obra Vinculada": onome
-                })
-            df_f = pd.DataFrame(fake)
+        ws_f = db.worksheet("Financeiro")
+        raw_f = ws_f.get_all_records()
+        df_f = pd.DataFrame(raw_f)
+
+        if df_f.empty:
+             df_f = pd.DataFrame(columns=FIN_COLS)
         else:
             for c in FIN_COLS:
                 if c not in df_f.columns: df_f[c] = None
-                
+        
+        # Tratamento de Tipos Numéricos
         df_o["Valor Total"] = df_o["Valor Total"].apply(safe_float)
+        if "Custo Previsto" in df_o.columns:
+            df_o["Custo Previsto"] = df_o["Custo Previsto"].apply(safe_float)
+            
         df_f["Valor"] = df_f["Valor"].apply(safe_float)
         df_f["Data_DT"] = pd.to_datetime(df_f["Data"], errors="coerce")
+        
         return df_o, df_f
     except Exception as e:
         st.error(f"Erro DB: {e}")
@@ -442,48 +447,55 @@ elif sel == "Financeiro":
         dview = df_fin[df_fin["Obra Vinculada"].isin(fob)] if fob else df_fin
         st.dataframe(dview.sort_values("Data_DT", ascending=False), use_container_width=True, hide_index=True)
 
-# --- OBRAS (ATUALIZADO E MELHORADO) ---
+# --- OBRAS (CADASTRO IMOBILIÁRIO OTIMIZADO) ---
 elif sel == "Obras":
-    st.title("📂 Gestão de Obras")
+    st.title("📂 Gestão de Incorporação e Obras")
     st.markdown("---")
 
-    # 1. FORMULÁRIO DE CADASTRO MELHORADO
-    st.subheader("Novo Cadastro")
-    with st.container():
-        # Moldura visual (Form)
-        with st.form("f_obra_simples", clear_on_submit=True):
+    # 1. FORMULÁRIO DE CADASTRO
+    with st.expander("➕ Cadastrar Novo Empreendimento / Obra", expanded=True):
+        with st.form("f_obra_completa", clear_on_submit=True):
             
-            # Linha 1: Identificação Principal
-            c1, c2 = st.columns([3, 1])
-            nome_obra = c1.text_input("Nome do Empreendimento / Cliente", placeholder="Ex: Casa Jd. Imperial - Lote 12")
-            status = c2.selectbox("Status", ["Planejamento", "Em Obras", "Acabamento", "Finalizada", "Vendida"])
+            st.markdown("#### 1. Identificação")
+            c1, c2 = st.columns([3, 2])
+            nome_obra = c1.text_input("Nome do Empreendimento", placeholder="Ex: Res. Vila Verde - Casa 04")
+            endereco = c2.text_input("Endereço", placeholder="Rua, Bairro...")
 
-            # Linha 2: Endereço
-            endereco = st.text_input("Endereço / Localização", placeholder="Rua, Bairro, Cidade")
+            st.markdown("#### 2. Características Físicas (Produto)")
+            c4, c5, c6, c7 = st.columns(4)
+            area_const = c4.number_input("Área Construída (m²)", min_value=0.0, format="%.2f")
+            area_terr = c5.number_input("Área Terreno (m²)", min_value=0.0, format="%.2f")
+            quartos = c6.number_input("Qtd. Quartos", min_value=0, step=1)
+            status = c7.selectbox("Fase Atual", ["Projeto", "Fundação", "Alvenaria", "Acabamento", "Concluída", "Vendida"])
 
-            # Linha 3: Dados Financeiros e Prazos
-            c3, c4, c5 = st.columns(3)
-            # VGV = Valor Geral de Venda (quanto vale a casa)
-            valor_venda = c3.number_input("Valor de Venda (VGV)", min_value=0.0, step=1000.0, format="%.2f")
-            data_inicio = c4.date_input("Data de Início", value=date.today())
-            prazo = c5.text_input("Previsão de Entrega", placeholder="Ex: Dezembro/2024")
+            st.markdown("#### 3. Viabilidade Financeira e Prazos")
+            c8, c9, c10, c11 = st.columns(4)
+            custo_previsto = c8.number_input("Orçamento Previsto (Custo)", min_value=0.0, format="%.2f", help="Quanto você ESTIMA gastar para construir.")
+            valor_venda = c9.number_input("VGV (Valor de Venda)", min_value=0.0, format="%.2f", help="Valor final de venda esperado.")
+            data_inicio = c10.date_input("Início da Obra", value=date.today())
+            prazo_entrega = c11.text_input("Prazo / Entrega", placeholder="Ex: dez/2025")
 
-            st.markdown("<br>", unsafe_allow_html=True)
+            # Cálculo automático de margem projetada na tela
+            if valor_venda > 0 and custo_previsto > 0:
+                margem_proj = ((valor_venda - custo_previsto) / custo_previsto) * 100
+                lucro_proj = valor_venda - custo_previsto
+                st.info(f"💰 **Projeção:** Lucro de **{fmt_moeda(lucro_proj)}** (Margem: **{margem_proj:.1f}%**)")
+
+            st.markdown("---")
             
-            # Botão de Ação
-            if st.form_submit_button("✅ CADASTRAR OBRA", use_container_width=True):
+            if st.form_submit_button("✅ SALVAR PROJETO", use_container_width=True):
                 if not nome_obra:
-                    st.warning("Por favor, preencha o nome da obra.")
+                    st.warning("O nome do empreendimento é obrigatório.")
                 else:
                     try:
                         conn = get_conn()
                         ws = conn.worksheet("Obras")
 
-                        # Lógica para gerar ID automático
+                        # ID Automático
                         ids_existentes = pd.to_numeric(df_obras["ID"], errors="coerce").fillna(0)
                         novo_id = int(ids_existentes.max()) + 1 if not ids_existentes.empty else 1
 
-                        # Salvando na ordem exata das suas colunas originais
+                        # Salvando sem a coluna Matricula, na ordem exata de OBRAS_COLS
                         ws.append_row([
                             novo_id,
                             nome_obra.strip(),
@@ -491,36 +503,38 @@ elif sel == "Obras":
                             status,
                             float(valor_venda),
                             data_inicio.strftime("%Y-%m-%d"),
-                            prazo.strip()
+                            prazo_entrega.strip(),
+                            float(area_const),
+                            float(area_terr),
+                            int(quartos),
+                            float(custo_previsto)
                         ])
                         
-                        st.toast(f"Obra '{nome_obra}' cadastrada com sucesso!", icon="🏗️")
-                        st.cache_data.clear() # Limpa cache para atualizar a tabela
+                        st.toast(f"Obra '{nome_obra}' registrada!", icon="🏡")
+                        st.cache_data.clear()
                         st.rerun()
                     except Exception as e:
                         st.error(f"Erro ao salvar: {e}")
 
     # 2. TABELA DE VISUALIZAÇÃO
-    st.markdown("---")
-    st.subheader("📋 Obras em Carteira")
+    st.markdown("### 📋 Carteira de Obras")
     
     if not df_obras.empty:
-        # Prepara visualização
         df_show = df_obras.copy()
-        
-        # Garante que VGV é número para formatar corretamente
-        df_show["Valor Total"] = pd.to_numeric(df_show["Valor Total"], errors="coerce").fillna(0)
         
         st.dataframe(
             df_show, 
             use_container_width=True, 
             hide_index=True,
             column_config={
-                "ID": st.column_config.NumberColumn("Cod.", width="small"),
-                "Valor Total": st.column_config.NumberColumn("Valor de Venda", format="R$ %.2f"),
+                "ID": st.column_config.NumberColumn("#", width="small"),
+                "Cliente": "Empreendimento",
+                "Valor Total": st.column_config.NumberColumn("VGV (Venda)", format="R$ %.2f"),
+                "Custo Previsto": st.column_config.NumberColumn("Budget (Custo)", format="R$ %.2f"),
+                "Area Construida": st.column_config.NumberColumn("Área (m²)", format="%.0f m²"),
                 "Data Início": st.column_config.DateColumn("Início", format="DD/MM/YYYY"),
-                "Status": st.column_config.SelectboxColumn("Status", options=["Planejamento", "Em Obras", "Finalizada"], disabled=True)
+                "Status": st.column_config.SelectboxColumn("Status", options=["Projeto", "Em Obras", "Vendida"], disabled=True)
             }
         )
     else:
-        st.info("Nenhuma obra cadastrada ainda.")
+        st.info("Nenhuma obra cadastrada.")
