@@ -8,6 +8,7 @@ from datetime import date, datetime, timedelta
 from streamlit_option_menu import option_menu
 import io
 import random
+import re  # <--- IMPORTAÇÃO NOVA PARA FILTRAR LETRAS
 
 # --- BIBLIOTECAS PDF (REPORTLAB) ---
 from reportlab.lib.pagesizes import A4
@@ -79,31 +80,32 @@ def safe_float(x) -> float:
     try: return float(s)
     except: return 0.0
 
-# --- NOVO COMPONENTE DE INPUT (GENÉRICO BR) ---
+# --- NOVO COMPONENTE DE INPUT (COM FILTRO ANTI-LETRAS) ---
 def input_formata_br(label, valor_ref_float, key_txt, prefix=""):
     """
-    label: Título do campo
-    valor_ref_float: O valor numérico atual (do session state)
-    key_txt: A chave única para o componente de texto
-    prefix: Prefixo visual (ex: 'R$ ')
+    Componente de input que aceita formatação BR e remove letras automaticamente.
     """
-    # Formata para exibição (BR) se tiver valor
+    # 1. Formata o valor numérico atual para exibir na caixa (ex: 1200.50 -> 1.200,50)
     if valor_ref_float > 0:
-        # Formata com separador de milhar (.) e decimal (,)
         val_inicial = f"{valor_ref_float:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
         if prefix:
             val_inicial = f"{prefix}{val_inicial}"
     else:
         val_inicial = ""
     
-    # Input de Texto
+    # 2. Input de Texto
     val_str = st.text_input(label, value=val_inicial, key=key_txt, placeholder="0,00")
     
-    # Converte de volta para float
+    # 3. Processamento e Limpeza
     if val_str:
-        clean = val_str.replace("R$", "").replace("m²", "").strip() # Remove prefixos/sufixos comuns
-        clean = clean.replace(".", "") # Tira ponto de milhar
-        clean = clean.replace(",", ".") # Troca vírgula decimal por ponto
+        # REGEX: Remove tudo que NÃO for dígito (0-9), vírgula ou ponto.
+        # Isso impede que letras entrem no cálculo.
+        clean = re.sub(r'[^\d.,]', '', val_str)
+        
+        # Lógica padrão BR: tira ponto de milhar, troca vírgula por ponto
+        clean = clean.replace(".", "") 
+        clean = clean.replace(",", ".") 
+        
         try:
             return float(clean)
         except:
@@ -493,7 +495,10 @@ elif sel == "Financeiro":
             with c2:
                 opcoes_obras = [""] + lista_obras
                 ob = st.selectbox("Obra *", opcoes_obras, key="k_fin_obra")
+                
+                # Input monetário com filtro
                 vl = input_formata_br("Valor R$ *", valor_ref_float=st.session_state.k_fin_valor, key_txt="k_fin_valor_txt", prefix="R$ ")
+                
                 dc = st.text_input("Descrição *", value=st.session_state.k_fin_desc, key="k_fin_desc")
             
             submitted_fin = st.form_submit_button("Salvar", use_container_width=True)
@@ -584,7 +589,7 @@ elif sel == "Obras":
 
             st.markdown("#### 2. Características Físicas (Produto)")
             c4, c5, c6, c7 = st.columns(4)
-            # AQUI: Mudança para Input Texto (Estilo App de Banco) para Áreas
+            # AQUI: Aplicação do input_formata_br para Areas
             with c4: area_const = input_formata_br("Área Construída (m²)", valor_ref_float=st.session_state.k_ob_area_c, key_txt="k_ob_area_c_txt", prefix="")
             with c5: area_terr = input_formata_br("Área Terreno (m²)", valor_ref_float=st.session_state.k_ob_area_t, key_txt="k_ob_area_t_txt", prefix="")
             with c6: quartos = st.number_input("Qtd. Quartos", min_value=0, step=1, value=st.session_state.k_ob_quartos, key="k_ob_quartos")
@@ -592,6 +597,7 @@ elif sel == "Obras":
 
             st.markdown("#### 3. Viabilidade Financeira e Prazos")
             c8, c9, c10, c11 = st.columns(4)
+            # AQUI: Aplicação do input_formata_br para Valores
             with c8: custo_previsto = input_formata_br("Orçamento (Custo) *", valor_ref_float=st.session_state.k_ob_custo, key_txt="k_ob_custo_txt", prefix="R$ ")
             with c9: valor_venda = input_formata_br("VGV (Venda) *", valor_ref_float=st.session_state.k_ob_vgv, key_txt="k_ob_vgv_txt", prefix="R$ ")
             with c10: data_inicio = st.date_input("Início da Obra", value=st.session_state.k_ob_data, key="k_ob_data")
