@@ -562,7 +562,6 @@ elif sel == "Financeiro":
                 opcoes_cats = [""] + CATS
                 ct = st.selectbox("Categoria *", opcoes_cats, key="k_fin_cat")
             with c_row2_3:
-                # AQUI: Opção vazia adicionada no início
                 opcoes_pay = [""] + PAY_METHODS
                 pay = st.selectbox("Pagamento *", opcoes_pay, key="k_fin_pay")
 
@@ -830,4 +829,49 @@ elif sel == "Obras":
                             except Exception as e: st.error(f"Erro ao salvar: {e}")
                         else: st.toast("Senha incorreta!", icon="⛔")
         else: st.caption("💡 Edite diretamente na tabela acima. O botão de salvar aparecerá automaticamente.")
+    
+    # --- ÁREA DE EXCLUSÃO (NOVO CÓDIGO) ---
+    st.write("")
+    st.markdown("### 🗑️ Zona de Exclusão")
+    with st.expander("Excluir Obra Definitivamente", expanded=False):
+        if not df_obras.empty:
+            # Lista formatada para facilitar seleção
+            obra_options = df_obras.apply(lambda x: f"{x['ID']} | {x['Cliente']}", axis=1).tolist()
+            selected_obra_delete = st.selectbox("Selecione a obra para excluir:", obra_options)
+
+            st.warning(f"⚠️ Atenção: Ao excluir '{selected_obra_delete}', todos os dados desta obra serão perdidos na tabela de cadastro. Lançamentos financeiros vinculados ficarão órfãos.")
+
+            col_del_1, col_del_2 = st.columns([2, 1])
+            with col_del_1:
+                pwd_del = st.text_input("Senha de Administrador para Exclusão", type="password", key="pwd_del")
+            with col_del_2:
+                st.write("") # Espaçamento visual
+                btn_del = st.button("🚫 CONFIRMAR EXCLUSÃO", type="primary", use_container_width=True)
+
+            if btn_del:
+                if pwd_del == st.secrets["password"]:
+                    try:
+                        id_del = selected_obra_delete.split(" | ")[0]
+                        conn = get_conn()
+                        ws = conn.worksheet("Obras")
+                        cell = ws.find(id_del, in_column=1) # Procura ID na coluna A
+
+                        if cell:
+                            ws.delete_rows(cell.row)
+                            st.toast("Obra excluída com sucesso!", icon="🗑️")
+
+                            # Limpa cache e estado
+                            if "data_obras" in st.session_state: del st.session_state["data_obras"]
+                            st.cache_data.clear()
+                            st.rerun()
+                        else:
+                            st.error("ID não encontrado na planilha.")
+                    except Exception as e:
+                        st.error(f"Erro ao excluir: {e}")
+                else:
+                    st.error("Senha incorreta.")
+        else:
+            st.info("Nenhuma obra para excluir.")
+    # --- FIM ÁREA DE EXCLUSÃO ---
+
     else: st.info("Nenhuma obra cadastrada.")
