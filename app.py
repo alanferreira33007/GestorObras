@@ -236,12 +236,7 @@ def gerar_pdf_empresarial(escopo, periodo, vgv, custos, lucro, roi, df_cat, df_l
     if not df_lanc.empty:
         df_l = df_lanc.copy()
         df_l["Valor"] = df_l["Valor"].apply(fmt_moeda)
-        # Adaptar colunas para o PDF se existirem
         cols_sel = ["Data", "Categoria", "Descrição", "Valor"]
-        # Nota: O layout da tabela do PDF é fixo para 4 colunas para caber na A4 vertical.
-        # Se quiser adicionar Fornecedor/Pagamento no PDF, precisaria mudar para Landscape ou reduzir fontes.
-        # Mantendo o padrão para garantir a geração.
-        
         data_lanc = [cols_sel] + df_l[cols_sel].values.tolist()
         
         data_lanc.append(["", "", "SUBTOTAL (Página):", fmt_moeda(custos)])
@@ -345,24 +340,20 @@ def fetch_data_from_google():
             for c in OBRAS_COLS: 
                 if c not in df_o.columns: df_o[c] = None
         
-        # --- FINANCEIRO (CORREÇÃO DE CARREGAMENTO) ---
+        # --- FINANCEIRO ---
         ws_f = db.worksheet("Financeiro")
-        # Usando get_all_records para garantir o mapeamento correto dos cabeçalhos
         raw_f = ws_f.get_all_records()
         df_f = pd.DataFrame(raw_f)
 
         if df_f.empty:
              df_f = pd.DataFrame(columns=FIN_COLS)
         else:
-            # Garante que todas as colunas existem, mesmo se a planilha for velha
             for c in FIN_COLS:
                 if c not in df_f.columns: df_f[c] = ""
         
-        # Seleciona e ordena apenas as colunas oficiais para evitar lixo
         df_f = df_f[FIN_COLS]
         
         # --- NORMALIZAÇÃO ROBUSTA ---
-        # Garante que textos sejam comparáveis (remove espaços invisíveis)
         cols_to_normalize = ["Obra Vinculada", "Categoria", "Tipo", "Fornecedor", "Pagamento"]
         for col in cols_to_normalize:
              if col in df_f.columns:
@@ -371,7 +362,6 @@ def fetch_data_from_google():
         if "Cliente" in df_o.columns:
             df_o["Cliente"] = df_o["Cliente"].astype(str).apply(normalize_text)
 
-        # Conversão numérica
         df_o["Valor Total"] = df_o["Valor Total"].apply(safe_float)
         if "Custo Previsto" in df_o.columns:
             df_o["Custo Previsto"] = df_o["Custo Previsto"].apply(safe_float)
@@ -462,7 +452,7 @@ with st.sidebar:
 
     st.markdown("""
         <div style='margin-top: 30px; text-align: center;'>
-            <p style='color: #adb5bd; font-size: 10px;'>v1.3.4 • © 2026 Gestor Pro</p>
+            <p style='color: #adb5bd; font-size: 10px;'>v1.4.0 • © 2026 Gestor Pro</p>
         </div>
     """, unsafe_allow_html=True)
 
@@ -657,7 +647,6 @@ elif sel == "Financeiro":
         
         # --- FILTRO CORRIGIDO E ROBUSTO ---
         if filtro_obra != "Todas as Obras": 
-            # Normaliza ambos os lados para garantir match
             df_view = df_view[df_view["Obra Vinculada"] == normalize_text(filtro_obra)]
             
         if filtro_cat != "Todas as Categorias": 
@@ -685,6 +674,53 @@ elif sel == "Financeiro":
             escopo_pdf = filtro_obra if filtro_obra != "Todas as Obras" else "Visão Geral (Filtro)"
             pdf_data = gerar_pdf_empresarial(escopo_pdf, per_str, 0.0, total_filtrado, 0.0, 0.0, df_cat if 'df_cat' in locals() else pd.DataFrame(), df_tab)
             st.download_button(label="⬇️ BAIXAR RELATÓRIO DA CONSULTA (PDF)", data=pdf_data, file_name=f"Extrato_{date.today()}.pdf", mime="application/pdf", use_container_width=True)
+            
+        st.write("")
+        st.write("")
+        
+        # --- ZONA DE EXCLUSÃO DE LANÇAMENTO (NOVO) ---
+        with st.expander("⚙️ Opções Avançadas (Remover Lançamento)", expanded=False):
+            st.caption("Atenção: Ação irreversível.")
+            with st.form("form_del_fin", clear_on_submit=True):
+                # Criar lista identificável: Linha (Index+2) | Data | Valor | Descrição
+                lista_lancamentos = []
+                # Usar df_fin original (sem filtros) para garantir o índice correto da planilha
+                if not df_fin.empty:
+                    for idx, row in df_fin.iterrows():
+                        # Google Sheets começa na linha 1 (cabeçalho), então dados começam na 2
+                        label = f"Ln.{idx+2} | {row['Data']} | {row['Obra Vinculada']} | {fmt_moeda(row['Valor'])} | {row['Descrição']}"
+                        lista_lancamentos.append(label)
+
+                # Inverter para facilitar a busca visual (mais recentes no topo)
+                lista_lancamentos.reverse()
+
+                sel_del_fin = st.selectbox("Selecionar Lançamento:", ["(Selecione...)"] + lista_lancamentos)
+                pwd_del_fin = st.text_input("Senha ADM", type="password", key="pwd_del_fin_input")
+                btn_del_fin = st.form_submit_button("Confirmar Exclusão", type="secondary", use_container_width=True)
+
+                if btn_del_fin:
+                    if sel_del_fin == "(Selecione...)":
+                        st.toast("Selecione um item.", icon="⚠️")
+                    elif pwd_del_fin == st.secrets["password"]:
+                        try:
+                            # Extrair o número da linha da string selecionada
+                            row_num = int(sel_del_fin.split(" | ")[0].replace("Ln.", ""))
+                            
+                            conn = get_conn()
+                            ws_f = conn.worksheet("Financeiro")
+                            ws_f.delete_rows(row_num)
+                            
+                            st.toast("Lançamento removido!", icon="🗑️")
+                            
+                            # Limpar cache e recarregar
+                            if "data_fin" in st.session_state: del st.session_state["data_fin"]
+                            st.cache_data.clear()
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"Erro ao excluir: {e}")
+                    else:
+                        st.toast("Senha incorreta.", icon="⛔")
+
     else: st.info("Nenhum lançamento registrado.")
 
 # --- OBRAS ---
@@ -837,7 +873,7 @@ elif sel == "Obras":
         st.write("")
         st.write("")
         
-        # --- ZONA DE EXCLUSÃO ---
+        # --- ZONA DE EXCLUSÃO (OBRAS) ---
         with st.expander("⚙️ Opções Avançadas (Remoção de Obras)", expanded=False):
             st.caption("Atenção: Esta ação é **irreversível**. Todos os dados e lançamentos financeiros vinculados serão apagados permanentemente.")
             
