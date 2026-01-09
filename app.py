@@ -422,11 +422,11 @@ if sel == "Dashboard":
             use_container_width=True
         )
 
-# --- FINANCEIRO (CORREÇÃO DE RESET) ---
+# --- FINANCEIRO (CORREÇÃO TOTAL DE WARNINGS) ---
 elif sel == "Financeiro":
     st.title("Financeiro")
 
-    # 1. RESET SEGURO (Executa ANTES dos widgets)
+    # 1. RESET SEGURO
     if st.session_state.get("sucesso_fin"):
         st.session_state["k_fin_data"] = date.today()
         st.session_state["k_fin_tipo"] = "Saída (Despesa)"
@@ -436,11 +436,20 @@ elif sel == "Financeiro":
         st.session_state["k_fin_desc"] = ""
         st.session_state["sucesso_fin"] = False
 
+    # 2. INICIALIZAÇÃO DE VARIÁVEIS (Isso remove o aviso amarelo)
+    if "k_fin_data" not in st.session_state: st.session_state.k_fin_data = date.today()
+    if "k_fin_tipo" not in st.session_state: st.session_state.k_fin_tipo = "Saída (Despesa)"
+    if "k_fin_cat" not in st.session_state: st.session_state.k_fin_cat = ""
+    if "k_fin_obra" not in st.session_state: st.session_state.k_fin_obra = ""
+    if "k_fin_valor" not in st.session_state: st.session_state.k_fin_valor = 0.0
+    if "k_fin_desc" not in st.session_state: st.session_state.k_fin_desc = ""
+
     with st.expander("Novo Lançamento", expanded=True):
         with st.form("ffin", clear_on_submit=False):
             c1, c2 = st.columns(2)
             
-            dt = c1.date_input("Data", date.today(), key="k_fin_data")
+            # 3. USO CORRETO: value=st.session_state['key']
+            dt = c1.date_input("Data", value=st.session_state.k_fin_data, key="k_fin_data")
             tp = c1.selectbox("Tipo", ["Saída (Despesa)", "Entrada"], key="k_fin_tipo")
             
             opcoes_cats = [""] + CATS
@@ -449,8 +458,8 @@ elif sel == "Financeiro":
             opcoes_obras = [""] + lista_obras
             ob = c2.selectbox("Obra *", opcoes_obras, key="k_fin_obra")
             
-            vl = c2.number_input("Valor R$ *", min_value=0.0, key="k_fin_valor")
-            dc = c2.text_input("Descrição *", key="k_fin_desc")
+            vl = c2.number_input("Valor R$ *", min_value=0.0, value=st.session_state.k_fin_valor, key="k_fin_valor")
+            dc = c2.text_input("Descrição *", value=st.session_state.k_fin_desc, key="k_fin_desc")
             
             submitted_fin = st.form_submit_button("Salvar", use_container_width=True)
 
@@ -471,7 +480,6 @@ elif sel == "Financeiro":
                         st.toast("Lançamento salvo com sucesso!")
                         st.cache_data.clear()
                         
-                        # Ativa Flag e Recarrega
                         st.session_state["sucesso_fin"] = True
                         st.rerun() 
                     except Exception as e: st.error(f"Erro: {e}")
@@ -481,12 +489,12 @@ elif sel == "Financeiro":
         dview = df_fin[df_fin["Obra Vinculada"].isin(fob)] if fob else df_fin
         st.dataframe(dview.sort_values("Data_DT", ascending=False), use_container_width=True, hide_index=True)
 
-# --- OBRAS (CORREÇÃO DE RESET) ---
+# --- OBRAS (CORREÇÃO TOTAL DE WARNINGS) ---
 elif sel == "Obras":
     st.title("📂 Gestão de Incorporação e Obras")
     st.markdown("---")
 
-    # 1. RESET SEGURO (Antes dos widgets)
+    # 1. RESET SEGURO
     if st.session_state.get("sucesso_obra"):
         st.session_state["k_ob_nome"] = ""
         st.session_state["k_ob_end"] = ""
@@ -498,28 +506,42 @@ elif sel == "Obras":
         st.session_state["k_ob_vgv"] = 0.0
         st.session_state["k_ob_prazo"] = ""
         st.session_state["sucesso_obra"] = False
+    
+    # 2. INICIALIZAÇÃO DE VARIÁVEIS (Isso remove o aviso amarelo)
+    if "k_ob_nome" not in st.session_state: st.session_state.k_ob_nome = ""
+    if "k_ob_end" not in st.session_state: st.session_state.k_ob_end = ""
+    if "k_ob_area_c" not in st.session_state: st.session_state.k_ob_area_c = 0.0
+    if "k_ob_area_t" not in st.session_state: st.session_state.k_ob_area_t = 0.0
+    if "k_ob_quartos" not in st.session_state: st.session_state.k_ob_quartos = 0
+    if "k_ob_status" not in st.session_state: st.session_state.k_ob_status = "Projeto"
+    if "k_ob_custo" not in st.session_state: st.session_state.k_ob_custo = 0.0
+    if "k_ob_vgv" not in st.session_state: st.session_state.k_ob_vgv = 0.0
+    if "k_ob_prazo" not in st.session_state: st.session_state.k_ob_prazo = ""
+    if "k_ob_data" not in st.session_state: st.session_state.k_ob_data = date.today()
 
     with st.expander("➕ Cadastrar Novo Empreendimento / Obra", expanded=True):
         with st.form("f_obra_completa", clear_on_submit=False):
             
             st.markdown("#### 1. Identificação")
             c1, c2 = st.columns([3, 2])
-            nome_obra = c1.text_input("Nome do Empreendimento *", placeholder="Ex: Res. Vila Verde - Casa 04", key="k_ob_nome")
-            endereco = c2.text_input("Endereço *", placeholder="Rua, Bairro...", key="k_ob_end")
+            
+            # 3. USO CORRETO: value=st.session_state['key']
+            nome_obra = c1.text_input("Nome do Empreendimento *", placeholder="Ex: Res. Vila Verde - Casa 04", value=st.session_state.k_ob_nome, key="k_ob_nome")
+            endereco = c2.text_input("Endereço *", placeholder="Rua, Bairro...", value=st.session_state.k_ob_end, key="k_ob_end")
 
             st.markdown("#### 2. Características Físicas (Produto)")
             c4, c5, c6, c7 = st.columns(4)
-            area_const = c4.number_input("Área Construída (m²)", min_value=0.0, format="%.2f", key="k_ob_area_c")
-            area_terr = c5.number_input("Área Terreno (m²)", min_value=0.0, format="%.2f", key="k_ob_area_t")
-            quartos = c6.number_input("Qtd. Quartos", min_value=0, step=1, key="k_ob_quartos")
+            area_const = c4.number_input("Área Construída (m²)", min_value=0.0, format="%.2f", value=st.session_state.k_ob_area_c, key="k_ob_area_c")
+            area_terr = c5.number_input("Área Terreno (m²)", min_value=0.0, format="%.2f", value=st.session_state.k_ob_area_t, key="k_ob_area_t")
+            quartos = c6.number_input("Qtd. Quartos", min_value=0, step=1, value=st.session_state.k_ob_quartos, key="k_ob_quartos")
             status = c7.selectbox("Fase Atual", ["Projeto", "Fundação", "Alvenaria", "Acabamento", "Concluída", "Vendida"], key="k_ob_status")
 
             st.markdown("#### 3. Viabilidade Financeira e Prazos")
             c8, c9, c10, c11 = st.columns(4)
-            custo_previsto = c8.number_input("Orçamento (Custo) *", min_value=0.0, format="%.2f", key="k_ob_custo")
-            valor_venda = c9.number_input("VGV (Venda) *", min_value=0.0, format="%.2f", key="k_ob_vgv")
-            data_inicio = c10.date_input("Início da Obra", value=date.today(), key="k_ob_data")
-            prazo_entrega = c11.text_input("Prazo / Entrega *", placeholder="Ex: dez/2025", key="k_ob_prazo")
+            custo_previsto = c8.number_input("Orçamento (Custo) *", min_value=0.0, format="%.2f", value=st.session_state.k_ob_custo, key="k_ob_custo")
+            valor_venda = c9.number_input("VGV (Venda) *", min_value=0.0, format="%.2f", value=st.session_state.k_ob_vgv, key="k_ob_vgv")
+            data_inicio = c10.date_input("Início da Obra", value=st.session_state.k_ob_data, key="k_ob_data")
+            prazo_entrega = c11.text_input("Prazo / Entrega *", placeholder="Ex: dez/2025", value=st.session_state.k_ob_prazo, key="k_ob_prazo")
 
             if valor_venda > 0 and custo_previsto > 0:
                 margem_proj = ((valor_venda - custo_previsto) / custo_previsto) * 100
@@ -569,7 +591,6 @@ elif sel == "Obras":
                         st.toast(f"Sucesso! Obra '{nome_obra}' cadastrada.", icon="🏡")
                         st.cache_data.clear()
 
-                        # Ativa Flag e Recarrega
                         st.session_state["sucesso_obra"] = True
                         st.rerun()
 
