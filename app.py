@@ -20,7 +20,7 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# CSS OTIMIZADO (VISUAL CLEAN, PROFISSIONAL E FUNCIONAL)
+# CSS OTIMIZADO (BOTÃO DE LOGIN VERDE CORRIGIDO)
 st.markdown("""
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap');
@@ -40,40 +40,44 @@ st.markdown("""
     }
     [data-testid="stSidebarUserContent"] { padding-top: 2rem; }
 
-    /* --- BOTÕES (FLAT DESIGN) --- */
+    /* --- BOTÕES PRINCIPAIS (VERDE) --- */
     div.stButton > button {
-        background-color: #2D6A4F;
-        color: white;
+        background-color: #2D6A4F !important; /* Força o verde */
+        color: white !important;
         border: none;
         border-radius: 6px;
         padding: 0.6rem 1rem;
-        font-weight: 500;
+        font-weight: 600; /* Um pouco mais negrito para destaque */
         font-size: 0.95rem;
-        box-shadow: none !important;
+        /* Sombra sutil devolvida para dar destaque */
+        box-shadow: 0 2px 4px rgba(45, 106, 79, 0.2) !important; 
         transition: all 0.2s ease-in-out;
     }
     div.stButton > button:hover {
-        background-color: #1B4332;
+        background-color: #1B4332 !important; /* Verde mais escuro no hover */
         transform: translateY(-1px);
-        box-shadow: 0 4px 6px rgba(45, 106, 79, 0.2) !important;
+        box-shadow: 0 4px 8px rgba(45, 106, 79, 0.3) !important; /* Sombra maior no hover */
     }
     
-    /* Botões Secundários */
+    /* Botões Secundários (Cinza) - Mantém o estilo discreto */
     div.stButton > button[kind="secondary"] {
-        background-color: #f8f9fa;
-        color: #495057;
-        border: 1px solid #dee2e6;
+        background-color: #f8f9fa !important;
+        color: #495057 !important;
+        border: 1px solid #dee2e6 !important;
+        box-shadow: none !important;
+        font-weight: 500;
     }
     div.stButton > button[kind="secondary"]:hover {
-        background-color: #e9ecef;
-        color: #212529;
-        border-color: #ced4da;
+        background-color: #e9ecef !important;
+        color: #212529 !important;
+        border-color: #ced4da !important;
     }
 
     button:disabled {
         background-color: #e9ecef !important;
         color: #adb5bd !important;
         cursor: not-allowed;
+        box-shadow: none !important;
     }
     
     /* --- INPUTS --- */
@@ -397,7 +401,6 @@ with st.sidebar:
         </div>
     """, unsafe_allow_html=True)
 
-    # CORREÇÃO AQUI: --hover-color verde claro explícito
     sel = option_menu(
         menu_title=None,
         options=["Dashboard", "Financeiro", "Obras"],
@@ -410,7 +413,7 @@ with st.sidebar:
                 "font-size": "14px", 
                 "text-align": "left", 
                 "margin": "5px", 
-                "--hover-color": "#d4edda", # Verde claro visível para hover
+                "--hover-color": "#d4edda", 
                 "color": "#343a40"
             },
             "nav-link-selected": {"background-color": "#2D6A4F", "color": "white"},
