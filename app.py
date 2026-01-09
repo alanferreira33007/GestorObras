@@ -113,8 +113,8 @@ def safe_float(x) -> float:
 
 def normalize_text(text):
     """Remove espaços extras e padroniza para comparação segura"""
-    if not isinstance(text, str): return str(text)
-    return " ".join(text.split()).strip()
+    if text is None: return ""
+    return " ".join(str(text).split()).strip()
 
 # ==============================================================================
 # 3. MOTOR PDF (ENTERPRISE V5)
@@ -340,18 +340,23 @@ def fetch_data_from_google():
             for c in OBRAS_COLS: 
                 if c not in df_o.columns: df_o[c] = None
         
-        # --- FINANCEIRO ---
+        # --- FINANCEIRO (CARREGAMENTO MAIS SEGURO PARA COLUNAS NOVAS) ---
         ws_f = db.worksheet("Financeiro")
-        raw_f = ws_f.get_all_records()
-        df_f = pd.DataFrame(raw_f)
-
-        if df_f.empty:
+        # Usamos get_all_values para garantir que não perderemos colunas por divergência de header
+        raw_f = ws_f.get_all_values()
+        
+        if not raw_f or len(raw_f) < 2:
              df_f = pd.DataFrame(columns=FIN_COLS)
         else:
-            for c in FIN_COLS:
-                if c not in df_f.columns: df_f[c] = ""
-        
-        df_f = df_f[FIN_COLS]
+             # Pega os dados a partir da linha 2 e ajusta para o numero de colunas esperado
+             data_f = raw_f[1:]
+             df_f = pd.DataFrame(data_f)
+             # Ajusta colunas se faltar
+             while df_f.shape[1] < len(FIN_COLS):
+                 df_f[df_f.shape[1]] = ""
+             # Corta colunas se sobrar
+             df_f = df_f.iloc[:, :len(FIN_COLS)]
+             df_f.columns = FIN_COLS
         
         # --- NORMALIZAÇÃO ROBUSTA ---
         cols_to_normalize = ["Obra Vinculada", "Categoria", "Tipo", "Fornecedor", "Pagamento"]
@@ -452,7 +457,7 @@ with st.sidebar:
 
     st.markdown("""
         <div style='margin-top: 30px; text-align: center;'>
-            <p style='color: #adb5bd; font-size: 10px;'>v1.4.1 • © 2026 Gestor Pro</p>
+            <p style='color: #adb5bd; font-size: 10px;'>v1.5.0 • © 2026 Gestor Pro</p>
         </div>
     """, unsafe_allow_html=True)
 
@@ -500,11 +505,17 @@ if sel == "Dashboard":
         df_show = df_fin[df_fin["Tipo"].astype(str).str.contains("Saída|Despesa", case=False, na=False)].copy()
         label_btn_pdf = "⬇️ PDF Consolidado"
     else:
-        # Busca normalizada
+        # Busca normalizada e insensível a maiúsculas
         safe_escopo = normalize_text(escopo)
         row = df_obras[df_obras["Cliente"] == safe_escopo].iloc[0]
         vgv = row["Valor Total"]
-        df_show = df_fin[(df_fin["Obra Vinculada"] == safe_escopo) & (df_fin["Tipo"].astype(str).str.contains("Saída|Despesa", case=False, na=False))].copy()
+        
+        # Filtro corrigido
+        df_show = df_fin[
+            (df_fin["Obra Vinculada"].str.strip().str.upper() == safe_escopo.strip().upper()) & 
+            (df_fin["Tipo"].astype(str).str.contains("Saída|Despesa", case=False, na=False))
+        ].copy()
+        
         label_btn_pdf = f"⬇️ PDF: {escopo}"
     
     custos = df_show["Valor"].sum()
@@ -645,12 +656,15 @@ elif sel == "Financeiro":
 
         df_view = df_fin.copy()
         
-        # --- FILTRO CORRIGIDO E ROBUSTO ---
+        # --- FILTRO CORRIGIDO E ROBUSTO (CASE INSENSITIVE) ---
         if filtro_obra != "Todas as Obras": 
-            df_view = df_view[df_view["Obra Vinculada"] == normalize_text(filtro_obra)]
+            # Normaliza ambos para maiúsculo e remove espaços para comparar
+            mask = df_view["Obra Vinculada"].astype(str).str.strip().str.upper() == str(filtro_obra).strip().upper()
+            df_view = df_view[mask]
             
         if filtro_cat != "Todas as Categorias": 
-            df_view = df_view[df_view["Categoria"] == normalize_text(filtro_cat)]
+            mask = df_view["Categoria"].astype(str).str.strip().str.upper() == str(filtro_cat).strip().upper()
+            df_view = df_view[mask]
 
         total_filtrado = df_view["Valor"].sum()
         count_filtrado = len(df_view)
