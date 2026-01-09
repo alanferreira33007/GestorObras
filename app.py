@@ -197,7 +197,7 @@ def gerar_pdf_empresarial(escopo, periodo, vgv, custos, lucro, roi, df_cat, df_l
     if not df_lanc.empty:
         df_l = df_lanc.copy()
         df_l["Valor"] = df_l["Valor"].apply(fmt_moeda)
-        # Seleção de colunas para o PDF (Fornecedor não incluído para manter layout)
+        # PDF mantém colunas principais para caber na folha A4 vertical
         cols_sel = ["Data", "Categoria", "Descrição", "Valor"]
         data_lanc = [cols_sel] + df_l[cols_sel].values.tolist()
         
@@ -277,9 +277,10 @@ OBRAS_COLS = [
     "Data Início", "Prazo", "Area Construida", "Area Terreno", 
     "Quartos", "Custo Previsto"
 ]
-# Fornecedor adicionado
-FIN_COLS   = ["Data", "Tipo", "Categoria", "Descrição", "Valor", "Obra Vinculada", "Fornecedor"]
+# COLUNA "Pagamento" ADICIONADA AQUI (COLUNA 8 NA PLANILHA)
+FIN_COLS   = ["Data", "Tipo", "Categoria", "Descrição", "Valor", "Obra Vinculada", "Fornecedor", "Pagamento"]
 CATS       = ["Material", "Mão de Obra", "Serviços", "Administrativo", "Impostos", "Outros"]
+PAY_METHODS = ["PIX", "Dinheiro", "Cartão de Crédito", "Boleto", "Transferência"]
 
 @st.cache_resource
 def get_conn():
@@ -488,10 +489,12 @@ if sel == "Dashboard":
 
     st.markdown("### Lançamentos")
     if not df_show.empty:
-        # Verifica se fornecedor existe para exibir
+        # Colunas principais para o Dashboard
         cols_view = ["Data", "Categoria", "Descrição", "Valor"]
         if "Fornecedor" in df_show.columns:
             cols_view.insert(3, "Fornecedor")
+        if "Pagamento" in df_show.columns:
+            cols_view.insert(4, "Pagamento")
             
         df_tab = df_show[cols_view].sort_values("Data", ascending=False)
         st.dataframe(df_tab, use_container_width=True, hide_index=True, height=250, column_config={"Valor": st.column_config.NumberColumn(format="R$ %.2f")})
@@ -530,6 +533,7 @@ elif sel == "Financeiro":
         st.session_state["k_fin_valor"] = 0.0
         st.session_state["k_fin_desc"] = ""
         st.session_state["k_fin_forn"] = "" 
+        st.session_state["k_fin_pay"] = "PIX" 
         st.session_state["sucesso_fin"] = False
 
     if "k_fin_data" not in st.session_state: st.session_state.k_fin_data = date.today()
@@ -539,6 +543,7 @@ elif sel == "Financeiro":
     if "k_fin_valor" not in st.session_state: st.session_state.k_fin_valor = 0.0
     if "k_fin_desc" not in st.session_state: st.session_state.k_fin_desc = ""
     if "k_fin_forn" not in st.session_state: st.session_state.k_fin_forn = ""
+    if "k_fin_pay" not in st.session_state: st.session_state.k_fin_pay = "PIX"
 
     with st.expander("Novo Lançamento", expanded=True):
         with st.form("ffin", clear_on_submit=False):
@@ -551,13 +556,16 @@ elif sel == "Financeiro":
             with c_row1_3:
                 vl = st.number_input("Valor R$ *", min_value=0.0, format="%.2f", step=100.0, value=st.session_state.k_fin_valor, key="k_fin_valor_input")
 
-            c_row2_1, c_row2_2 = st.columns([1, 1])
+            # LINHA 2 MODIFICADA: OBRA | CATEGORIA | PAGAMENTO
+            c_row2_1, c_row2_2, c_row2_3 = st.columns([1, 1, 1])
             with c_row2_1:
                 opcoes_obras = [""] + lista_obras
                 ob = st.selectbox("Obra *", opcoes_obras, key="k_fin_obra")
             with c_row2_2:
                 opcoes_cats = [""] + CATS
                 ct = st.selectbox("Categoria *", opcoes_cats, key="k_fin_cat")
+            with c_row2_3:
+                pay = st.selectbox("Pagamento", PAY_METHODS, key="k_fin_pay")
 
             c_row3_1, c_row3_2 = st.columns([1, 1])
             with c_row3_1:
@@ -585,7 +593,8 @@ elif sel == "Financeiro":
                 else:
                     try:
                         conn = get_conn()
-                        conn.worksheet("Financeiro").append_row([dt.strftime("%Y-%m-%d"),tp,ct,dc,vl,ob,fn])
+                        # ADICIONADO PAY (Pagamento) NO APPEND
+                        conn.worksheet("Financeiro").append_row([dt.strftime("%Y-%m-%d"),tp,ct,dc,vl,ob,fn,pay])
                         
                         if "data_fin" in st.session_state: del st.session_state["data_fin"]
                         st.cache_data.clear()
@@ -598,7 +607,6 @@ elif sel == "Financeiro":
     st.markdown("### 🔍 Consultar Lançamentos")
     
     if not df_fin.empty:
-        # Filtros agora usam Selectbox (fecha sozinho) + opção "Todas..."
         with st.expander("Filtros de Busca", expanded=True):
             c_filter1, c_filter2 = st.columns(2)
             
@@ -623,10 +631,11 @@ elif sel == "Financeiro":
         
         st.caption(f"Exibindo **{count_filtrado}** lançamentos | Total Filtrado: **{fmt_moeda(total_filtrado)}**")
         
-        # Prepara tabela com Fornecedor
         cols_view = ["Data", "Categoria", "Descrição", "Valor"]
         if "Fornecedor" in df_view.columns:
             cols_view.insert(3, "Fornecedor")
+        if "Pagamento" in df_view.columns:
+            cols_view.insert(4, "Pagamento")
             
         df_tab = df_view[cols_view].sort_values("Data", ascending=False)
         
