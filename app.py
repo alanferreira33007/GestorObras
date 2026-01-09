@@ -327,32 +327,34 @@ def load_data():
 # ==============================================================================
 if "auth" not in st.session_state: st.session_state.auth = False
 
-# --- FUNÇÃO DE CALLBACK PARA LOGIN (CAPTURA O ENTER) ---
+# --- FUNÇÕES DE CALLBACK (SEGURANÇA E UX) ---
 def password_entered():
-    """Checa a senha quando o usuário aperta Enter ou clica no botão"""
+    """Valida senha ao dar Enter ou clicar em Entrar"""
     if st.session_state["password_input"] == st.secrets["password"]:
         st.session_state.auth = True
-        # Limpa erro anterior se existir
-        if "login_error" in st.session_state: 
-            del st.session_state["login_error"]
+        if "login_error" in st.session_state: del st.session_state["login_error"]
     else:
         st.session_state.auth = False
         st.session_state.login_error = "Senha incorreta"
+
+def logout():
+    """Função de Logout executada antes do rerun"""
+    st.session_state.auth = False
+    # Limpa a senha do estado para forçar novo login limpo
+    if "password_input" in st.session_state:
+        st.session_state["password_input"] = ""
 
 if not st.session_state.auth:
     _, c2, _ = st.columns([1,1,1])
     with c2:
         st.markdown("<br><h2 style='text-align:center; color:#2D6A4F'>GESTOR PRO</h2>", unsafe_allow_html=True)
         
-        # Mostra mensagem de erro se o login falhar
         if st.session_state.get("login_error"):
             st.error(st.session_state["login_error"])
         
-        # Input de senha com CALLBACK (on_change)
-        # Ao apertar ENTER, o Streamlit executa 'password_entered' automaticamente
+        # O argumento on_change detecta o ENTER
         st.text_input("Senha", type="password", key="password_input", on_change=password_entered)
-        
-        # Botão também chama a mesma função
+        # O argumento on_click detecta o CLIQUE
         st.button("ENTRAR", use_container_width=True, on_click=password_entered)
         
     st.stop()
@@ -364,7 +366,8 @@ with st.sidebar:
     st.markdown("### 🏢 MENU")
     sel = option_menu(None, ["Dashboard", "Financeiro", "Obras"], icons=["graph-up", "wallet", "building"], default_index=0, styles={"nav-link-selected": {"background-color": "#2D6A4F"}})
     st.markdown("---")
-    if st.button("Sair"): st.session_state.auth=False; st.rerun()
+    # CORREÇÃO DO LOGOUT: Usando callback para garantir execução imediata
+    st.button("Sair", on_click=logout)
 
 # --- DASHBOARD ---
 if sel == "Dashboard":
