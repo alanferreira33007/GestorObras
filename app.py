@@ -265,7 +265,6 @@ def gerar_pdf_empresarial(escopo, periodo, vgv, custos, lucro, roi, df_cat, df_l
 # ==============================================================================
 # 4. DADOS E CONEXÃO
 # ==============================================================================
-# ATENÇÃO: Adicione as colunas novas manualmente no seu Google Sheets (Aba Obras)
 OBRAS_COLS = [
     "ID", "Cliente", "Endereço", "Status", "Valor Total", 
     "Data Início", "Prazo", "Area Construida", "Area Terreno", 
@@ -290,7 +289,6 @@ def load_data():
         if df_o.empty:
             df_o = pd.DataFrame(columns=OBRAS_COLS)
         else:
-            # Garante que todas as colunas existem
             for c in OBRAS_COLS: 
                 if c not in df_o.columns: df_o[c] = None
         
@@ -304,7 +302,6 @@ def load_data():
             for c in FIN_COLS:
                 if c not in df_f.columns: df_f[c] = None
         
-        # Tratamento de Tipos Numéricos
         df_o["Valor Total"] = df_o["Valor Total"].apply(safe_float)
         if "Custo Previsto" in df_o.columns:
             df_o["Custo Previsto"] = df_o["Custo Previsto"].apply(safe_float)
@@ -406,7 +403,6 @@ if sel == "Dashboard":
         st.write("")
         st.markdown("---")
         
-        # PDF Call
         dmin = df_show["Data_DT"].min().strftime("%d/%m/%Y")
         dmax = df_show["Data_DT"].max().strftime("%d/%m/%Y")
         per_str = f"De {dmin} até {dmax}"
@@ -425,34 +421,32 @@ if sel == "Dashboard":
             use_container_width=True
         )
 
-# --- FINANCEIRO (COM VALIDAÇÃO TOTAL DE OBRA E CATEGORIA) ---
+# --- FINANCEIRO (COM RESET MANUAL E VALIDAÇÃO) ---
 elif sel == "Financeiro":
     st.title("Financeiro")
     with st.expander("Novo Lançamento", expanded=True):
         with st.form("ffin", clear_on_submit=False):
             c1, c2 = st.columns(2)
-            dt = c1.date_input("Data", date.today())
-            tp = c1.selectbox("Tipo", ["Saída (Despesa)", "Entrada"])
+            # ADICIONEI KEYS EM CADA CAMPO PARA CONTROLE
+            dt = c1.date_input("Data", date.today(), key="k_fin_data")
+            tp = c1.selectbox("Tipo", ["Saída (Despesa)", "Entrada"], key="k_fin_tipo")
             
-            # --- ATUALIZAÇÃO: Categoria inicia vazia ---
+            # Selectboxes com opção vazia inicial
             opcoes_cats = [""] + CATS
-            ct = c1.selectbox("Categoria *", opcoes_cats)
+            ct = c1.selectbox("Categoria *", opcoes_cats, key="k_fin_cat")
             
-            # --- ATUALIZAÇÃO: Obra inicia vazia ---
             opcoes_obras = [""] + lista_obras
-            ob = c2.selectbox("Obra *", opcoes_obras)
+            ob = c2.selectbox("Obra *", opcoes_obras, key="k_fin_obra")
             
-            vl = c2.number_input("Valor R$ *", min_value=0.0)
-            dc = c2.text_input("Descrição *")
+            vl = c2.number_input("Valor R$ *", min_value=0.0, key="k_fin_valor")
+            dc = c2.text_input("Descrição *", key="k_fin_desc")
             
             submitted_fin = st.form_submit_button("Salvar", use_container_width=True)
 
             if submitted_fin:
                 erros = []
-                # Validando a seleção da Obra e Categoria (não podem ser vazias)
                 if not ob or ob == "": erros.append("Selecione a Obra Vinculada.")
                 if not ct or ct == "": erros.append("Selecione a Categoria.")
-                
                 if vl <= 0: erros.append("O Valor deve ser maior que zero.")
                 if not dc.strip(): erros.append("A Descrição é obrigatória.")
 
@@ -465,6 +459,13 @@ elif sel == "Financeiro":
                         conn.worksheet("Financeiro").append_row([dt.strftime("%Y-%m-%d"),tp,ct,dc,vl,ob])
                         st.toast("Lançamento salvo com sucesso!")
                         st.cache_data.clear()
+                        
+                        # --- O TRUQUE DO RESET: Limpa as chaves antes de recarregar ---
+                        st.session_state["k_fin_valor"] = 0.0
+                        st.session_state["k_fin_desc"] = ""
+                        st.session_state["k_fin_cat"] = ""
+                        st.session_state["k_fin_obra"] = ""
+                        
                         st.rerun() 
                     except Exception as e: st.error(f"Erro: {e}")
 
@@ -473,35 +474,34 @@ elif sel == "Financeiro":
         dview = df_fin[df_fin["Obra Vinculada"].isin(fob)] if fob else df_fin
         st.dataframe(dview.sort_values("Data_DT", ascending=False), use_container_width=True, hide_index=True)
 
-# --- OBRAS (COM VALIDAÇÃO RÍGIDA) ---
+# --- OBRAS (COM RESET MANUAL E VALIDAÇÃO) ---
 elif sel == "Obras":
     st.title("📂 Gestão de Incorporação e Obras")
     st.markdown("---")
 
-    # 1. FORMULÁRIO DE CADASTRO
     with st.expander("➕ Cadastrar Novo Empreendimento / Obra", expanded=True):
         with st.form("f_obra_completa", clear_on_submit=False):
             
             st.markdown("#### 1. Identificação")
             c1, c2 = st.columns([3, 2])
-            nome_obra = c1.text_input("Nome do Empreendimento *", placeholder="Ex: Res. Vila Verde - Casa 04")
-            endereco = c2.text_input("Endereço *", placeholder="Rua, Bairro...")
+            # ADICIONANDO KEYS PARA RESET
+            nome_obra = c1.text_input("Nome do Empreendimento *", placeholder="Ex: Res. Vila Verde - Casa 04", key="k_ob_nome")
+            endereco = c2.text_input("Endereço *", placeholder="Rua, Bairro...", key="k_ob_end")
 
             st.markdown("#### 2. Características Físicas (Produto)")
             c4, c5, c6, c7 = st.columns(4)
-            area_const = c4.number_input("Área Construída (m²)", min_value=0.0, format="%.2f")
-            area_terr = c5.number_input("Área Terreno (m²)", min_value=0.0, format="%.2f")
-            quartos = c6.number_input("Qtd. Quartos", min_value=0, step=1)
-            status = c7.selectbox("Fase Atual", ["Projeto", "Fundação", "Alvenaria", "Acabamento", "Concluída", "Vendida"])
+            area_const = c4.number_input("Área Construída (m²)", min_value=0.0, format="%.2f", key="k_ob_area_c")
+            area_terr = c5.number_input("Área Terreno (m²)", min_value=0.0, format="%.2f", key="k_ob_area_t")
+            quartos = c6.number_input("Qtd. Quartos", min_value=0, step=1, key="k_ob_quartos")
+            status = c7.selectbox("Fase Atual", ["Projeto", "Fundação", "Alvenaria", "Acabamento", "Concluída", "Vendida"], key="k_ob_status")
 
             st.markdown("#### 3. Viabilidade Financeira e Prazos")
             c8, c9, c10, c11 = st.columns(4)
-            custo_previsto = c8.number_input("Orçamento (Custo) *", min_value=0.0, format="%.2f")
-            valor_venda = c9.number_input("VGV (Venda) *", min_value=0.0, format="%.2f")
-            data_inicio = c10.date_input("Início da Obra", value=date.today())
-            prazo_entrega = c11.text_input("Prazo / Entrega *", placeholder="Ex: dez/2025")
+            custo_previsto = c8.number_input("Orçamento (Custo) *", min_value=0.0, format="%.2f", key="k_ob_custo")
+            valor_venda = c9.number_input("VGV (Venda) *", min_value=0.0, format="%.2f", key="k_ob_vgv")
+            data_inicio = c10.date_input("Início da Obra", value=date.today(), key="k_ob_data")
+            prazo_entrega = c11.text_input("Prazo / Entrega *", placeholder="Ex: dez/2025", key="k_ob_prazo")
 
-            # Cálculo automático visual
             if valor_venda > 0 and custo_previsto > 0:
                 margem_proj = ((valor_venda - custo_previsto) / custo_previsto) * 100
                 lucro_proj = valor_venda - custo_previsto
@@ -513,15 +513,10 @@ elif sel == "Obras":
             submitted = st.form_submit_button("✅ SALVAR PROJETO", use_container_width=True)
 
             if submitted:
-                # --- LÓGICA DE VALIDAÇÃO ---
                 erros = []
-                
-                # 1. Valida Textos (não podem ser vazios)
                 if not nome_obra.strip(): erros.append("O 'Nome do Empreendimento' é obrigatório.")
                 if not endereco.strip(): erros.append("O 'Endereço' é obrigatório.")
                 if not prazo_entrega.strip(): erros.append("O 'Prazo' é obrigatório.")
-
-                # 2. Valida Números (não podem ser zero)
                 if valor_venda <= 0: erros.append("O 'Valor de Venda (VGV)' deve ser maior que zero.")
                 if custo_previsto <= 0: erros.append("O 'Orçamento Previsto' deve ser maior que zero.")
                 if area_const <= 0 and area_terr <= 0: erros.append("Preencha ao menos a Área Construída ou do Terreno.")
@@ -554,6 +549,17 @@ elif sel == "Obras":
                         
                         st.toast(f"Sucesso! Obra '{nome_obra}' cadastrada.", icon="🏡")
                         st.cache_data.clear()
+
+                        # --- RESET MANUAL DOS CAMPOS ---
+                        st.session_state["k_ob_nome"] = ""
+                        st.session_state["k_ob_end"] = ""
+                        st.session_state["k_ob_area_c"] = 0.0
+                        st.session_state["k_ob_area_t"] = 0.0
+                        st.session_state["k_ob_quartos"] = 0
+                        st.session_state["k_ob_custo"] = 0.0
+                        st.session_state["k_ob_vgv"] = 0.0
+                        st.session_state["k_ob_prazo"] = ""
+
                         st.rerun()
                     except Exception as e:
                         st.error(f"Erro no Google Sheets: {e}")
