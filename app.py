@@ -497,7 +497,7 @@ elif sel == "Financeiro":
         dview = df_fin[df_fin["Obra Vinculada"].isin(fob)] if fob else df_fin
         st.dataframe(dview.sort_values("Data_DT", ascending=False), use_container_width=True, hide_index=True)
 
-# --- OBRAS (COM EDIÇÃO SEGURA) ---
+# --- OBRAS (COM EDIÇÃO SEGURA E DESIGN LIMPO) ---
 elif sel == "Obras":
     st.title("📂 Gestão de Incorporação e Obras")
     st.markdown("---")
@@ -529,7 +529,7 @@ elif sel == "Obras":
     if "k_ob_prazo" not in st.session_state: st.session_state.k_ob_prazo = ""
     if "k_ob_data" not in st.session_state: st.session_state.k_ob_data = date.today()
 
-    with st.expander("➕ Cadastrar Novo Empreendimento / Obra", expanded=False):
+    with st.expander("➕ Novo Cadastro (Clique para expandir)", expanded=False):
         with st.form("f_obra_completa", clear_on_submit=False):
             
             st.markdown("#### 1. Identificação")
@@ -604,8 +604,8 @@ elif sel == "Obras":
                     except Exception as e:
                         st.error(f"Erro no Google Sheets: {e}")
 
-    # 2. EDITOR DE DADOS (COM TRAVA DE SEGURANÇA E DETECÇÃO DE MUDANÇA)
-    st.markdown("### 📋 Carteira de Obras (Editável)")
+    # 3. EDITOR DE DADOS (VISUAL CLEAN)
+    st.markdown("### 📋 Carteira de Obras")
     
     if not df_obras.empty:
         cols_order = [
@@ -616,12 +616,18 @@ elif sel == "Obras":
         
         valid_cols = [c for c in cols_order if c in df_obras.columns]
         
-        # Cria cópia limpa para comparação, resetando index
+        # --- LIMPEZA DE DADOS PARA REMOVER "NONE" VISUAL ---
+        # Cria cópia, preenche 0/vazio para visualização
         df_to_edit = df_obras[valid_cols].copy().reset_index(drop=True)
+        
+        num_cols = ["Valor Total", "Custo Previsto", "Area Construida", "Area Terreno", "Quartos", "ID"]
+        for c in df_to_edit.columns:
+            if c in num_cols:
+                df_to_edit[c] = pd.to_numeric(df_to_edit[c], errors='coerce').fillna(0)
+            else:
+                df_to_edit[c] = df_to_edit[c].fillna("")
 
-        st.caption("💡 Clique nas células para editar. O botão de salvar só será ativado após alterações.")
-
-        # EDITOR
+        # CONFIGURAÇÃO DO EDITOR
         edited_df = st.data_editor(
             df_to_edit,
             use_container_width=True,
@@ -629,81 +635,88 @@ elif sel == "Obras":
             num_rows="fixed",
             disabled=["ID"],
             column_config={
-                "ID": st.column_config.NumberColumn("#", width="small"),
-                "Cliente": st.column_config.TextColumn("Empreendimento", width="medium", required=True),
+                "ID": st.column_config.NumberColumn("#", width=40),
+                "Cliente": st.column_config.TextColumn("Empreendimento", width="large", required=True),
                 "Status": st.column_config.SelectboxColumn(
-                    "Fase Atual", 
+                    "Fase", 
                     options=["Projeto", "Fundação", "Alvenaria", "Acabamento", "Concluída", "Vendida"],
                     required=True,
                     width="medium"
                 ),
-                "Prazo": st.column_config.TextColumn("Previsão Entrega"),
-                "Valor Total": st.column_config.NumberColumn("VGV (Venda)", format="R$ %.2f", min_value=0),
-                "Custo Previsto": st.column_config.NumberColumn("Budget (Custo)", format="R$ %.2f", min_value=0),
-                "Area Construida": st.column_config.NumberColumn("Área Const.", format="%.0f m²"),
-                "Area Terreno": st.column_config.NumberColumn("Terreno", format="%.0f m²"),
-                "Quartos": st.column_config.NumberColumn("Qtd. Quartos", min_value=0, step=1),
+                "Prazo": st.column_config.TextColumn("Entrega", width="small"),
+                "Valor Total": st.column_config.NumberColumn("VGV", format="R$ %.0f", min_value=0),
+                "Custo Previsto": st.column_config.NumberColumn("Custo", format="R$ %.0f", min_value=0),
+                "Area Construida": st.column_config.NumberColumn("Área", format="%.0f m²"),
+                "Area Terreno": st.column_config.NumberColumn("Terr.", format="%.0f m²"),
+                "Quartos": st.column_config.NumberColumn("Qts", min_value=0, step=1, width="small"),
             }
         )
         
         st.write("")
         
-        # --- LÓGICA DE DETECÇÃO DE MUDANÇA ---
-        # Comparamos o dataframe editado com o original.
+        # --- LÓGICA DE DETECÇÃO DE MUDANÇA (VISUAL LIMPO) ---
         has_changes = not edited_df.equals(df_to_edit)
         
-        if not has_changes:
-            # Estado Inativo
-            st.button("💾 Nenhuma alteração pendente", disabled=True, use_container_width=True)
-        else:
-            # Estado Ativo (Alterações detectadas)
-            st.warning("⚠️ Alterações detectadas na tabela. Para salvar, confirme sua senha administrativa.")
-            
-            with st.container():
-                c_pwd, c_btn_save = st.columns([1, 1])
-                pwd_confirm = c_pwd.text_input("Senha de Confirmação", type="password", help="Digite sua senha de login para autorizar a alteração.")
+        if has_changes:
+            with st.container(border=True):
+                c_alert, c_pwd, c_btn = st.columns([2, 1.5, 1])
                 
-                # Botão de Salvar Real
-                if c_btn_save.button("💾 CONFIRMAR E SALVAR ALTERAÇÕES", type="primary", use_container_width=True):
-                    if pwd_confirm == st.secrets["password"]:
-                        try:
-                            conn = get_conn()
-                            ws = conn.worksheet("Obras")
-                            
-                            with st.spinner("Autenticado. Salvando alterações..."):
-                                sheet_data = ws.get_all_records()
+                with c_alert:
+                    st.warning("⚠️ Alterações pendentes. Confirme para salvar.", icon="⚠️")
+                
+                with c_pwd:
+                    pwd_confirm = st.text_input("Senha", type="password", placeholder="Senha ADM", label_visibility="collapsed")
+                
+                with c_btn:
+                    if st.button("💾 SALVAR", type="primary", use_container_width=True):
+                        if pwd_confirm == st.secrets["password"]:
+                            try:
+                                conn = get_conn()
+                                ws = conn.worksheet("Obras")
                                 
-                                for index, row in edited_df.iterrows():
-                                    id_obra = row["ID"]
+                                with st.spinner("Salvando..."):
+                                    # Para salvar, reconstruímos a linha completa
+                                    # usando dados do editor + dados originais (colunas ocultas)
+                                    sheet_data = ws.get_all_records()
                                     
-                                    # Lógica de atualização (igual à anterior)
-                                    found_cell = ws.find(str(id_obra), in_column=1) 
-                                    
-                                    if found_cell:
-                                        original_row = df_obras[df_obras["ID"] == id_obra].iloc[0]
-                                        update_values = []
-                                        for col in OBRAS_COLS:
-                                            if col in row:
-                                                val = row[col]
-                                            else:
-                                                val = original_row[col]
-                                            
-                                            if isinstance(val, (pd.Timestamp, date, datetime)):
-                                                val = val.strftime("%Y-%m-%d")
-                                            elif pd.isna(val):
-                                                val = ""
-                                            update_values.append(val)
+                                    for index, row in edited_df.iterrows():
+                                        id_obra = row["ID"]
                                         
-                                        ws.update(f"A{found_cell.row}:K{found_cell.row}", [update_values])
-                            
-                            st.cache_data.clear()
-                            st.session_state["sucesso_obra"] = True
-                            st.rerun()
-                            
-                        except Exception as e:
-                            st.error(f"Erro ao salvar: {e}")
-                    else:
-                        st.error("⛔ Senha incorreta. Alterações não foram salvas.")
+                                        # Localiza linha no Sheets
+                                        found_cell = ws.find(str(id_obra), in_column=1) 
+                                        
+                                        if found_cell:
+                                            # Pega linha original completa para mesclar
+                                            original_row = df_obras[df_obras["ID"] == id_obra].iloc[0]
+                                            
+                                            update_values = []
+                                            for col in OBRAS_COLS:
+                                                if col in row:
+                                                    val = row[col]
+                                                else:
+                                                    val = original_row[col]
+                                                
+                                                # Converte formatos
+                                                if isinstance(val, (pd.Timestamp, date, datetime)):
+                                                    val = val.strftime("%Y-%m-%d")
+                                                elif pd.isna(val):
+                                                    val = ""
+                                                update_values.append(val)
+                                            
+                                            # Atualiza linha
+                                            ws.update(f"A{found_cell.row}:K{found_cell.row}", [update_values])
+                                
+                                st.cache_data.clear()
+                                st.session_state["sucesso_obra"] = True
+                                st.rerun()
+                                
+                            except Exception as e:
+                                st.error(f"Erro ao salvar: {e}")
+                        else:
+                            st.toast("Senha incorreta!", icon="⛔")
+        
+        else:
+            st.caption("💡 Edite diretamente na tabela acima. O botão de salvar aparecerá automaticamente.")
 
     else:
-        st.info("Nenhuma obra cadastrada para editar.")
+        st.info("Nenhuma obra cadastrada.")
