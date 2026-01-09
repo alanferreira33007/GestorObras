@@ -197,6 +197,7 @@ def gerar_pdf_empresarial(escopo, periodo, vgv, custos, lucro, roi, df_cat, df_l
     if not df_lanc.empty:
         df_l = df_lanc.copy()
         df_l["Valor"] = df_l["Valor"].apply(fmt_moeda)
+        # Seleção de colunas para o PDF (Fornecedor não incluído para manter layout)
         cols_sel = ["Data", "Categoria", "Descrição", "Valor"]
         data_lanc = [cols_sel] + df_l[cols_sel].values.tolist()
         
@@ -276,6 +277,7 @@ OBRAS_COLS = [
     "Data Início", "Prazo", "Area Construida", "Area Terreno", 
     "Quartos", "Custo Previsto"
 ]
+# Fornecedor adicionado
 FIN_COLS   = ["Data", "Tipo", "Categoria", "Descrição", "Valor", "Obra Vinculada", "Fornecedor"]
 CATS       = ["Material", "Mão de Obra", "Serviços", "Administrativo", "Impostos", "Outros"]
 
@@ -328,10 +330,18 @@ if "auth" not in st.session_state: st.session_state.auth = False
 
 # --- CALLBACKS DE LOGIN ---
 def password_entered():
-    """Apenas verifica a senha e libera o estado. NÃO carrega dados aqui."""
+    """Valida senha e carrega dados imediatamente para evitar delay"""
     if st.session_state["password_input"] == st.secrets["password"]:
         st.session_state.auth = True
         if "login_error" in st.session_state: del st.session_state["login_error"]
+        
+        # Carregamento antecipado de dados
+        try:
+            df_o, df_f = fetch_data_from_google()
+            st.session_state["data_obras"] = df_o
+            st.session_state["data_fin"] = df_f
+        except Exception as e:
+            st.error(f"Erro ao sincronizar login: {e}")
     else:
         st.session_state.auth = False
         st.session_state.login_error = "Senha incorreta"
@@ -396,7 +406,7 @@ with st.sidebar:
     """, unsafe_allow_html=True)
 
 # ==============================================================================
-# 7. CARREGAMENTO DE DADOS (PÓS-RENDERIZAÇÃO UI)
+# 7. GESTÃO DE DADOS (CACHE)
 # ==============================================================================
 if "data_obras" not in st.session_state or "data_fin" not in st.session_state:
     with st.spinner("Sincronizando base de dados..."):
@@ -435,7 +445,6 @@ if sel == "Dashboard":
             if "data_fin" in st.session_state: del st.session_state["data_fin"]
             st.rerun()
 
-    # Filtros
     if escopo == "Visão Geral (Todas as Obras)":
         vgv = df_obras["Valor Total"].sum()
         df_show = df_fin[df_fin["Tipo"].astype(str).str.contains("Saída|Despesa", case=False, na=False)].copy()
@@ -451,14 +460,12 @@ if sel == "Dashboard":
     roi = (lucro/custos*100) if custos > 0 else 0
     perc = (custos/vgv) if vgv > 0 else 0
     
-    # KPIs
     k1, k2, k3, k4 = st.columns(4)
     k1.metric("VGV Total", fmt_moeda(vgv))
     k2.metric("Custos", fmt_moeda(custos), delta=f"{perc*100:.1f}%", delta_color="inverse")
     k3.metric("Lucro", fmt_moeda(lucro))
     k4.metric("ROI", f"{roi:.1f}%")
     
-    # Gráficos
     g1, g2 = st.columns([2,1])
     with g1:
         st.subheader("Evolução de Custos")
@@ -479,10 +486,9 @@ if sel == "Dashboard":
             st.dataframe(df_cat.sort_values("Valor", ascending=False).head(3), use_container_width=True, hide_index=True, column_config={"Valor": st.column_config.NumberColumn(format="R$ %.2f")})
         else: st.info("Sem dados")
 
-    # Tabela
     st.markdown("### Lançamentos")
     if not df_show.empty:
-        # Mostra fornecedor na tabela se existir
+        # Verifica se fornecedor existe para exibir
         cols_view = ["Data", "Categoria", "Descrição", "Valor"]
         if "Fornecedor" in df_show.columns:
             cols_view.insert(3, "Fornecedor")
@@ -493,7 +499,6 @@ if sel == "Dashboard":
         st.write("")
         st.markdown("---")
         
-        # PDF Call
         dmin = df_show["Data_DT"].min().strftime("%d/%m/%Y")
         dmax = df_show["Data_DT"].max().strftime("%d/%m/%Y")
         per_str = f"De {dmin} até {dmax}"
@@ -538,8 +543,6 @@ elif sel == "Financeiro":
     with st.expander("Novo Lançamento", expanded=True):
         with st.form("ffin", clear_on_submit=False):
             
-            # --- LAYOUT NOVO: GRID 3 LINHAS ---
-            # Linha 1: Data | Tipo | Valor
             c_row1_1, c_row1_2, c_row1_3 = st.columns([1, 1, 1])
             with c_row1_1:
                 dt = st.date_input("Data", value=st.session_state.k_fin_data, key="k_fin_data")
@@ -548,7 +551,6 @@ elif sel == "Financeiro":
             with c_row1_3:
                 vl = st.number_input("Valor R$ *", min_value=0.0, format="%.2f", step=100.0, value=st.session_state.k_fin_valor, key="k_fin_valor_input")
 
-            # Linha 2: Obra | Categoria
             c_row2_1, c_row2_2 = st.columns([1, 1])
             with c_row2_1:
                 opcoes_obras = [""] + lista_obras
@@ -557,7 +559,6 @@ elif sel == "Financeiro":
                 opcoes_cats = [""] + CATS
                 ct = st.selectbox("Categoria *", opcoes_cats, key="k_fin_cat")
 
-            # Linha 3: Fornecedor | Descrição
             c_row3_1, c_row3_2 = st.columns([1, 1])
             with c_row3_1:
                 fn = st.text_input("Fornecedor", value=st.session_state.k_fin_forn, key="k_fin_forn", placeholder="Obrigatório se Categoria = Material")
@@ -595,19 +596,78 @@ elif sel == "Financeiro":
 
     st.markdown("---")
     st.markdown("### 🔍 Consultar Lançamentos")
+    
     if not df_fin.empty:
-        c_filter1, c_filter2 = st.columns(2)
-        with c_filter1:
-            sel_obras = st.multiselect("1. Filtrar por Obra", options=lista_obras, placeholder="Todas as Obras")
-        with c_filter2:
-            sel_cats = st.multiselect("2. Filtrar por Categoria", options=CATS, placeholder="Todas as Categorias")
+        # Filtros agora usam Selectbox (fecha sozinho) + opção "Todas..."
+        with st.expander("Filtros de Busca", expanded=True):
+            c_filter1, c_filter2 = st.columns(2)
+            
+            with c_filter1:
+                opcoes_filtro_obra = ["Todas as Obras"] + lista_obras
+                filtro_obra = st.selectbox("Filtrar por Obra", options=opcoes_filtro_obra)
+            
+            with c_filter2:
+                opcoes_filtro_cat = ["Todas as Categorias"] + CATS
+                filtro_cat = st.selectbox("Filtrar por Categoria", options=opcoes_filtro_cat)
+
         df_view = df_fin.copy()
-        if sel_obras: df_view = df_view[df_view["Obra Vinculada"].isin(sel_obras)]
-        if sel_cats: df_view = df_view[df_view["Categoria"].isin(sel_cats)]
+        
+        if filtro_obra != "Todas as Obras":
+            df_view = df_view[df_view["Obra Vinculada"] == filtro_obra]
+            
+        if filtro_cat != "Todas as Categorias":
+            df_view = df_view[df_view["Categoria"] == filtro_cat]
+
         total_filtrado = df_view["Valor"].sum()
         count_filtrado = len(df_view)
+        
         st.caption(f"Exibindo **{count_filtrado}** lançamentos | Total Filtrado: **{fmt_moeda(total_filtrado)}**")
-        st.dataframe(df_view.sort_values("Data_DT", ascending=False), use_container_width=True, hide_index=True, column_config={"Valor": st.column_config.NumberColumn(format="R$ %.2f"),"Data": st.column_config.DateColumn("Data", format="DD/MM/YYYY")})
+        
+        # Prepara tabela com Fornecedor
+        cols_view = ["Data", "Categoria", "Descrição", "Valor"]
+        if "Fornecedor" in df_view.columns:
+            cols_view.insert(3, "Fornecedor")
+            
+        df_tab = df_view[cols_view].sort_values("Data", ascending=False)
+        
+        st.dataframe(
+            df_tab, 
+            use_container_width=True, 
+            hide_index=True, 
+            height=300,
+            column_config={
+                "Valor": st.column_config.NumberColumn(format="R$ %.2f"),
+                "Data": st.column_config.DateColumn("Data", format="DD/MM/YYYY")
+            }
+        )
+        
+        st.write("")
+        st.markdown("---")
+        
+        if not df_view.empty:
+            dmin = df_view["Data_DT"].min().strftime("%d/%m/%Y")
+            dmax = df_view["Data_DT"].max().strftime("%d/%m/%Y")
+            per_str = f"De {dmin} até {dmax}"
+            
+            escopo_pdf = filtro_obra if filtro_obra != "Todas as Obras" else "Visão Geral (Filtro)"
+            
+            pdf_data = gerar_pdf_empresarial(
+                escopo_pdf, per_str, 
+                0.0, 
+                total_filtrado, 
+                0.0, 
+                0.0, 
+                df_cat if 'df_cat' in locals() else pd.DataFrame(),
+                df_tab
+            )
+            
+            st.download_button(
+                label="⬇️ BAIXAR RELATÓRIO DA CONSULTA (PDF)",
+                data=pdf_data,
+                file_name=f"Extrato_{date.today()}.pdf",
+                mime="application/pdf",
+                use_container_width=True
+            )
     else:
         st.info("Nenhum lançamento registrado.")
 
