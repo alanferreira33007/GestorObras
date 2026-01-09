@@ -20,7 +20,7 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# CSS OTIMIZADO (BOTÃO DE LOGIN VERDE CORRIGIDO)
+# CSS OTIMIZADO
 st.markdown("""
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap');
@@ -42,24 +42,23 @@ st.markdown("""
 
     /* --- BOTÕES PRINCIPAIS (VERDE) --- */
     div.stButton > button {
-        background-color: #2D6A4F !important; /* Força o verde */
+        background-color: #2D6A4F !important;
         color: white !important;
         border: none;
         border-radius: 6px;
         padding: 0.6rem 1rem;
-        font-weight: 600; /* Um pouco mais negrito para destaque */
+        font-weight: 600;
         font-size: 0.95rem;
-        /* Sombra sutil devolvida para dar destaque */
         box-shadow: 0 2px 4px rgba(45, 106, 79, 0.2) !important; 
         transition: all 0.2s ease-in-out;
     }
     div.stButton > button:hover {
-        background-color: #1B4332 !important; /* Verde mais escuro no hover */
+        background-color: #1B4332 !important;
         transform: translateY(-1px);
-        box-shadow: 0 4px 8px rgba(45, 106, 79, 0.3) !important; /* Sombra maior no hover */
+        box-shadow: 0 4px 8px rgba(45, 106, 79, 0.3) !important;
     }
     
-    /* Botões Secundários (Cinza) - Mantém o estilo discreto */
+    /* Botões Secundários */
     div.stButton > button[kind="secondary"] {
         background-color: #f8f9fa !important;
         color: #495057 !important;
@@ -334,15 +333,28 @@ def fetch_data_from_google():
             for c in OBRAS_COLS: 
                 if c not in df_o.columns: df_o[c] = None
         
+        # --- CORREÇÃO AQUI (FINANCEIRO ROBUSTO) ---
         ws_f = db.worksheet("Financeiro")
-        raw_f = ws_f.get_all_records()
-        df_f = pd.DataFrame(raw_f)
-
-        if df_f.empty:
+        # Usamos get_all_values para ignorar erros de cabeçalho na planilha
+        raw_f = ws_f.get_all_values()
+        
+        if not raw_f:
              df_f = pd.DataFrame(columns=FIN_COLS)
         else:
-            for c in FIN_COLS:
-                if c not in df_f.columns: df_f[c] = None
+            # Assumimos que a ordem das colunas no Google Sheets segue a ordem de FIN_COLS
+            # porque o sistema grava (append_row) nessa ordem.
+            data_rows = raw_f[1:] # Pula a primeira linha (cabeçalho)
+            df_f = pd.DataFrame(data_rows)
+            
+            # Ajusta largura se necessário (cria colunas vazias se faltar na planilha)
+            while df_f.shape[1] < len(FIN_COLS):
+                df_f[df_f.shape[1]] = ""
+            
+            # Corta se tiver colunas extras
+            df_f = df_f.iloc[:, :len(FIN_COLS)]
+            
+            # Força os nomes das colunas corretos
+            df_f.columns = FIN_COLS
         
         df_o["Valor Total"] = df_o["Valor Total"].apply(safe_float)
         if "Custo Previsto" in df_o.columns:
@@ -434,7 +446,7 @@ with st.sidebar:
 
     st.markdown("""
         <div style='margin-top: 30px; text-align: center;'>
-            <p style='color: #adb5bd; font-size: 10px;'>v1.3.0 • © 2026 Gestor Pro</p>
+            <p style='color: #adb5bd; font-size: 10px;'>v1.3.1 • © 2026 Gestor Pro</p>
         </div>
     """, unsafe_allow_html=True)
 
