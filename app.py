@@ -265,6 +265,7 @@ def gerar_pdf_empresarial(escopo, periodo, vgv, custos, lucro, roi, df_cat, df_l
 # ==============================================================================
 # 4. DADOS E CONEXÃO
 # ==============================================================================
+# Esta lista define a ORDEM exata das colunas no Google Sheets
 OBRAS_COLS = [
     "ID", "Cliente", "Endereço", "Status", "Valor Total", 
     "Data Início", "Prazo", "Area Construida", "Area Terreno", 
@@ -490,15 +491,14 @@ elif sel == "Financeiro":
         dview = df_fin[df_fin["Obra Vinculada"].isin(fob)] if fob else df_fin
         st.dataframe(dview.sort_values("Data_DT", ascending=False), use_container_width=True, hide_index=True)
 
-# --- OBRAS (COM FEEDBACK VISUAL CLARO) ---
+# --- OBRAS (COM FEEDBACK VISUAL CLARO E EDIÇÃO) ---
 elif sel == "Obras":
     st.title("📂 Gestão de Incorporação e Obras")
     st.markdown("---")
 
     # 1. RESET SEGURO E FEEDBACK
     if st.session_state.get("sucesso_obra"):
-        # MENSAGEM PERSISTENTE APÓS O RERUN
-        st.success(f"✅ Obra salva com sucesso!", icon="🏡")
+        st.success(f"✅ Dados atualizados com sucesso!", icon="🏡")
         
         st.session_state["k_ob_nome"] = ""
         st.session_state["k_ob_end"] = ""
@@ -523,7 +523,7 @@ elif sel == "Obras":
     if "k_ob_prazo" not in st.session_state: st.session_state.k_ob_prazo = ""
     if "k_ob_data" not in st.session_state: st.session_state.k_ob_data = date.today()
 
-    with st.expander("➕ Cadastrar Novo Empreendimento / Obra", expanded=True):
+    with st.expander("➕ Cadastrar Novo Empreendimento / Obra", expanded=False):
         with st.form("f_obra_completa", clear_on_submit=False):
             
             st.markdown("#### 1. Identificação")
@@ -598,31 +598,102 @@ elif sel == "Obras":
                     except Exception as e:
                         st.error(f"Erro no Google Sheets: {e}")
 
-    # 2. TABELA DE VISUALIZAÇÃO (CORRIGIDA)
-    st.markdown("### 📋 Carteira de Obras")
+    # 2. EDITOR DE DADOS (AGORA EDITÁVEL)
+    st.markdown("### 📋 Carteira de Obras (Editável)")
+    st.caption("💡 Clique nas células abaixo para editar (alterar Fase, Valores, Prazos) e depois clique no botão Salvar.")
     
     if not df_obras.empty:
-        # Filtra apenas as colunas desejadas e na ordem correta para limpar a visualização
-        cols_to_show = ["ID", "Cliente", "Status", "Valor Total", "Custo Previsto", "Area Construida", "Area Terreno", "Prazo"]
+        # Mostramos todas as colunas relevantes para edição, menos a ID que é a chave
+        # E garantimos que as colunas estejam na ordem lógica para o usuário
+        cols_order = [
+            "ID", "Cliente", "Status", "Prazo", 
+            "Valor Total", "Custo Previsto", 
+            "Area Construida", "Area Terreno", "Quartos"
+        ]
         
-        # Garante que só tentaremos mostrar colunas que realmente existem no DF
-        existing_cols = [c for c in cols_to_show if c in df_obras.columns]
-        df_show = df_obras[existing_cols].copy()
-        
-        st.dataframe(
-            df_show, 
-            use_container_width=True, 
+        # Filtra apenas o que existe no DF atual
+        valid_cols = [c for c in cols_order if c in df_obras.columns]
+        df_to_edit = df_obras[valid_cols].copy()
+
+        # CONFIGURAÇÃO DO EDITOR
+        edited_df = st.data_editor(
+            df_to_edit,
+            use_container_width=True,
             hide_index=True,
+            num_rows="fixed", # Não permitir adicionar linhas aqui, só editar
+            disabled=["ID"], # ID não pode ser mudado
             column_config={
                 "ID": st.column_config.NumberColumn("#", width="small"),
-                "Cliente": st.column_config.TextColumn("Empreendimento", width="medium"),
-                "Status": st.column_config.SelectboxColumn("Fase", options=["Projeto", "Fundação", "Alvenaria", "Acabamento", "Concluída", "Vendida"], disabled=True, width="small"),
+                "Cliente": st.column_config.TextColumn("Empreendimento", width="medium", required=True),
+                "Status": st.column_config.SelectboxColumn(
+                    "Fase Atual", 
+                    options=["Projeto", "Fundação", "Alvenaria", "Acabamento", "Concluída", "Vendida"],
+                    required=True,
+                    width="medium"
+                ),
+                "Prazo": st.column_config.TextColumn("Previsão Entrega"),
                 "Valor Total": st.column_config.NumberColumn("VGV (Venda)", format="R$ %.2f", min_value=0),
                 "Custo Previsto": st.column_config.NumberColumn("Budget (Custo)", format="R$ %.2f", min_value=0),
                 "Area Construida": st.column_config.NumberColumn("Área Const.", format="%.0f m²"),
                 "Area Terreno": st.column_config.NumberColumn("Terreno", format="%.0f m²"),
-                "Prazo": st.column_config.TextColumn("Entrega")
+                "Quartos": st.column_config.NumberColumn("Qtd. Quartos", min_value=0, step=1),
             }
         )
+        
+        st.write("")
+        if st.button("💾 SALVAR ALTERAÇÕES DA TABELA", type="primary", use_container_width=True):
+            try:
+                conn = get_conn()
+                ws = conn.worksheet("Obras")
+                
+                # Iterar sobre as linhas editadas para atualizar no Google Sheets
+                # Nota: Isso atualiza linha por linha baseada no ID.
+                # Como a planilha 'Obras' não deve ser gigante, isso é seguro.
+                
+                with st.spinner("Salvando alterações no banco de dados..."):
+                    # Pega todos os dados atuais da planilha para encontrar a linha certa
+                    # (Poderíamos usar ws.find, mas iterar pode ser mais seguro se houver duplicatas ou erro de tipo)
+                    sheet_data = ws.get_all_records()
+                    
+                    # Para cada linha no dataframe editado
+                    for index, row in edited_df.iterrows():
+                        id_obra = row["ID"]
+                        
+                        # Encontrar a linha na planilha que tem esse ID
+                        # O índice no gspread começa em 1, e temos o cabeçalho na linha 1.
+                        # row_idx será a linha física no Sheets.
+                        found_cell = ws.find(str(id_obra), in_column=1) 
+                        
+                        if found_cell:
+                            # Montar a lista de valores na ordem EXATA das colunas definidas em OBRAS_COLS
+                            # Se a coluna não estiver no editor (ex: Data Início), mantemos o valor original do DF original
+                            
+                            # Recupera dados originais para preencher lacunas se necessário
+                            original_row = df_obras[df_obras["ID"] == id_obra].iloc[0]
+                            
+                            update_values = []
+                            for col in OBRAS_COLS:
+                                if col in row:
+                                    val = row[col]
+                                else:
+                                    val = original_row[col]
+                                
+                                # Converter tipos para JSON serializable (int, float, string)
+                                if isinstance(val, (pd.Timestamp, date, datetime)):
+                                    val = val.strftime("%Y-%m-%d")
+                                elif pd.isna(val):
+                                    val = ""
+                                update_values.append(val)
+                            
+                            # Atualiza a linha inteira
+                            ws.update(f"A{found_cell.row}:K{found_cell.row}", [update_values])
+                
+                st.cache_data.clear()
+                st.session_state["sucesso_obra"] = True
+                st.rerun()
+                
+            except Exception as e:
+                st.error(f"Erro ao salvar edições: {e}")
+
     else:
-        st.info("Nenhuma obra cadastrada.")
+        st.info("Nenhuma obra cadastrada para editar.")
