@@ -236,7 +236,12 @@ def gerar_pdf_empresarial(escopo, periodo, vgv, custos, lucro, roi, df_cat, df_l
     if not df_lanc.empty:
         df_l = df_lanc.copy()
         df_l["Valor"] = df_l["Valor"].apply(fmt_moeda)
+        # Adaptar colunas para o PDF se existirem
         cols_sel = ["Data", "Categoria", "Descrição", "Valor"]
+        # Nota: O layout da tabela do PDF é fixo para 4 colunas para caber na A4 vertical.
+        # Se quiser adicionar Fornecedor/Pagamento no PDF, precisaria mudar para Landscape ou reduzir fontes.
+        # Mantendo o padrão para garantir a geração.
+        
         data_lanc = [cols_sel] + df_l[cols_sel].values.tolist()
         
         data_lanc.append(["", "", "SUBTOTAL (Página):", fmt_moeda(custos)])
@@ -328,6 +333,8 @@ def get_conn():
 def fetch_data_from_google():
     try:
         db = get_conn()
+        
+        # --- OBRAS ---
         ws_o = db.worksheet("Obras")
         raw_o = ws_o.get_all_records()
         df_o = pd.DataFrame(raw_o)
@@ -338,30 +345,33 @@ def fetch_data_from_google():
             for c in OBRAS_COLS: 
                 if c not in df_o.columns: df_o[c] = None
         
-        # --- CARREGAMENTO ROBUSTO FINANCEIRO ---
+        # --- FINANCEIRO (CORREÇÃO DE CARREGAMENTO) ---
         ws_f = db.worksheet("Financeiro")
-        raw_f = ws_f.get_all_values()
-        
-        if not raw_f:
+        # Usando get_all_records para garantir o mapeamento correto dos cabeçalhos
+        raw_f = ws_f.get_all_records()
+        df_f = pd.DataFrame(raw_f)
+
+        if df_f.empty:
              df_f = pd.DataFrame(columns=FIN_COLS)
         else:
-            data_rows = raw_f[1:] 
-            df_f = pd.DataFrame(data_rows)
-            # Ajusta colunas
-            while df_f.shape[1] < len(FIN_COLS):
-                df_f[df_f.shape[1]] = ""
-            df_f = df_f.iloc[:, :len(FIN_COLS)]
-            df_f.columns = FIN_COLS
+            # Garante que todas as colunas existem, mesmo se a planilha for velha
+            for c in FIN_COLS:
+                if c not in df_f.columns: df_f[c] = ""
         
-        # --- NORMALIZAÇÃO AGRESSIVA DE STRINGS PARA FILTRO FUNCIONAR ---
-        # Remove espaços duplos, invisíveis, tabs e espaços nas pontas
-        cols_text = ["Obra Vinculada", "Categoria", "Tipo", "Fornecedor", "Pagamento"]
-        for col in cols_text:
-             df_f[col] = df_f[col].astype(str).apply(normalize_text)
+        # Seleciona e ordena apenas as colunas oficiais para evitar lixo
+        df_f = df_f[FIN_COLS]
         
-        # Normaliza também a coluna Cliente em Obras para o match ser perfeito
-        df_o["Cliente"] = df_o["Cliente"].astype(str).apply(normalize_text)
+        # --- NORMALIZAÇÃO ROBUSTA ---
+        # Garante que textos sejam comparáveis (remove espaços invisíveis)
+        cols_to_normalize = ["Obra Vinculada", "Categoria", "Tipo", "Fornecedor", "Pagamento"]
+        for col in cols_to_normalize:
+             if col in df_f.columns:
+                df_f[col] = df_f[col].astype(str).apply(normalize_text)
+        
+        if "Cliente" in df_o.columns:
+            df_o["Cliente"] = df_o["Cliente"].astype(str).apply(normalize_text)
 
+        # Conversão numérica
         df_o["Valor Total"] = df_o["Valor Total"].apply(safe_float)
         if "Custo Previsto" in df_o.columns:
             df_o["Custo Previsto"] = df_o["Custo Previsto"].apply(safe_float)
@@ -452,7 +462,7 @@ with st.sidebar:
 
     st.markdown("""
         <div style='margin-top: 30px; text-align: center;'>
-            <p style='color: #adb5bd; font-size: 10px;'>v1.3.3 • © 2026 Gestor Pro</p>
+            <p style='color: #adb5bd; font-size: 10px;'>v1.3.4 • © 2026 Gestor Pro</p>
         </div>
     """, unsafe_allow_html=True)
 
@@ -645,8 +655,9 @@ elif sel == "Financeiro":
 
         df_view = df_fin.copy()
         
-        # --- FILTRO SEGURO ---
+        # --- FILTRO CORRIGIDO E ROBUSTO ---
         if filtro_obra != "Todas as Obras": 
+            # Normaliza ambos os lados para garantir match
             df_view = df_view[df_view["Obra Vinculada"] == normalize_text(filtro_obra)]
             
         if filtro_cat != "Todas as Categorias": 
