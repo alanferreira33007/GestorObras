@@ -197,7 +197,8 @@ def gerar_pdf_empresarial(escopo, periodo, vgv, custos, lucro, roi, df_cat, df_l
     if not df_lanc.empty:
         df_l = df_lanc.copy()
         df_l["Valor"] = df_l["Valor"].apply(fmt_moeda)
-        cols_sel = ["Data", "Categoria", "Descrição", "Valor"]
+        # Ajustado para não quebrar layout antigo, Fornecedor não vai pro PDF para manter largura
+        cols_sel = ["Data", "Categoria", "Descrição", "Valor"] 
         data_lanc = [cols_sel] + df_l[cols_sel].values.tolist()
         
         data_lanc.append(["", "", "SUBTOTAL (Página):", fmt_moeda(custos)])
@@ -276,7 +277,8 @@ OBRAS_COLS = [
     "Data Início", "Prazo", "Area Construida", "Area Terreno", 
     "Quartos", "Custo Previsto"
 ]
-FIN_COLS   = ["Data", "Tipo", "Categoria", "Descrição", "Valor", "Obra Vinculada"]
+# AQUI: Adicionei "Fornecedor" no final da lista
+FIN_COLS   = ["Data", "Tipo", "Categoria", "Descrição", "Valor", "Obra Vinculada", "Fornecedor"]
 CATS       = ["Material", "Mão de Obra", "Serviços", "Administrativo", "Impostos", "Outros"]
 
 @st.cache_resource
@@ -322,7 +324,7 @@ def fetch_data_from_google():
         return pd.DataFrame(), pd.DataFrame()
 
 # ==============================================================================
-# 5. AUTH E FLUXO PRINCIPAL
+# 5. APP PRINCIPAL
 # ==============================================================================
 if "auth" not in st.session_state: st.session_state.auth = False
 
@@ -340,7 +342,6 @@ def logout():
     """Logout e limpeza"""
     st.session_state.auth = False
     if "password_input" in st.session_state: st.session_state["password_input"] = ""
-    # Limpa dados da sessão para garantir segurança
     if "data_obras" in st.session_state: del st.session_state["data_obras"]
     if "data_fin" in st.session_state: del st.session_state["data_fin"]
 
@@ -357,9 +358,6 @@ if not st.session_state.auth:
 # ==============================================================================
 # 6. RENDERIZAÇÃO DA BARRA LATERAL (IMEDIATA)
 # ==============================================================================
-# O código chega aqui imediatamente após auth=True. A barra lateral é desenhada 
-# ANTES dos dados serem carregados.
-
 with st.sidebar:
     st.markdown("""
         <div style='text-align: left; margin-bottom: 20px;'>
@@ -368,7 +366,6 @@ with st.sidebar:
         </div>
     """, unsafe_allow_html=True)
 
-    # Menu estático (não depende de dados)
     sel = option_menu(
         menu_title=None,
         options=["Dashboard", "Financeiro", "Obras"],
@@ -403,9 +400,6 @@ with st.sidebar:
 # ==============================================================================
 # 7. CARREGAMENTO DE DADOS (PÓS-RENDERIZAÇÃO UI)
 # ==============================================================================
-# Aqui verificamos se os dados existem. Se não, mostramos o spinner e carregamos.
-# Como a Sidebar JÁ FOI desenhada acima, o usuário vê o app "carregado" enquanto os dados baixam.
-
 if "data_obras" not in st.session_state or "data_fin" not in st.session_state:
     with st.spinner("Sincronizando base de dados..."):
         try:
@@ -416,7 +410,6 @@ if "data_obras" not in st.session_state or "data_fin" not in st.session_state:
             st.error(f"Falha na conexão: {e}")
             st.stop()
 else:
-    # Recuperação instantânea da memória
     df_obras = st.session_state["data_obras"]
     df_fin = st.session_state["data_fin"]
 
@@ -491,7 +484,12 @@ if sel == "Dashboard":
     # Tabela
     st.markdown("### Lançamentos")
     if not df_show.empty:
-        df_tab = df_show[["Data", "Categoria", "Descrição", "Valor"]].sort_values("Data", ascending=False)
+        # AQUI: Ajustei para mostrar Fornecedor na tabela se existir na visualização
+        cols_view = ["Data", "Categoria", "Descrição", "Valor"]
+        if "Fornecedor" in df_show.columns:
+            cols_view.insert(3, "Fornecedor") # Coloca Fornecedor antes de Valor
+            
+        df_tab = df_show[cols_view].sort_values("Data", ascending=False)
         st.dataframe(df_tab, use_container_width=True, hide_index=True, height=250, column_config={"Valor": st.column_config.NumberColumn(format="R$ %.2f")})
         
         st.write("")
@@ -528,6 +526,7 @@ elif sel == "Financeiro":
         st.session_state["k_fin_obra"] = ""
         st.session_state["k_fin_valor"] = 0.0
         st.session_state["k_fin_desc"] = ""
+        st.session_state["k_fin_forn"] = "" # Limpa fornecedor
         st.session_state["sucesso_fin"] = False
 
     if "k_fin_data" not in st.session_state: st.session_state.k_fin_data = date.today()
@@ -536,6 +535,7 @@ elif sel == "Financeiro":
     if "k_fin_obra" not in st.session_state: st.session_state.k_fin_obra = ""
     if "k_fin_valor" not in st.session_state: st.session_state.k_fin_valor = 0.0
     if "k_fin_desc" not in st.session_state: st.session_state.k_fin_desc = ""
+    if "k_fin_forn" not in st.session_state: st.session_state.k_fin_forn = ""
 
     with st.expander("Novo Lançamento", expanded=True):
         with st.form("ffin", clear_on_submit=False):
@@ -545,10 +545,12 @@ elif sel == "Financeiro":
                 tp = st.selectbox("Tipo", ["Saída (Despesa)", "Entrada"], key="k_fin_tipo")
                 opcoes_cats = [""] + CATS
                 ct = st.selectbox("Categoria *", opcoes_cats, key="k_fin_cat")
+                # AQUI: Campo Fornecedor
+                fn = st.text_input("Fornecedor (Obrigatório se Material)", value=st.session_state.k_fin_forn, key="k_fin_forn")
+                
             with c2:
                 opcoes_obras = [""] + lista_obras
                 ob = st.selectbox("Obra *", opcoes_obras, key="k_fin_obra")
-                
                 vl = st.number_input("Valor R$ *", min_value=0.0, format="%.2f", step=100.0, value=st.session_state.k_fin_valor, key="k_fin_valor_input")
                 dc = st.text_input("Descrição *", value=st.session_state.k_fin_desc, key="k_fin_desc")
             
@@ -561,6 +563,10 @@ elif sel == "Financeiro":
                 if not ct or ct == "": erros.append("Selecione a Categoria.")
                 if vl <= 0: erros.append("O Valor deve ser maior que zero.")
                 if not dc.strip(): erros.append("A Descrição é obrigatória.")
+                
+                # AQUI: Validação condicional para Fornecedor
+                if ct == "Material" and not fn.strip():
+                    erros.append("Para a categoria 'Material', o campo Fornecedor é obrigatório.")
 
                 if erros:
                     st.error("⚠️ Atenção:")
@@ -568,7 +574,8 @@ elif sel == "Financeiro":
                 else:
                     try:
                         conn = get_conn()
-                        conn.worksheet("Financeiro").append_row([dt.strftime("%Y-%m-%d"),tp,ct,dc,vl,ob])
+                        # AQUI: Adicionei fn (fornecedor) na lista de append
+                        conn.worksheet("Financeiro").append_row([dt.strftime("%Y-%m-%d"),tp,ct,dc,vl,ob,fn])
                         
                         if "data_fin" in st.session_state: del st.session_state["data_fin"]
                         st.cache_data.clear()
