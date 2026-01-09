@@ -830,27 +830,31 @@ elif sel == "Obras":
                         else: st.toast("Senha incorreta!", icon="⛔")
         else: st.caption("💡 Edite diretamente na tabela acima. O botão de salvar aparecerá automaticamente.")
         
-        # --- ZONA DE EXCLUSÃO (FORMULÁRIO PARA LIMPEZA AUTOMÁTICA) ---
         st.write("")
-        st.markdown("### 🗑️ Zona de Exclusão")
-        with st.expander("Excluir Obra Definitivamente", expanded=False):
-            # Usamos st.form para limpar os campos após o envio
+        st.divider() # Separador discreto
+        
+        # --- ZONA DE EXCLUSÃO (DISCRETA E RESETÁVEL) ---
+        with st.expander("🗑️ Zona de Exclusão", expanded=False):
+            st.caption("Área destinada à remoção permanente de registros.")
+            
             with st.form("form_exclusao", clear_on_submit=True):
-                obra_options = df_obras.apply(lambda x: f"{x['ID']} | {x['Cliente']}", axis=1).tolist()
-                selected_obra_delete = st.selectbox("Selecione a obra para excluir:", obra_options)
-
-                st.warning(f"⚠️ Atenção: Ao excluir o item selecionado, todos os dados desta obra serão perdidos.")
+                # Cria lista com opção vazia inicial para evitar pré-seleção
+                lista_formatada = df_obras.apply(lambda x: f"{x['ID']} | {x['Cliente']}", axis=1).tolist()
+                opcoes_exclusao = [""] + lista_formatada
+                
+                selected_obra_delete = st.selectbox("Selecione a obra para excluir:", options=opcoes_exclusao)
 
                 col_del_1, col_del_2 = st.columns([2, 1])
                 with col_del_1:
-                    pwd_del = st.text_input("Senha de Administrador para Exclusão", type="password")
+                    pwd_del = st.text_input("Senha de Administrador", type="password", placeholder="Digite a senha para confirmar")
                 with col_del_2:
-                    st.write("") # Espaçamento visual
-                    # Botão de submit do formulário
-                    btn_del = st.form_submit_button("🚫 CONFIRMAR EXCLUSÃO", type="primary", use_container_width=True)
+                    st.write("") 
+                    btn_del = st.form_submit_button("🚫 Excluir Definitivamente", type="primary", use_container_width=True)
 
                 if btn_del:
-                    if pwd_del == st.secrets["password"]:
+                    if not selected_obra_delete:
+                        st.warning("⚠️ Selecione uma obra válida para excluir.")
+                    elif pwd_del == st.secrets["password"]:
                         try:
                             id_del = selected_obra_delete.split(" | ")[0]
                             conn = get_conn()
