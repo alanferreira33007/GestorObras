@@ -197,7 +197,6 @@ def gerar_pdf_empresarial(escopo, periodo, vgv, custos, lucro, roi, df_cat, df_l
     if not df_lanc.empty:
         df_l = df_lanc.copy()
         df_l["Valor"] = df_l["Valor"].apply(fmt_moeda)
-        # PDF mantém colunas principais para caber na folha A4 vertical
         cols_sel = ["Data", "Categoria", "Descrição", "Valor"]
         data_lanc = [cols_sel] + df_l[cols_sel].values.tolist()
         
@@ -277,7 +276,6 @@ OBRAS_COLS = [
     "Data Início", "Prazo", "Area Construida", "Area Terreno", 
     "Quartos", "Custo Previsto"
 ]
-# COLUNA "Pagamento" ADICIONADA AQUI (COLUNA 8 NA PLANILHA)
 FIN_COLS   = ["Data", "Tipo", "Categoria", "Descrição", "Valor", "Obra Vinculada", "Fornecedor", "Pagamento"]
 CATS       = ["Material", "Mão de Obra", "Serviços", "Administrativo", "Impostos", "Outros"]
 PAY_METHODS = ["PIX", "Dinheiro", "Cartão de Crédito", "Boleto", "Transferência"]
@@ -489,7 +487,6 @@ if sel == "Dashboard":
 
     st.markdown("### Lançamentos")
     if not df_show.empty:
-        # Colunas principais para o Dashboard
         cols_view = ["Data", "Categoria", "Descrição", "Valor"]
         if "Fornecedor" in df_show.columns:
             cols_view.insert(3, "Fornecedor")
@@ -533,7 +530,7 @@ elif sel == "Financeiro":
         st.session_state["k_fin_valor"] = 0.0
         st.session_state["k_fin_desc"] = ""
         st.session_state["k_fin_forn"] = "" 
-        st.session_state["k_fin_pay"] = "PIX" 
+        st.session_state["k_fin_pay"] = "" 
         st.session_state["sucesso_fin"] = False
 
     if "k_fin_data" not in st.session_state: st.session_state.k_fin_data = date.today()
@@ -543,7 +540,7 @@ elif sel == "Financeiro":
     if "k_fin_valor" not in st.session_state: st.session_state.k_fin_valor = 0.0
     if "k_fin_desc" not in st.session_state: st.session_state.k_fin_desc = ""
     if "k_fin_forn" not in st.session_state: st.session_state.k_fin_forn = ""
-    if "k_fin_pay" not in st.session_state: st.session_state.k_fin_pay = "PIX"
+    if "k_fin_pay" not in st.session_state: st.session_state.k_fin_pay = ""
 
     with st.expander("Novo Lançamento", expanded=True):
         with st.form("ffin", clear_on_submit=False):
@@ -565,7 +562,9 @@ elif sel == "Financeiro":
                 opcoes_cats = [""] + CATS
                 ct = st.selectbox("Categoria *", opcoes_cats, key="k_fin_cat")
             with c_row2_3:
-                pay = st.selectbox("Pagamento", PAY_METHODS, key="k_fin_pay")
+                # AQUI: Opção vazia adicionada no início
+                opcoes_pay = [""] + PAY_METHODS
+                pay = st.selectbox("Pagamento *", opcoes_pay, key="k_fin_pay")
 
             c_row3_1, c_row3_2 = st.columns([1, 1])
             with c_row3_1:
@@ -581,6 +580,7 @@ elif sel == "Financeiro":
                 erros = []
                 if not ob or ob == "": erros.append("Selecione a Obra Vinculada.")
                 if not ct or ct == "": erros.append("Selecione a Categoria.")
+                if not pay or pay == "": erros.append("Selecione a Forma de Pagamento.")
                 if vl <= 0: erros.append("O Valor deve ser maior que zero.")
                 if not dc.strip(): erros.append("A Descrição é obrigatória.")
                 
