@@ -93,8 +93,7 @@ def safe_float(x) -> float:
 # ==============================================================================
 class EnterpriseCanvas(canvas.Canvas):
     def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self._saved_page_states = []
+        super().__init__(*args, **kwargs)<br>        self._saved_page_states = []
 
     def showPage(self):
         self._saved_page_states.append(dict(self.__dict__))
@@ -367,15 +366,11 @@ if not st.session_state.auth:
         
     st.stop()
 
-# --- CARREGAMENTO DE DADOS COM SPINNER PARA MELHORAR PERCEPÇÃO DE VELOCIDADE ---
-with st.spinner("Carregando carteira de obras e financeiro..."):
-    df_obras, df_fin = load_data()
-
-lista_obras = df_obras["Cliente"].unique().tolist() if not df_obras.empty else []
-
 # ==============================================================================
-# BARRA LATERAL (SIDEBAR) MELHORADA
+# 6. RENDERIZAÇÃO DA BARRA LATERAL (ANTES DOS DADOS)
 # ==============================================================================
+# Movi a sidebar para CIMA. Ela será renderizada IMEDIATAMENTE após o login,
+# sem esperar o load_data terminar. Isso remove a percepção de lag.
 with st.sidebar:
     # 1. Cabeçalho / Branding
     st.markdown("""
@@ -421,6 +416,13 @@ with st.sidebar:
             <p style='color: #adb5bd; font-size: 10px;'>v1.2.0 • © 2026 Gestor Pro</p>
         </div>
     """, unsafe_allow_html=True)
+
+# --- CARREGAMENTO DE DADOS ---
+# Só agora carregamos os dados pesados. A sidebar já estará visível para o usuário.
+with st.spinner("Carregando carteira de obras e financeiro..."):
+    df_obras, df_fin = load_data()
+
+lista_obras = df_obras["Cliente"].unique().tolist() if not df_obras.empty else []
 
 # --- DASHBOARD ---
 if sel == "Dashboard":
