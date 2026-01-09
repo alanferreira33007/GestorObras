@@ -295,7 +295,8 @@ def get_conn():
     return gspread.authorize(ServiceAccountCredentials.from_json_keyfile_dict(creds, ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"])).open("GestorObras_DB")
 
 @st.cache_data(ttl=120)
-def load_data():
+def fetch_data_from_google():
+    """Busca dados brutos do Google Sheets com Cache"""
     try:
         db = get_conn()
         ws_o = db.worksheet("Obras")
@@ -348,10 +349,9 @@ def password_entered():
 def logout():
     """Função de Logout executada antes do rerun"""
     st.session_state.auth = False
-    # Limpa a senha e o cache de sessão para garantir saída limpa
     if "password_input" in st.session_state:
         st.session_state["password_input"] = ""
-    # Limpa os dados persistidos para forçar recarga no próximo login
+    # Limpa dados para forçar nova busca ao relogar
     if "data_obras" in st.session_state: del st.session_state["data_obras"]
     if "data_fin" in st.session_state: del st.session_state["data_fin"]
 
@@ -363,16 +363,16 @@ if not st.session_state.auth:
         if st.session_state.get("login_error"):
             st.error(st.session_state["login_error"])
         
-        # O argumento on_change detecta o ENTER
         st.text_input("Senha", type="password", key="password_input", on_change=password_entered)
-        # O argumento on_click detecta o CLIQUE
         st.button("ENTRAR", use_container_width=True, on_click=password_entered)
         
     st.stop()
 
 # ==============================================================================
-# 6. RENDERIZAÇÃO DA BARRA LATERAL (PRIORIDADE VISUAL)
+# 6. RENDERIZAÇÃO DA BARRA LATERAL (PRIORIDADE TOTAL)
 # ==============================================================================
+# Esta seção é renderizada ANTES de qualquer tentativa de carregar dados.
+# Isso garante que a UI apareça instantaneamente após o login.
 with st.sidebar:
     st.markdown("""
         <div style='text-align: left; margin-bottom: 20px;'>
@@ -415,20 +415,29 @@ with st.sidebar:
     """, unsafe_allow_html=True)
 
 # ==============================================================================
-# 7. GERENCIAMENTO DE DADOS (COM MEMÓRIA PERSISTENTE OTIMIZADA)
+# 7. SINCRONIZAÇÃO DE DADOS (CARREGAMENTO PROGRESSIVO)
 # ==============================================================================
-# Verifica se os dados já estão na sessão. Se não, carrega e salva.
-# A diferença é que agora o SPINNER só aparece se os dados NÃO estiverem na memória.
-if "data_obras" in st.session_state and "data_fin" in st.session_state:
-    # Carregamento silencioso e instantâneo
-    df_obras = st.session_state["data_obras"]
-    df_fin = st.session_state["data_fin"]
-else:
-    # Apenas no primeiro acesso mostra o loading
-    with st.spinner("Sincronizando dados..."):
-        df_obras, df_fin = load_data()
-        st.session_state["data_obras"] = df_obras
-        st.session_state["data_fin"] = df_fin
+# Aqui está o truque para remover o delay do primeiro acesso.
+# 1. Se os dados não existem, inicializamos a página com o sidebar JÁ DESENHADO.
+# 2. Mostramos um spinner apenas na área principal.
+# 3. Buscamos os dados e salvamos na sessão.
+# 4. A interface se atualiza.
+
+if "data_obras" not in st.session_state or "data_fin" not in st.session_state:
+    # Mostra status APENAS na área principal, sem travar a sidebar
+    with st.container():
+        st.write("")
+        with st.status("Conectando ao banco de dados...", expanded=True) as status:
+            st.write("Baixando carteira de obras...")
+            df_obras, df_fin = fetch_data_from_google()
+            st.session_state["data_obras"] = df_obras
+            st.session_state["data_fin"] = df_fin
+            status.update(label="Dados sincronizados!", state="complete", expanded=False)
+        st.rerun() # Recarrega a página instantaneamente com os dados
+
+# Se chegamos aqui, os dados já estão na memória e o acesso é instantâneo
+df_obras = st.session_state["data_obras"]
+df_fin = st.session_state["data_fin"]
 
 lista_obras = df_obras["Cliente"].unique().tolist() if not df_obras.empty else []
 
@@ -442,7 +451,7 @@ if sel == "Dashboard":
             escopo = st.selectbox("Escopo", opcoes, label_visibility="collapsed")
         else: st.warning("Cadastre uma obra."); st.stop()
     with c_btn:
-        # Lógica de atualização que limpa a memória para forçar recarga
+        # Botão de atualizar limpa a sessão para forçar nova busca
         if st.button("🔄 Atualizar Dados", use_container_width=True): 
             st.cache_data.clear()
             if "data_obras" in st.session_state: del st.session_state["data_obras"]
@@ -487,7 +496,7 @@ if sel == "Dashboard":
         st.subheader("Categorias")
         if not df_show.empty:
             df_cat = df_show.groupby("Categoria", as_index=False)["Valor"].sum()
-            # AQUI: MUDANÇA PARA 'BOLD' (CORES DISTINTAS)
+            # AQUI: Cores 'Bold' para melhor distinção
             fig2 = px.pie(df_cat, values="Valor", names="Categoria", hole=0.6, color_discrete_sequence=px.colors.qualitative.Bold)
             fig2.update_layout(showlegend=False, margin=dict(t=0,l=0,r=0,b=0), height=200)
             st.plotly_chart(fig2, use_container_width=True)
@@ -555,9 +564,7 @@ elif sel == "Financeiro":
                 opcoes_obras = [""] + lista_obras
                 ob = st.selectbox("Obra *", opcoes_obras, key="k_fin_obra")
                 
-                # AQUI: Mudança para number_input (Bloqueia letras)
                 vl = st.number_input("Valor R$ *", min_value=0.0, format="%.2f", step=100.0, value=st.session_state.k_fin_valor, key="k_fin_valor_input")
-                
                 dc = st.text_input("Descrição *", value=st.session_state.k_fin_desc, key="k_fin_desc")
             
             submitted_fin = st.form_submit_button("Salvar", use_container_width=True)
@@ -577,7 +584,7 @@ elif sel == "Financeiro":
                     try:
                         conn = get_conn()
                         conn.worksheet("Financeiro").append_row([dt.strftime("%Y-%m-%d"),tp,ct,dc,vl,ob])
-                        # Limpa o estado para forçar atualização
+                        # Limpa cache da sessão
                         if "data_fin" in st.session_state: del st.session_state["data_fin"]
                         st.cache_data.clear()
                         st.session_state["sucesso_fin"] = True
@@ -611,16 +618,12 @@ elif sel == "Obras":
         st.success(f"✅ Dados atualizados com sucesso!", icon="🏡")
         st.session_state["k_ob_nome"] = ""
         st.session_state["k_ob_end"] = ""
-        
         st.session_state["k_ob_area_c"] = 0.0
         st.session_state["k_ob_area_t"] = 0.0
         st.session_state["k_ob_quartos"] = 0
         st.session_state["k_ob_status"] = "Projeto"
-        
-        # Reset de valores monetários
         st.session_state["k_ob_custo"] = 0.0
         st.session_state["k_ob_vgv"] = 0.0
-        
         st.session_state["k_ob_prazo"] = ""
         st.session_state["sucesso_obra"] = False
     
@@ -644,7 +647,6 @@ elif sel == "Obras":
 
             st.markdown("#### 2. Características Físicas (Produto)")
             c4, c5, c6, c7 = st.columns(4)
-            # Areas e Quartos continuam number_input (como solicitado anteriormente)
             with c4: area_const = st.number_input("Área Construída (m²)", min_value=0.0, format="%.2f", value=st.session_state.k_ob_area_c, key="k_ob_area_c")
             with c5: area_terr = st.number_input("Área Terreno (m²)", min_value=0.0, format="%.2f", value=st.session_state.k_ob_area_t, key="k_ob_area_t")
             with c6: quartos = st.number_input("Qtd. Quartos", min_value=0, step=1, value=st.session_state.k_ob_quartos, key="k_ob_quartos")
@@ -652,12 +654,8 @@ elif sel == "Obras":
 
             st.markdown("#### 3. Viabilidade Financeira e Prazos")
             c8, c9, c10, c11 = st.columns(4)
-            
-            # AQUI: Mudança de volta para number_input (Bloqueia letras)
-            # Usei step=100.0 para facilitar preencher valores altos, mas aceita centavos se digitar
             with c8: custo_previsto = st.number_input("Orçamento (Custo) *", min_value=0.0, format="%.2f", step=1000.0, value=st.session_state.k_ob_custo, key="k_ob_custo_input")
             with c9: valor_venda = st.number_input("VGV (Venda) *", min_value=0.0, format="%.2f", step=1000.0, value=st.session_state.k_ob_vgv, key="k_ob_vgv_input")
-            
             with c10: data_inicio = st.date_input("Início da Obra", value=st.session_state.k_ob_data, key="k_ob_data")
             with c11: prazo_entrega = st.text_input("Prazo / Entrega *", placeholder="Ex: dez/2025", value=st.session_state.k_ob_prazo, key="k_ob_prazo")
 
@@ -671,11 +669,8 @@ elif sel == "Obras":
             submitted = st.form_submit_button("✅ SALVAR PROJETO", use_container_width=True)
 
             if submitted:
-                # Sincroniza estados
                 st.session_state.k_ob_custo = custo_previsto
                 st.session_state.k_ob_vgv = valor_venda
-                
-                # Areas e quartos já estão no state pelo number_input, mas garantimos
                 st.session_state.k_ob_area_c = area_const
                 st.session_state.k_ob_area_t = area_terr
                 
@@ -698,7 +693,6 @@ elif sel == "Obras":
                         novo_id = int(ids_existentes.max()) + 1 if not ids_existentes.empty else 1
                         ws.append_row([novo_id, nome_obra.strip(), endereco.strip(), status, float(valor_venda), data_inicio.strftime("%Y-%m-%d"), prazo_entrega.strip(), float(area_const), float(area_terr), int(quartos), float(custo_previsto)])
                         
-                        # Limpa memória para forçar atualização
                         if "data_obras" in st.session_state: del st.session_state["data_obras"]
                         st.cache_data.clear()
                         
@@ -758,10 +752,8 @@ elif sel == "Obras":
                                                 update_values.append(val)
                                             ws.update(f"A{found_cell.row}:K{found_cell.row}", [update_values])
                                 
-                                # Limpa memória
                                 if "data_obras" in st.session_state: del st.session_state["data_obras"]
                                 st.cache_data.clear()
-                                
                                 st.session_state["sucesso_obra"] = True
                                 st.rerun()
                             except Exception as e: st.error(f"Erro ao salvar: {e}")
