@@ -422,12 +422,15 @@ if sel == "Dashboard":
             use_container_width=True
         )
 
-# --- FINANCEIRO (CORREÇÃO TOTAL DE WARNINGS) ---
+# --- FINANCEIRO (COM FEEDBACK VISUAL CLARO) ---
 elif sel == "Financeiro":
     st.title("Financeiro")
 
-    # 1. RESET SEGURO
+    # 1. RESET SEGURO E FEEDBACK
     if st.session_state.get("sucesso_fin"):
+        # MENSAGEM PERSISTENTE APÓS O RERUN
+        st.success("✅ Lançamento realizado com sucesso!", icon="✅")
+        
         st.session_state["k_fin_data"] = date.today()
         st.session_state["k_fin_tipo"] = "Saída (Despesa)"
         st.session_state["k_fin_cat"] = ""
@@ -436,7 +439,7 @@ elif sel == "Financeiro":
         st.session_state["k_fin_desc"] = ""
         st.session_state["sucesso_fin"] = False
 
-    # 2. INICIALIZAÇÃO DE VARIÁVEIS (Isso remove o aviso amarelo)
+    # 2. INICIALIZAÇÃO
     if "k_fin_data" not in st.session_state: st.session_state.k_fin_data = date.today()
     if "k_fin_tipo" not in st.session_state: st.session_state.k_fin_tipo = "Saída (Despesa)"
     if "k_fin_cat" not in st.session_state: st.session_state.k_fin_cat = ""
@@ -448,7 +451,6 @@ elif sel == "Financeiro":
         with st.form("ffin", clear_on_submit=False):
             c1, c2 = st.columns(2)
             
-            # 3. USO CORRETO: value=st.session_state['key']
             dt = c1.date_input("Data", value=st.session_state.k_fin_data, key="k_fin_data")
             tp = c1.selectbox("Tipo", ["Saída (Despesa)", "Entrada"], key="k_fin_tipo")
             
@@ -477,7 +479,6 @@ elif sel == "Financeiro":
                     try:
                         conn = get_conn()
                         conn.worksheet("Financeiro").append_row([dt.strftime("%Y-%m-%d"),tp,ct,dc,vl,ob])
-                        st.toast("Lançamento salvo com sucesso!")
                         st.cache_data.clear()
                         
                         st.session_state["sucesso_fin"] = True
@@ -489,13 +490,16 @@ elif sel == "Financeiro":
         dview = df_fin[df_fin["Obra Vinculada"].isin(fob)] if fob else df_fin
         st.dataframe(dview.sort_values("Data_DT", ascending=False), use_container_width=True, hide_index=True)
 
-# --- OBRAS (CORREÇÃO TOTAL DE WARNINGS) ---
+# --- OBRAS (COM FEEDBACK VISUAL CLARO) ---
 elif sel == "Obras":
     st.title("📂 Gestão de Incorporação e Obras")
     st.markdown("---")
 
-    # 1. RESET SEGURO
+    # 1. RESET SEGURO E FEEDBACK
     if st.session_state.get("sucesso_obra"):
+        # MENSAGEM PERSISTENTE APÓS O RERUN
+        st.success(f"✅ Obra salva com sucesso!", icon="🏡")
+        
         st.session_state["k_ob_nome"] = ""
         st.session_state["k_ob_end"] = ""
         st.session_state["k_ob_area_c"] = 0.0
@@ -507,7 +511,7 @@ elif sel == "Obras":
         st.session_state["k_ob_prazo"] = ""
         st.session_state["sucesso_obra"] = False
     
-    # 2. INICIALIZAÇÃO DE VARIÁVEIS (Isso remove o aviso amarelo)
+    # 2. INICIALIZAÇÃO
     if "k_ob_nome" not in st.session_state: st.session_state.k_ob_nome = ""
     if "k_ob_end" not in st.session_state: st.session_state.k_ob_end = ""
     if "k_ob_area_c" not in st.session_state: st.session_state.k_ob_area_c = 0.0
@@ -525,7 +529,6 @@ elif sel == "Obras":
             st.markdown("#### 1. Identificação")
             c1, c2 = st.columns([3, 2])
             
-            # 3. USO CORRETO: value=st.session_state['key']
             nome_obra = c1.text_input("Nome do Empreendimento *", placeholder="Ex: Res. Vila Verde - Casa 04", value=st.session_state.k_ob_nome, key="k_ob_nome")
             endereco = c2.text_input("Endereço *", placeholder="Rua, Bairro...", value=st.session_state.k_ob_end, key="k_ob_end")
 
@@ -588,9 +591,7 @@ elif sel == "Obras":
                             float(custo_previsto)
                         ])
                         
-                        st.toast(f"Sucesso! Obra '{nome_obra}' cadastrada.", icon="🏡")
                         st.cache_data.clear()
-
                         st.session_state["sucesso_obra"] = True
                         st.rerun()
 
