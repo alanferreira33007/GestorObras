@@ -1,3 +1,4 @@
+
 import streamlit as st
 import pandas as pd
 import gspread
@@ -80,9 +81,7 @@ def safe_float(x) -> float:
 # ==============================================================================
 # 3. MOTOR PDF (ENTERPRISE V5) - COM LAZY IMPORT
 # ==============================================================================
-# O import do ReportLab foi movido para DENTRO da função para não travar o inicio do app
 def gerar_pdf_empresarial(escopo, periodo, vgv, custos, lucro, roi, df_cat, df_lanc):
-    # LAZY IMPORT: Só carrega a biblioteca pesada quando clica no botão de PDF
     from reportlab.lib.pagesizes import A4
     from reportlab.lib import colors
     from reportlab.lib.enums import TA_CENTER, TA_RIGHT, TA_LEFT
@@ -199,7 +198,8 @@ def gerar_pdf_empresarial(escopo, periodo, vgv, custos, lucro, roi, df_cat, df_l
     if not df_lanc.empty:
         df_l = df_lanc.copy()
         df_l["Valor"] = df_l["Valor"].apply(fmt_moeda)
-        cols_sel = ["Data", "Categoria", "Descrição", "Valor"]
+        # Ajustado para não quebrar layout antigo, Fornecedor não vai pro PDF para manter largura
+        cols_sel = ["Data", "Categoria", "Descrição", "Valor"] 
         data_lanc = [cols_sel] + df_l[cols_sel].values.tolist()
         
         data_lanc.append(["", "", "SUBTOTAL (Página):", fmt_moeda(custos)])
@@ -278,7 +278,8 @@ OBRAS_COLS = [
     "Data Início", "Prazo", "Area Construida", "Area Terreno", 
     "Quartos", "Custo Previsto"
 ]
-FIN_COLS   = ["Data", "Tipo", "Categoria", "Descrição", "Valor", "Obra Vinculada"]
+# AQUI: Adicionei "Fornecedor" no final da lista
+FIN_COLS   = ["Data", "Tipo", "Categoria", "Descrição", "Valor", "Obra Vinculada", "Fornecedor"]
 CATS       = ["Material", "Mão de Obra", "Serviços", "Administrativo", "Impostos", "Outros"]
 
 @st.cache_resource
@@ -328,9 +329,9 @@ def fetch_data_from_google():
 # ==============================================================================
 if "auth" not in st.session_state: st.session_state.auth = False
 
-# --- FUNÇÕES DE CALLBACK (SEGURANÇA E UX) ---
+# --- CALLBACKS DE LOGIN ---
 def password_entered():
-    """Valida senha ao dar Enter ou clicar em Entrar"""
+    """Apenas verifica a senha e libera o estado. NÃO carrega dados aqui."""
     if st.session_state["password_input"] == st.secrets["password"]:
         st.session_state.auth = True
         if "login_error" in st.session_state: del st.session_state["login_error"]
@@ -339,29 +340,24 @@ def password_entered():
         st.session_state.login_error = "Senha incorreta"
 
 def logout():
-    """Função de Logout executada antes do rerun"""
+    """Logout e limpeza"""
     st.session_state.auth = False
-    if "password_input" in st.session_state:
-        st.session_state["password_input"] = ""
-    # Limpa dados para forçar nova busca ao relogar
+    if "password_input" in st.session_state: st.session_state["password_input"] = ""
     if "data_obras" in st.session_state: del st.session_state["data_obras"]
     if "data_fin" in st.session_state: del st.session_state["data_fin"]
 
+# --- TELA DE LOGIN ---
 if not st.session_state.auth:
     _, c2, _ = st.columns([1,1,1])
     with c2:
         st.markdown("<br><h2 style='text-align:center; color:#2D6A4F'>GESTOR PRO</h2>", unsafe_allow_html=True)
-        
-        if st.session_state.get("login_error"):
-            st.error(st.session_state["login_error"])
-        
+        if st.session_state.get("login_error"): st.error(st.session_state["login_error"])
         st.text_input("Senha", type="password", key="password_input", on_change=password_entered)
         st.button("ENTRAR", use_container_width=True, on_click=password_entered)
-        
     st.stop()
 
 # ==============================================================================
-# 6. RENDERIZAÇÃO DA BARRA LATERAL (PRIORIDADE TOTAL)
+# 6. RENDERIZAÇÃO DA BARRA LATERAL (IMEDIATA)
 # ==============================================================================
 with st.sidebar:
     st.markdown("""
@@ -388,14 +384,12 @@ with st.sidebar:
     st.markdown("---")
     
     col_p1, col_p2 = st.columns([1, 4])
-    with col_p1:
-        st.markdown("<h2 style='text-align: center; margin: 0;'>👤</h2>", unsafe_allow_html=True)
+    with col_p1: st.markdown("<h2 style='text-align: center; margin: 0;'>👤</h2>", unsafe_allow_html=True)
     with col_p2:
         st.caption("Logado como:")
         st.markdown("**Administrador**")
 
     st.write("") 
-
     st.button("🚪 Sair do Sistema", on_click=logout, use_container_width=True)
 
     st.markdown("""
@@ -405,35 +399,29 @@ with st.sidebar:
     """, unsafe_allow_html=True)
 
 # ==============================================================================
-# 7. SINCRONIZAÇÃO DE DADOS (FLUXO CONTÍNUO)
+# 7. CARREGAMENTO DE DADOS (PÓS-RENDERIZAÇÃO UI)
 # ==============================================================================
-# Se dados não existem, carrega e CONTINUA (sem st.rerun), apenas renderiza.
 if "data_obras" not in st.session_state or "data_fin" not in st.session_state:
-    with st.container():
-        # Feedback visual sutil enquanto carrega
-        with st.status("Sincronizando dados...", expanded=False) as status:
+    with st.spinner("Sincronizando base de dados..."):
+        try:
             df_obras, df_fin = fetch_data_from_google()
             st.session_state["data_obras"] = df_obras
             st.session_state["data_fin"] = df_fin
-            status.update(label="Pronto!", state="complete")
+        except Exception as e:
+            st.error(f"Falha na conexão: {e}")
+            st.stop()
 else:
-    # Dados já em memória
     df_obras = st.session_state["data_obras"]
     df_fin = st.session_state["data_fin"]
-
-# Garante que variáveis existem para o resto do script
-if "data_obras" in st.session_state:
-    df_obras = st.session_state["data_obras"]
-    df_fin = st.session_state["data_fin"]
-else:
-    # Fallback seguro (raro acontecer)
-    df_obras, df_fin = pd.DataFrame(), pd.DataFrame()
 
 lista_obras = df_obras["Cliente"].unique().tolist() if not df_obras.empty else []
 
+# ==============================================================================
+# 8. CONTEÚDO DAS PÁGINAS
+# ==============================================================================
+
 # --- DASHBOARD ---
 if sel == "Dashboard":
-    # Lazy Import do Plotly só quando necessário
     import plotly.express as px
     
     c_tit, c_sel, c_btn = st.columns([1.5, 2, 1])
@@ -444,7 +432,6 @@ if sel == "Dashboard":
             escopo = st.selectbox("Escopo", opcoes, label_visibility="collapsed")
         else: st.warning("Cadastre uma obra."); st.stop()
     with c_btn:
-        # Botão de atualizar
         if st.button("🔄 Atualizar Dados", use_container_width=True): 
             st.cache_data.clear()
             if "data_obras" in st.session_state: del st.session_state["data_obras"]
@@ -489,7 +476,6 @@ if sel == "Dashboard":
         st.subheader("Categorias")
         if not df_show.empty:
             df_cat = df_show.groupby("Categoria", as_index=False)["Valor"].sum()
-            # AQUI: Cores 'Bold'
             fig2 = px.pie(df_cat, values="Valor", names="Categoria", hole=0.6, color_discrete_sequence=px.colors.qualitative.Bold)
             fig2.update_layout(showlegend=False, margin=dict(t=0,l=0,r=0,b=0), height=200)
             st.plotly_chart(fig2, use_container_width=True)
@@ -499,7 +485,12 @@ if sel == "Dashboard":
     # Tabela
     st.markdown("### Lançamentos")
     if not df_show.empty:
-        df_tab = df_show[["Data", "Categoria", "Descrição", "Valor"]].sort_values("Data", ascending=False)
+        # AQUI: Ajustei para mostrar Fornecedor na tabela se existir na visualização
+        cols_view = ["Data", "Categoria", "Descrição", "Valor"]
+        if "Fornecedor" in df_show.columns:
+            cols_view.insert(3, "Fornecedor") # Coloca Fornecedor antes de Valor
+            
+        df_tab = df_show[cols_view].sort_values("Data", ascending=False)
         st.dataframe(df_tab, use_container_width=True, hide_index=True, height=250, column_config={"Valor": st.column_config.NumberColumn(format="R$ %.2f")})
         
         st.write("")
@@ -536,6 +527,7 @@ elif sel == "Financeiro":
         st.session_state["k_fin_obra"] = ""
         st.session_state["k_fin_valor"] = 0.0
         st.session_state["k_fin_desc"] = ""
+        st.session_state["k_fin_forn"] = "" # Limpa fornecedor
         st.session_state["sucesso_fin"] = False
 
     if "k_fin_data" not in st.session_state: st.session_state.k_fin_data = date.today()
@@ -544,6 +536,7 @@ elif sel == "Financeiro":
     if "k_fin_obra" not in st.session_state: st.session_state.k_fin_obra = ""
     if "k_fin_valor" not in st.session_state: st.session_state.k_fin_valor = 0.0
     if "k_fin_desc" not in st.session_state: st.session_state.k_fin_desc = ""
+    if "k_fin_forn" not in st.session_state: st.session_state.k_fin_forn = ""
 
     with st.expander("Novo Lançamento", expanded=True):
         with st.form("ffin", clear_on_submit=False):
@@ -553,10 +546,12 @@ elif sel == "Financeiro":
                 tp = st.selectbox("Tipo", ["Saída (Despesa)", "Entrada"], key="k_fin_tipo")
                 opcoes_cats = [""] + CATS
                 ct = st.selectbox("Categoria *", opcoes_cats, key="k_fin_cat")
+                # AQUI: Campo Fornecedor
+                fn = st.text_input("Fornecedor (Obrigatório se Material)", value=st.session_state.k_fin_forn, key="k_fin_forn")
+                
             with c2:
                 opcoes_obras = [""] + lista_obras
                 ob = st.selectbox("Obra *", opcoes_obras, key="k_fin_obra")
-                
                 vl = st.number_input("Valor R$ *", min_value=0.0, format="%.2f", step=100.0, value=st.session_state.k_fin_valor, key="k_fin_valor_input")
                 dc = st.text_input("Descrição *", value=st.session_state.k_fin_desc, key="k_fin_desc")
             
@@ -569,6 +564,10 @@ elif sel == "Financeiro":
                 if not ct or ct == "": erros.append("Selecione a Categoria.")
                 if vl <= 0: erros.append("O Valor deve ser maior que zero.")
                 if not dc.strip(): erros.append("A Descrição é obrigatória.")
+                
+                # AQUI: Validação condicional para Fornecedor
+                if ct == "Material" and not fn.strip():
+                    erros.append("Para a categoria 'Material', o campo Fornecedor é obrigatório.")
 
                 if erros:
                     st.error("⚠️ Atenção:")
@@ -576,10 +575,12 @@ elif sel == "Financeiro":
                 else:
                     try:
                         conn = get_conn()
-                        conn.worksheet("Financeiro").append_row([dt.strftime("%Y-%m-%d"),tp,ct,dc,vl,ob])
-                        # Limpa o estado para forçar atualização
+                        # AQUI: Adicionei fn (fornecedor) na lista de append
+                        conn.worksheet("Financeiro").append_row([dt.strftime("%Y-%m-%d"),tp,ct,dc,vl,ob,fn])
+                        
                         if "data_fin" in st.session_state: del st.session_state["data_fin"]
                         st.cache_data.clear()
+                        
                         st.session_state["sucesso_fin"] = True
                         st.rerun() 
                     except Exception as e: st.error(f"Erro: {e}")
