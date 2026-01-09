@@ -452,7 +452,7 @@ with st.sidebar:
 
     st.markdown("""
         <div style='margin-top: 30px; text-align: center;'>
-            <p style='color: #adb5bd; font-size: 10px;'>v1.4.0 • © 2026 Gestor Pro</p>
+            <p style='color: #adb5bd; font-size: 10px;'>v1.4.1 • © 2026 Gestor Pro</p>
         </div>
     """, unsafe_allow_html=True)
 
@@ -678,20 +678,16 @@ elif sel == "Financeiro":
         st.write("")
         st.write("")
         
-        # --- ZONA DE EXCLUSÃO DE LANÇAMENTO (NOVO) ---
+        # --- ZONA DE EXCLUSÃO DE LANÇAMENTO ---
         with st.expander("⚙️ Opções Avançadas (Remover Lançamento)", expanded=False):
             st.caption("Atenção: Ação irreversível.")
             with st.form("form_del_fin", clear_on_submit=True):
-                # Criar lista identificável: Linha (Index+2) | Data | Valor | Descrição
                 lista_lancamentos = []
-                # Usar df_fin original (sem filtros) para garantir o índice correto da planilha
                 if not df_fin.empty:
                     for idx, row in df_fin.iterrows():
-                        # Google Sheets começa na linha 1 (cabeçalho), então dados começam na 2
                         label = f"Ln.{idx+2} | {row['Data']} | {row['Obra Vinculada']} | {fmt_moeda(row['Valor'])} | {row['Descrição']}"
                         lista_lancamentos.append(label)
 
-                # Inverter para facilitar a busca visual (mais recentes no topo)
                 lista_lancamentos.reverse()
 
                 sel_del_fin = st.selectbox("Selecionar Lançamento:", ["(Selecione...)"] + lista_lancamentos)
@@ -703,23 +699,16 @@ elif sel == "Financeiro":
                         st.toast("Selecione um item.", icon="⚠️")
                     elif pwd_del_fin == st.secrets["password"]:
                         try:
-                            # Extrair o número da linha da string selecionada
                             row_num = int(sel_del_fin.split(" | ")[0].replace("Ln.", ""))
-                            
                             conn = get_conn()
                             ws_f = conn.worksheet("Financeiro")
                             ws_f.delete_rows(row_num)
-                            
                             st.toast("Lançamento removido!", icon="🗑️")
-                            
-                            # Limpar cache e recarregar
                             if "data_fin" in st.session_state: del st.session_state["data_fin"]
                             st.cache_data.clear()
                             st.rerun()
-                        except Exception as e:
-                            st.error(f"Erro ao excluir: {e}")
-                    else:
-                        st.toast("Senha incorreta.", icon="⛔")
+                        except Exception as e: st.error(f"Erro: {e}")
+                    else: st.toast("Senha incorreta.", icon="⛔")
 
     else: st.info("Nenhum lançamento registrado.")
 
@@ -873,7 +862,7 @@ elif sel == "Obras":
         st.write("")
         st.write("")
         
-        # --- ZONA DE EXCLUSÃO (OBRAS) ---
+        # --- ZONA DE EXCLUSÃO (CORRIGIDA: OBRAS + FINANCEIRO) ---
         with st.expander("⚙️ Opções Avançadas (Remoção de Obras)", expanded=False):
             st.caption("Atenção: Esta ação é **irreversível**. Todos os dados e lançamentos financeiros vinculados serão apagados permanentemente.")
             
@@ -894,18 +883,45 @@ elif sel == "Obras":
                         st.toast("Selecione uma obra válida.", icon="⚠️")
                     elif pwd_del == st.secrets["password"]:
                         try:
-                            id_del = selected_obra_delete.split(" | ")[0]
-                            conn = get_conn()
-                            ws = conn.worksheet("Obras")
-                            cell = ws.find(id_del, in_column=1) 
+                            # 1. Recuperar ID e Nome
+                            id_del = int(selected_obra_delete.split(" | ")[0])
+                            row_obra = df_obras[df_obras["ID"] == id_del]
+                            
+                            if not row_obra.empty:
+                                nome_obra_alvo = row_obra.iloc[0]["Cliente"]
+                                conn = get_conn()
 
-                            if cell:
-                                ws.delete_rows(cell.row)
-                                st.toast("Obra removida.", icon="🗑️")
-                                if "data_obras" in st.session_state: del st.session_state["data_obras"]
-                                st.cache_data.clear()
-                                st.rerun()
-                            else: st.error("ID não encontrado.")
+                                # 2. Excluir Lançamentos Financeiros Vinculados
+                                with st.spinner("Removendo lançamentos financeiros..."):
+                                    ws_fin = conn.worksheet("Financeiro")
+                                    vals_fin = ws_fin.get_all_values()
+                                    rows_to_delete = []
+                                    # Varredura para encontrar linhas (índice 5 é coluna 'Obra Vinculada')
+                                    for i, row in enumerate(vals_fin):
+                                        if i == 0: continue # Pula cabeçalho
+                                        col_obra_val = normalize_text(row[5]) if len(row) > 5 else ""
+                                        if col_obra_val == normalize_text(nome_obra_alvo):
+                                            rows_to_delete.append(i + 1) # gspread é 1-based
+                                    
+                                    # Deletar de baixo para cima para manter integridade dos índices
+                                    for r in sorted(rows_to_delete, reverse=True):
+                                        ws_fin.delete_rows(r)
+
+                                # 3. Excluir a Obra
+                                with st.spinner("Removendo cadastro da obra..."):
+                                    ws_obras = conn.worksheet("Obras")
+                                    cell = ws_obras.find(str(id_del), in_column=1)
+                                    if cell:
+                                        ws_obras.delete_rows(cell.row)
+                                        st.toast("Obra e dados financeiros removidos com sucesso.", icon="🗑️")
+                                        
+                                        # Limpeza Cache
+                                        if "data_obras" in st.session_state: del st.session_state["data_obras"]
+                                        if "data_fin" in st.session_state: del st.session_state["data_fin"]
+                                        st.cache_data.clear()
+                                        st.rerun()
+                                    else: st.error("ID da obra não encontrado na planilha.")
+                            else: st.error("Erro ao localizar nome da obra.")
                         except Exception as e: st.error(f"Erro: {e}")
                     else: st.toast("Senha incorreta.", icon="⛔")
     else: st.info("Nenhuma obra cadastrada.")
