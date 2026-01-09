@@ -59,7 +59,15 @@ st.markdown("""
         cursor: not-allowed;
     }
     
-    [data-testid="stSidebar"] { background-color: #f8f9fa; border-right: 1px solid #e9ecef; }
+    [data-testid="stSidebar"] { 
+        background-color: #f8f9fa; 
+        border-right: 1px solid #e9ecef; 
+    }
+    
+    /* Ajuste fino no cabeçalho da sidebar */
+    [data-testid="stSidebarUserContent"] {
+        padding-top: 2rem;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -365,12 +373,54 @@ with st.spinner("Carregando carteira de obras e financeiro..."):
 
 lista_obras = df_obras["Cliente"].unique().tolist() if not df_obras.empty else []
 
+# ==============================================================================
+# BARRA LATERAL (SIDEBAR) MELHORADA
+# ==============================================================================
 with st.sidebar:
-    st.markdown("### 🏢 MENU")
-    sel = option_menu(None, ["Dashboard", "Financeiro", "Obras"], icons=["graph-up", "wallet", "building"], default_index=0, styles={"nav-link-selected": {"background-color": "#2D6A4F"}})
+    # 1. Cabeçalho / Branding
+    st.markdown("""
+        <div style='text-align: left; margin-bottom: 20px;'>
+            <h1 style='color: #2D6A4F; font-size: 24px; margin-bottom: 0px;'>GESTOR PRO</h1>
+            <p style='color: gray; font-size: 12px; margin-top: 0px;'>Incorporação & Obras</p>
+        </div>
+    """, unsafe_allow_html=True)
+
+    # 2. Navegação (Ícones atualizados para estilo 'solid/fill')
+    sel = option_menu(
+        menu_title=None,
+        options=["Dashboard", "Financeiro", "Obras"],
+        icons=["pie-chart-fill", "wallet-fill", "building-fill"], 
+        default_index=0,
+        styles={
+            "container": {"padding": "0!important", "background-color": "transparent"},
+            "icon": {"color": "#2D6A4F", "font-size": "16px"}, 
+            "nav-link": {"font-size": "14px", "text-align": "left", "margin":"5px", "--hover-color": "#eee"},
+            "nav-link-selected": {"background-color": "#2D6A4F", "color": "white"},
+        }
+    )
+    
+    st.write("") # Espaçamento
     st.markdown("---")
-    # CORREÇÃO DO LOGOUT: Usando callback para garantir execução imediata
-    st.button("Sair", on_click=logout)
+    
+    # 3. Informação do Usuário (Visual Profissional)
+    col_p1, col_p2 = st.columns([1, 4])
+    with col_p1:
+        st.markdown("<h2 style='text-align: center; margin: 0;'>👤</h2>", unsafe_allow_html=True)
+    with col_p2:
+        st.caption("Logado como:")
+        st.markdown("**Administrador**")
+
+    st.write("") # Espaçamento
+
+    # 4. Botão de Logout (Estilizado)
+    st.button("🚪 Sair do Sistema", on_click=logout, use_container_width=True)
+
+    # 5. Rodapé
+    st.markdown("""
+        <div style='margin-top: 30px; text-align: center;'>
+            <p style='color: #adb5bd; font-size: 10px;'>v1.2.0 • © 2026 Gestor Pro</p>
+        </div>
+    """, unsafe_allow_html=True)
 
 # --- DASHBOARD ---
 if sel == "Dashboard":
