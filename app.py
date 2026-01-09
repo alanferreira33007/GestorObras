@@ -425,19 +425,21 @@ if sel == "Dashboard":
             use_container_width=True
         )
 
-# --- FINANCEIRO (COM VALIDAÇÃO) ---
+# --- FINANCEIRO (COM VALIDAÇÃO TOTAL) ---
 elif sel == "Financeiro":
     st.title("Financeiro")
     with st.expander("Novo Lançamento", expanded=True):
-        # TRAVA: clear_on_submit=False para não perder dados se der erro
         with st.form("ffin", clear_on_submit=False):
             c1, c2 = st.columns(2)
             dt = c1.date_input("Data", date.today())
             tp = c1.selectbox("Tipo", ["Saída (Despesa)", "Entrada"])
             ct = c1.selectbox("Categoria", CATS)
-            ob = c2.selectbox("Obra", lista_obras if lista_obras else ["Geral"])
             
-            # Campos críticos para validação
+            # --- ATUALIZAÇÃO: Obra inicia vazia e validação é exigida ---
+            # Adicionei a opção vazia "" na lista
+            opcoes_obras = [""] + lista_obras
+            ob = c2.selectbox("Obra *", opcoes_obras)
+            
             vl = c2.number_input("Valor R$ *", min_value=0.0)
             dc = c2.text_input("Descrição *")
             
@@ -445,11 +447,13 @@ elif sel == "Financeiro":
 
             if submitted_fin:
                 erros = []
+                # Validando a seleção da Obra (não pode ser vazia)
+                if not ob or ob == "": erros.append("Selecione a Obra Vinculada.")
                 if vl <= 0: erros.append("O Valor deve ser maior que zero.")
                 if not dc.strip(): erros.append("A Descrição é obrigatória.")
 
                 if erros:
-                    st.error("Preencha todos os campos obrigatórios (*)")
+                    st.error("⚠️ Atenção:")
                     for e in erros: st.caption(f"- {e}")
                 else:
                     try:
@@ -457,7 +461,7 @@ elif sel == "Financeiro":
                         conn.worksheet("Financeiro").append_row([dt.strftime("%Y-%m-%d"),tp,ct,dc,vl,ob])
                         st.toast("Lançamento salvo com sucesso!")
                         st.cache_data.clear()
-                        st.rerun() # Limpa o form via recarregamento
+                        st.rerun() 
                     except Exception as e: st.error(f"Erro: {e}")
 
     if not df_fin.empty:
