@@ -79,30 +79,27 @@ def safe_float(x) -> float:
     try: return float(s)
     except: return 0.0
 
-# --- NOVO COMPONENTE DE INPUT MONETÁRIO ---
-def input_moeda(label, valor_inicial=0.0, key=None):
+# --- NOVO COMPONENTE DE INPUT MONETÁRIO (AJUSTADO) ---
+def input_moeda(label, valor_ref_float, key_txt):
     """
-    Cria um campo de texto que aceita formatação brasileira (vírgula para decimais)
-    e converte automaticamente para float.
+    label: Título do campo
+    valor_ref_float: O valor numérico atual (do session state)
+    key_txt: A chave única para o componente de texto
     """
-    # 1. Se tiver valor inicial, formata para string BR (ex: 1250.50 -> "1.250,50")
-    if valor_inicial > 0:
-        val_str = f"{valor_inicial:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+    # Se o valor numérico for > 0, formata para texto. Se for 0, deixa vazio para placeholder.
+    if valor_ref_float > 0:
+        val_inicial = f"{valor_ref_float:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
     else:
-        val_str = ""
+        val_inicial = ""
     
-    # 2. Input como Texto (placeholder ajuda a entender o formato)
-    entrada = st.text_input(label, value=val_str, key=key, placeholder="0,00")
+    # Input de Texto
+    val_str = st.text_input(label, value=val_inicial, key=key_txt, placeholder="0,00")
     
-    # 3. Processamento (Converter String BR para Float Python)
-    if entrada:
-        # Remove caracteres que não sejam números ou separadores
-        clean = entrada.replace("R$", "").strip()
-        # Remove ponto de milhar (1.000 -> 1000)
-        clean = clean.replace(".", "")
-        # Troca vírgula por ponto decimal (50,00 -> 50.00)
-        clean = clean.replace(",", ".")
-        
+    # Converte de volta para float
+    if val_str:
+        clean = val_str.replace("R$", "").strip()
+        clean = clean.replace(".", "") # Tira ponto de milhar
+        clean = clean.replace(",", ".") # Troca vírgula decimal por ponto
         try:
             return float(clean)
         except:
@@ -459,7 +456,7 @@ if sel == "Dashboard":
             use_container_width=True
         )
 
-# --- FINANCEIRO (COM INPUT MELHORADO) ---
+# --- FINANCEIRO (CORRIGIDO: ALINHAMENTO E RESET) ---
 elif sel == "Financeiro":
     st.title("Financeiro")
 
@@ -472,6 +469,7 @@ elif sel == "Financeiro":
         st.session_state["k_fin_cat"] = ""
         st.session_state["k_fin_obra"] = ""
         st.session_state["k_fin_valor"] = 0.0
+        st.session_state["k_fin_valor_txt"] = "" # Limpa o campo de texto visual
         st.session_state["k_fin_desc"] = ""
         st.session_state["sucesso_fin"] = False
 
@@ -487,25 +485,26 @@ elif sel == "Financeiro":
         with st.form("ffin", clear_on_submit=False):
             c1, c2 = st.columns(2)
             
-            dt = c1.date_input("Data", value=st.session_state.k_fin_data, key="k_fin_data")
-            tp = c1.selectbox("Tipo", ["Saída (Despesa)", "Entrada"], key="k_fin_tipo")
+            with c1:
+                dt = st.date_input("Data", value=st.session_state.k_fin_data, key="k_fin_data")
+                tp = st.selectbox("Tipo", ["Saída (Despesa)", "Entrada"], key="k_fin_tipo")
+                
+                opcoes_cats = [""] + CATS
+                ct = st.selectbox("Categoria *", opcoes_cats, key="k_fin_cat")
             
-            opcoes_cats = [""] + CATS
-            ct = c1.selectbox("Categoria *", opcoes_cats, key="k_fin_cat")
-            
-            opcoes_obras = [""] + lista_obras
-            ob = c2.selectbox("Obra *", opcoes_obras, key="k_fin_obra")
-            
-            # --- INPUT MELHORADO (Texto -> Float) ---
-            # Passamos o valor atual do state para renderizar, mas o componente retorna o float processado
-            vl = input_moeda("Valor R$ *", valor_inicial=st.session_state.k_fin_valor, key="k_fin_valor_txt")
-            
-            dc = c2.text_input("Descrição *", value=st.session_state.k_fin_desc, key="k_fin_desc")
+            with c2:
+                opcoes_obras = [""] + lista_obras
+                ob = st.selectbox("Obra *", opcoes_obras, key="k_fin_obra")
+                
+                # Input monetário DENTRO da coluna para alinhar
+                vl = input_moeda("Valor R$ *", valor_ref_float=st.session_state.k_fin_valor, key_txt="k_fin_valor_txt")
+                
+                dc = st.text_input("Descrição *", value=st.session_state.k_fin_desc, key="k_fin_desc")
             
             submitted_fin = st.form_submit_button("Salvar", use_container_width=True)
 
             if submitted_fin:
-                # Atualizamos o state numérico com o valor que veio do input de texto
+                # Atualiza valor numérico
                 st.session_state.k_fin_valor = vl
                 
                 erros = []
@@ -558,7 +557,7 @@ elif sel == "Financeiro":
     else:
         st.info("Nenhum lançamento registrado.")
 
-# --- OBRAS (COM INPUT MELHORADO) ---
+# --- OBRAS (CORRIGIDO: ALINHAMENTO E RESET) ---
 elif sel == "Obras":
     st.title("📂 Gestão de Incorporação e Obras")
     st.markdown("---")
@@ -573,8 +572,13 @@ elif sel == "Obras":
         st.session_state["k_ob_area_t"] = 0.0
         st.session_state["k_ob_quartos"] = 0
         st.session_state["k_ob_status"] = "Projeto"
+        
         st.session_state["k_ob_custo"] = 0.0
+        st.session_state["k_ob_custo_txt"] = "" # Limpa visual
+        
         st.session_state["k_ob_vgv"] = 0.0
+        st.session_state["k_ob_vgv_txt"] = "" # Limpa visual
+        
         st.session_state["k_ob_prazo"] = ""
         st.session_state["sucesso_obra"] = False
     
@@ -595,26 +599,34 @@ elif sel == "Obras":
             
             st.markdown("#### 1. Identificação")
             c1, c2 = st.columns([3, 2])
-            
-            nome_obra = c1.text_input("Nome do Empreendimento *", placeholder="Ex: Res. Vila Verde - Casa 04", value=st.session_state.k_ob_nome, key="k_ob_nome")
-            endereco = c2.text_input("Endereço *", placeholder="Rua, Bairro...", value=st.session_state.k_ob_end, key="k_ob_end")
+            with c1:
+                nome_obra = st.text_input("Nome do Empreendimento *", placeholder="Ex: Res. Vila Verde - Casa 04", value=st.session_state.k_ob_nome, key="k_ob_nome")
+            with c2:
+                endereco = st.text_input("Endereço *", placeholder="Rua, Bairro...", value=st.session_state.k_ob_end, key="k_ob_end")
 
             st.markdown("#### 2. Características Físicas (Produto)")
             c4, c5, c6, c7 = st.columns(4)
-            area_const = c4.number_input("Área Construída (m²)", min_value=0.0, format="%.2f", value=st.session_state.k_ob_area_c, key="k_ob_area_c")
-            area_terr = c5.number_input("Área Terreno (m²)", min_value=0.0, format="%.2f", value=st.session_state.k_ob_area_t, key="k_ob_area_t")
-            quartos = c6.number_input("Qtd. Quartos", min_value=0, step=1, value=st.session_state.k_ob_quartos, key="k_ob_quartos")
-            status = c7.selectbox("Fase Atual", ["Projeto", "Fundação", "Alvenaria", "Acabamento", "Concluída", "Vendida"], key="k_ob_status")
+            with c4:
+                area_const = st.number_input("Área Construída (m²)", min_value=0.0, format="%.2f", value=st.session_state.k_ob_area_c, key="k_ob_area_c")
+            with c5:
+                area_terr = st.number_input("Área Terreno (m²)", min_value=0.0, format="%.2f", value=st.session_state.k_ob_area_t, key="k_ob_area_t")
+            with c6:
+                quartos = st.number_input("Qtd. Quartos", min_value=0, step=1, value=st.session_state.k_ob_quartos, key="k_ob_quartos")
+            with c7:
+                status = st.selectbox("Fase Atual", ["Projeto", "Fundação", "Alvenaria", "Acabamento", "Concluída", "Vendida"], key="k_ob_status")
 
             st.markdown("#### 3. Viabilidade Financeira e Prazos")
             c8, c9, c10, c11 = st.columns(4)
             
-            # --- INPUTS FINANCEIROS MELHORADOS ---
-            custo_previsto = input_moeda("Orçamento (Custo) *", valor_inicial=st.session_state.k_ob_custo, key="k_ob_custo_txt")
-            valor_venda = input_moeda("VGV (Venda) *", valor_inicial=st.session_state.k_ob_vgv, key="k_ob_vgv_txt")
-            
-            data_inicio = c10.date_input("Início da Obra", value=st.session_state.k_ob_data, key="k_ob_data")
-            prazo_entrega = c11.text_input("Prazo / Entrega *", placeholder="Ex: dez/2025", value=st.session_state.k_ob_prazo, key="k_ob_prazo")
+            # --- INPUTS FINANCEIROS MELHORADOS E ALINHADOS ---
+            with c8:
+                custo_previsto = input_moeda("Orçamento (Custo) *", valor_ref_float=st.session_state.k_ob_custo, key_txt="k_ob_custo_txt")
+            with c9:
+                valor_venda = input_moeda("VGV (Venda) *", valor_ref_float=st.session_state.k_ob_vgv, key_txt="k_ob_vgv_txt")
+            with c10:
+                data_inicio = st.date_input("Início da Obra", value=st.session_state.k_ob_data, key="k_ob_data")
+            with c11:
+                prazo_entrega = st.text_input("Prazo / Entrega *", placeholder="Ex: dez/2025", value=st.session_state.k_ob_prazo, key="k_ob_prazo")
 
             if valor_venda > 0 and custo_previsto > 0:
                 margem_proj = ((valor_venda - custo_previsto) / custo_previsto) * 100
