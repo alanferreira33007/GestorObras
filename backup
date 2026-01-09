@@ -287,7 +287,7 @@ def get_conn():
     creds = json.loads(st.secrets["gcp_service_account"]["json_content"], strict=False)
     return gspread.authorize(ServiceAccountCredentials.from_json_keyfile_dict(creds, ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"])).open("GestorObras_DB")
 
-@st.cache_data(ttl=60)
+@st.cache_data(ttl=120)
 def load_data():
     try:
         db = get_conn()
@@ -328,44 +328,50 @@ def load_data():
 # ==============================================================================
 if "auth" not in st.session_state: st.session_state.auth = False
 
-# --- FUNÇÃO DE CALLBACK PARA LOGIN (CAPTURA O ENTER) ---
+# --- FUNÇÕES DE CALLBACK (SEGURANÇA E UX) ---
 def password_entered():
-    """Checa a senha quando o usuário aperta Enter ou clica no botão"""
+    """Valida senha ao dar Enter ou clicar em Entrar"""
     if st.session_state["password_input"] == st.secrets["password"]:
         st.session_state.auth = True
-        # Limpa erro anterior se existir
-        if "login_error" in st.session_state: 
-            del st.session_state["login_error"]
+        if "login_error" in st.session_state: del st.session_state["login_error"]
     else:
         st.session_state.auth = False
         st.session_state.login_error = "Senha incorreta"
+
+def logout():
+    """Função de Logout executada antes do rerun"""
+    st.session_state.auth = False
+    # Limpa a senha do estado para forçar novo login limpo
+    if "password_input" in st.session_state:
+        st.session_state["password_input"] = ""
 
 if not st.session_state.auth:
     _, c2, _ = st.columns([1,1,1])
     with c2:
         st.markdown("<br><h2 style='text-align:center; color:#2D6A4F'>GESTOR PRO</h2>", unsafe_allow_html=True)
         
-        # Mostra mensagem de erro se o login falhar
         if st.session_state.get("login_error"):
             st.error(st.session_state["login_error"])
         
-        # Input de senha com CALLBACK (on_change)
-        # Ao apertar ENTER, o Streamlit executa 'password_entered' automaticamente
+        # O argumento on_change detecta o ENTER
         st.text_input("Senha", type="password", key="password_input", on_change=password_entered)
-        
-        # Botão também chama a mesma função
+        # O argumento on_click detecta o CLIQUE
         st.button("ENTRAR", use_container_width=True, on_click=password_entered)
         
     st.stop()
 
-df_obras, df_fin = load_data()
+# --- CARREGAMENTO DE DADOS COM SPINNER PARA MELHORAR PERCEPÇÃO DE VELOCIDADE ---
+with st.spinner("Carregando carteira de obras e financeiro..."):
+    df_obras, df_fin = load_data()
+
 lista_obras = df_obras["Cliente"].unique().tolist() if not df_obras.empty else []
 
 with st.sidebar:
     st.markdown("### 🏢 MENU")
     sel = option_menu(None, ["Dashboard", "Financeiro", "Obras"], icons=["graph-up", "wallet", "building"], default_index=0, styles={"nav-link-selected": {"background-color": "#2D6A4F"}})
     st.markdown("---")
-    if st.button("Sair"): st.session_state.auth=False; st.rerun()
+    # CORREÇÃO DO LOGOUT: Usando callback para garantir execução imediata
+    st.button("Sair", on_click=logout)
 
 # --- DASHBOARD ---
 if sel == "Dashboard":
@@ -417,7 +423,8 @@ if sel == "Dashboard":
         st.subheader("Categorias")
         if not df_show.empty:
             df_cat = df_show.groupby("Categoria", as_index=False)["Valor"].sum()
-            fig2 = px.pie(df_cat, values="Valor", names="Categoria", hole=0.6, color_discrete_sequence=px.colors.sequential.Greens_r)
+            # AQUI: MUDANÇA PARA 'BOLD' (CORES DISTINTAS)
+            fig2 = px.pie(df_cat, values="Valor", names="Categoria", hole=0.6, color_discrete_sequence=px.colors.qualitative.Bold)
             fig2.update_layout(showlegend=False, margin=dict(t=0,l=0,r=0,b=0), height=200)
             st.plotly_chart(fig2, use_container_width=True)
             st.dataframe(df_cat.sort_values("Valor", ascending=False).head(3), use_container_width=True, hide_index=True, column_config={"Valor": st.column_config.NumberColumn(format="R$ %.2f")})
@@ -484,6 +491,7 @@ elif sel == "Financeiro":
                 opcoes_obras = [""] + lista_obras
                 ob = st.selectbox("Obra *", opcoes_obras, key="k_fin_obra")
                 
+                # AQUI: Mudança para number_input (Bloqueia letras)
                 vl = st.number_input("Valor R$ *", min_value=0.0, format="%.2f", step=100.0, value=st.session_state.k_fin_valor, key="k_fin_valor_input")
                 
                 dc = st.text_input("Descrição *", value=st.session_state.k_fin_desc, key="k_fin_desc")
@@ -579,6 +587,8 @@ elif sel == "Obras":
             st.markdown("#### 3. Viabilidade Financeira e Prazos")
             c8, c9, c10, c11 = st.columns(4)
             
+            # AQUI: Mudança de volta para number_input (Bloqueia letras)
+            # Usei step=100.0 para facilitar preencher valores altos, mas aceita centavos se digitar
             with c8: custo_previsto = st.number_input("Orçamento (Custo) *", min_value=0.0, format="%.2f", step=1000.0, value=st.session_state.k_ob_custo, key="k_ob_custo_input")
             with c9: valor_venda = st.number_input("VGV (Venda) *", min_value=0.0, format="%.2f", step=1000.0, value=st.session_state.k_ob_vgv, key="k_ob_vgv_input")
             
