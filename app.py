@@ -80,34 +80,31 @@ def safe_float(x) -> float:
     try: return float(s)
     except: return 0.0
 
-# --- NOVO COMPONENTE DE INPUT (COM LIMPEZA RIGOROSA DE LETRAS) ---
-def input_formata_br(label, valor_ref_float, key_txt, prefix=""):
+# --- COMPONENTE ESPECIAL PARA VALORES MONETÁRIOS ---
+def input_moeda_br(label, valor_ref_float, key_txt):
     """
-    Componente de input que aceita formatação BR.
-    Se o usuário digitar letras, elas são removidas no processamento.
+    Simula input bancário. 
+    Aceita string formatada, remove letras automaticamente e retorna float.
     """
-    # 1. Formata o valor numérico atual para exibir na caixa (ex: 1200.50 -> 1.200,50)
+    # 1. Prepara o valor inicial visual (se existir valor salvo)
     if valor_ref_float > 0:
+        # Formata: 1200.5 -> 1.200,50
         val_inicial = f"{valor_ref_float:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
-        if prefix:
-            val_inicial = f"{prefix}{val_inicial}"
     else:
         val_inicial = ""
     
-    # 2. Input de Texto
-    # O placeholder sugere o formato correto
+    # 2. Renderiza o Input de Texto (Visualmente melhor para R$)
     val_str = st.text_input(label, value=val_inicial, key=key_txt, placeholder="0,00")
     
-    # 3. Processamento e Limpeza (Regex)
+    # 3. Lógica Anti-Letras (Sanitização)
     if val_str:
-        # Remove qualquer caractere que NÃO seja número (0-9) ou separadores (.,)
-        # Ex: "100abc" vira "100"
-        clean = re.sub(r'[^\d.,]', '', val_str)
+        # Remove TUDO que não for número ou vírgula (centavos)
+        # Ex: "R$ 1.000,00 abc" -> vira "1000,00" (pois removemos pontos e espaços e letras)
+        # Passo A: Manter apenas digitos e virgula
+        clean = re.sub(r'[^\d,]', '', val_str)
         
-        # Remove pontos de milhar para conversão
-        clean = clean.replace(".", "") 
-        # Troca vírgula decimal por ponto para o Python entender
-        clean = clean.replace(",", ".") 
+        # Passo B: Converte para float padrão python (troca virgula por ponto)
+        clean = clean.replace(",", ".")
         
         try:
             return float(clean)
@@ -475,8 +472,11 @@ elif sel == "Financeiro":
         st.session_state["k_fin_tipo"] = "Saída (Despesa)"
         st.session_state["k_fin_cat"] = ""
         st.session_state["k_fin_obra"] = ""
+        
+        # Reset de valores
         st.session_state["k_fin_valor"] = 0.0
         st.session_state["k_fin_valor_txt"] = "" 
+        
         st.session_state["k_fin_desc"] = ""
         st.session_state["sucesso_fin"] = False
 
@@ -499,15 +499,17 @@ elif sel == "Financeiro":
                 opcoes_obras = [""] + lista_obras
                 ob = st.selectbox("Obra *", opcoes_obras, key="k_fin_obra")
                 
-                # Input monetário com filtro (Agora mais robusto contra letras)
-                vl = input_formata_br("Valor R$ *", valor_ref_float=st.session_state.k_fin_valor, key_txt="k_fin_valor_txt", prefix="R$ ")
+                # Input monetário com máscara anti-letras (input_moeda_br)
+                vl = input_moeda_br("Valor R$ *", valor_ref_float=st.session_state.k_fin_valor, key_txt="k_fin_valor_txt")
                 
                 dc = st.text_input("Descrição *", value=st.session_state.k_fin_desc, key="k_fin_desc")
             
             submitted_fin = st.form_submit_button("Salvar", use_container_width=True)
 
             if submitted_fin:
+                # Atualiza state com o valor processado
                 st.session_state.k_fin_valor = vl
+                
                 erros = []
                 if not ob or ob == "": erros.append("Selecione a Obra Vinculada.")
                 if not ct or ct == "": erros.append("Selecione a Categoria.")
@@ -556,14 +558,12 @@ elif sel == "Obras":
         
         # Limpa Areas
         st.session_state["k_ob_area_c"] = 0.0
-        st.session_state["k_ob_area_c_txt"] = ""
         st.session_state["k_ob_area_t"] = 0.0
-        st.session_state["k_ob_area_t_txt"] = ""
         
         st.session_state["k_ob_quartos"] = 0
         st.session_state["k_ob_status"] = "Projeto"
         
-        # Limpa Valores
+        # Limpa Valores Monetários
         st.session_state["k_ob_custo"] = 0.0
         st.session_state["k_ob_custo_txt"] = "" 
         st.session_state["k_ob_vgv"] = 0.0
@@ -592,17 +592,17 @@ elif sel == "Obras":
 
             st.markdown("#### 2. Características Físicas (Produto)")
             c4, c5, c6, c7 = st.columns(4)
-            # AQUI: Aplicação do input_formata_br (com filtro anti-letras) para Areas
-            with c4: area_const = input_formata_br("Área Construída (m²)", valor_ref_float=st.session_state.k_ob_area_c, key_txt="k_ob_area_c_txt", prefix="")
-            with c5: area_terr = input_formata_br("Área Terreno (m²)", valor_ref_float=st.session_state.k_ob_area_t, key_txt="k_ob_area_t_txt", prefix="")
+            # AQUI: VOLTOU PARA number_input (METRAGEM E NUMEROS - NÃO ACEITA LETRA NATIVAMENTE)
+            with c4: area_const = st.number_input("Área Construída (m²)", min_value=0.0, format="%.2f", value=st.session_state.k_ob_area_c, key="k_ob_area_c")
+            with c5: area_terr = st.number_input("Área Terreno (m²)", min_value=0.0, format="%.2f", value=st.session_state.k_ob_area_t, key="k_ob_area_t")
             with c6: quartos = st.number_input("Qtd. Quartos", min_value=0, step=1, value=st.session_state.k_ob_quartos, key="k_ob_quartos")
             with c7: status = st.selectbox("Fase Atual", ["Projeto", "Fundação", "Alvenaria", "Acabamento", "Concluída", "Vendida"], key="k_ob_status")
 
             st.markdown("#### 3. Viabilidade Financeira e Prazos")
             c8, c9, c10, c11 = st.columns(4)
-            # AQUI: Aplicação do input_formata_br (com filtro anti-letras) para Valores
-            with c8: custo_previsto = input_formata_br("Orçamento (Custo) *", valor_ref_float=st.session_state.k_ob_custo, key_txt="k_ob_custo_txt", prefix="R$ ")
-            with c9: valor_venda = input_formata_br("VGV (Venda) *", valor_ref_float=st.session_state.k_ob_vgv, key_txt="k_ob_vgv_txt", prefix="R$ ")
+            # AQUI: MANTÉM INPUT_MOEDA (COM FILTRO ANTI-LETRA) PARA DINHEIRO
+            with c8: custo_previsto = input_moeda_br("Orçamento (Custo) *", valor_ref_float=st.session_state.k_ob_custo, key_txt="k_ob_custo_txt")
+            with c9: valor_venda = input_moeda_br("VGV (Venda) *", valor_ref_float=st.session_state.k_ob_vgv, key_txt="k_ob_vgv_txt")
             with c10: data_inicio = st.date_input("Início da Obra", value=st.session_state.k_ob_data, key="k_ob_data")
             with c11: prazo_entrega = st.text_input("Prazo / Entrega *", placeholder="Ex: dez/2025", value=st.session_state.k_ob_prazo, key="k_ob_prazo")
 
@@ -619,6 +619,8 @@ elif sel == "Obras":
                 # Sincroniza estados
                 st.session_state.k_ob_custo = custo_previsto
                 st.session_state.k_ob_vgv = valor_venda
+                
+                # Para areas, o number_input já atualiza o state direto, mas garantimos:
                 st.session_state.k_ob_area_c = area_const
                 st.session_state.k_ob_area_t = area_terr
                 
