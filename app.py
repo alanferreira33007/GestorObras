@@ -348,9 +348,12 @@ def password_entered():
 def logout():
     """Função de Logout executada antes do rerun"""
     st.session_state.auth = False
-    # Limpa a senha do estado para forçar novo login limpo
+    # Limpa a senha e o cache de sessão para garantir saída limpa
     if "password_input" in st.session_state:
         st.session_state["password_input"] = ""
+    # Limpa os dados persistidos para forçar recarga no próximo login
+    if "data_obras" in st.session_state: del st.session_state["data_obras"]
+    if "data_fin" in st.session_state: del st.session_state["data_fin"]
 
 if not st.session_state.auth:
     _, c2, _ = st.columns([1,1,1])
@@ -368,12 +371,9 @@ if not st.session_state.auth:
     st.stop()
 
 # ==============================================================================
-# 6. RENDERIZAÇÃO DA BARRA LATERAL (ANTES DOS DADOS)
+# 6. RENDERIZAÇÃO DA BARRA LATERAL (PRIORIDADE VISUAL)
 # ==============================================================================
-# Movi a sidebar para CIMA. Ela será renderizada IMEDIATAMENTE após o login,
-# sem esperar o load_data terminar. Isso remove a percepção de lag.
 with st.sidebar:
-    # 1. Cabeçalho / Branding
     st.markdown("""
         <div style='text-align: left; margin-bottom: 20px;'>
             <h1 style='color: #2D6A4F; font-size: 24px; margin-bottom: 0px;'>GESTOR PRO</h1>
@@ -381,7 +381,6 @@ with st.sidebar:
         </div>
     """, unsafe_allow_html=True)
 
-    # 2. Navegação (Ícones atualizados para estilo 'solid/fill')
     sel = option_menu(
         menu_title=None,
         options=["Dashboard", "Financeiro", "Obras"],
@@ -395,10 +394,9 @@ with st.sidebar:
         }
     )
     
-    st.write("") # Espaçamento
+    st.write("") 
     st.markdown("---")
     
-    # 3. Informação do Usuário (Visual Profissional)
     col_p1, col_p2 = st.columns([1, 4])
     with col_p1:
         st.markdown("<h2 style='text-align: center; margin: 0;'>👤</h2>", unsafe_allow_html=True)
@@ -406,22 +404,30 @@ with st.sidebar:
         st.caption("Logado como:")
         st.markdown("**Administrador**")
 
-    st.write("") # Espaçamento
+    st.write("") 
 
-    # 4. Botão de Logout (Estilizado)
     st.button("🚪 Sair do Sistema", on_click=logout, use_container_width=True)
 
-    # 5. Rodapé
     st.markdown("""
         <div style='margin-top: 30px; text-align: center;'>
             <p style='color: #adb5bd; font-size: 10px;'>v1.2.0 • © 2026 Gestor Pro</p>
         </div>
     """, unsafe_allow_html=True)
 
-# --- CARREGAMENTO DE DADOS ---
-# Só agora carregamos os dados pesados. A sidebar já estará visível para o usuário.
-with st.spinner("Carregando carteira de obras e financeiro..."):
-    df_obras, df_fin = load_data()
+# ==============================================================================
+# 7. GERENCIAMENTO DE DADOS (COM MEMÓRIA PERSISTENTE)
+# ==============================================================================
+# Verifica se os dados já estão na sessão. Se não, carrega e salva.
+# Isso evita o delay do load_data a cada clique na sidebar.
+if "data_obras" not in st.session_state or "data_fin" not in st.session_state:
+    with st.spinner("Sincronizando dados..."):
+        o, f = load_data()
+        st.session_state["data_obras"] = o
+        st.session_state["data_fin"] = f
+
+# Usa os dados da memória
+df_obras = st.session_state["data_obras"]
+df_fin = st.session_state["data_fin"]
 
 lista_obras = df_obras["Cliente"].unique().tolist() if not df_obras.empty else []
 
@@ -435,7 +441,12 @@ if sel == "Dashboard":
             escopo = st.selectbox("Escopo", opcoes, label_visibility="collapsed")
         else: st.warning("Cadastre uma obra."); st.stop()
     with c_btn:
-        if st.button("🔄 Atualizar Dados", use_container_width=True): st.cache_data.clear(); st.rerun()
+        # Lógica de atualização que limpa a memória para forçar recarga
+        if st.button("🔄 Atualizar Dados", use_container_width=True): 
+            st.cache_data.clear()
+            if "data_obras" in st.session_state: del st.session_state["data_obras"]
+            if "data_fin" in st.session_state: del st.session_state["data_fin"]
+            st.rerun()
 
     # Filtros
     if escopo == "Visão Geral (Todas as Obras)":
@@ -565,6 +576,8 @@ elif sel == "Financeiro":
                     try:
                         conn = get_conn()
                         conn.worksheet("Financeiro").append_row([dt.strftime("%Y-%m-%d"),tp,ct,dc,vl,ob])
+                        # Limpa o estado para forçar atualização
+                        if "data_fin" in st.session_state: del st.session_state["data_fin"]
                         st.cache_data.clear()
                         st.session_state["sucesso_fin"] = True
                         st.rerun() 
@@ -683,7 +696,11 @@ elif sel == "Obras":
                         ids_existentes = pd.to_numeric(df_obras["ID"], errors="coerce").fillna(0)
                         novo_id = int(ids_existentes.max()) + 1 if not ids_existentes.empty else 1
                         ws.append_row([novo_id, nome_obra.strip(), endereco.strip(), status, float(valor_venda), data_inicio.strftime("%Y-%m-%d"), prazo_entrega.strip(), float(area_const), float(area_terr), int(quartos), float(custo_previsto)])
+                        
+                        # Limpa memória para forçar atualização
+                        if "data_obras" in st.session_state: del st.session_state["data_obras"]
                         st.cache_data.clear()
+                        
                         st.session_state["sucesso_obra"] = True
                         st.rerun()
                     except Exception as e: st.error(f"Erro no Google Sheets: {e}")
@@ -739,7 +756,11 @@ elif sel == "Obras":
                                                 elif pd.isna(val): val = ""
                                                 update_values.append(val)
                                             ws.update(f"A{found_cell.row}:K{found_cell.row}", [update_values])
+                                
+                                # Limpa memória
+                                if "data_obras" in st.session_state: del st.session_state["data_obras"]
                                 st.cache_data.clear()
+                                
                                 st.session_state["sucesso_obra"] = True
                                 st.rerun()
                             except Exception as e: st.error(f"Erro ao salvar: {e}")
