@@ -598,11 +598,16 @@ elif sel == "Obras":
                     except Exception as e:
                         st.error(f"Erro no Google Sheets: {e}")
 
-    # 2. TABELA DE VISUALIZAÇÃO
+    # 2. TABELA DE VISUALIZAÇÃO (CORRIGIDA)
     st.markdown("### 📋 Carteira de Obras")
     
     if not df_obras.empty:
-        df_show = df_obras.copy()
+        # Filtra apenas as colunas desejadas e na ordem correta para limpar a visualização
+        cols_to_show = ["ID", "Cliente", "Status", "Valor Total", "Custo Previsto", "Area Construida", "Area Terreno", "Prazo"]
+        
+        # Garante que só tentaremos mostrar colunas que realmente existem no DF
+        existing_cols = [c for c in cols_to_show if c in df_obras.columns]
+        df_show = df_obras[existing_cols].copy()
         
         st.dataframe(
             df_show, 
@@ -610,12 +615,13 @@ elif sel == "Obras":
             hide_index=True,
             column_config={
                 "ID": st.column_config.NumberColumn("#", width="small"),
-                "Cliente": "Empreendimento",
-                "Valor Total": st.column_config.NumberColumn("VGV (Venda)", format="R$ %.2f"),
-                "Custo Previsto": st.column_config.NumberColumn("Budget (Custo)", format="R$ %.2f"),
-                "Area Construida": st.column_config.NumberColumn("Área (m²)", format="%.0f m²"),
-                "Data Início": st.column_config.DateColumn("Início", format="DD/MM/YYYY"),
-                "Status": st.column_config.SelectboxColumn("Status", options=["Projeto", "Em Obras", "Vendida"], disabled=True)
+                "Cliente": st.column_config.TextColumn("Empreendimento", width="medium"),
+                "Status": st.column_config.SelectboxColumn("Fase", options=["Projeto", "Fundação", "Alvenaria", "Acabamento", "Concluída", "Vendida"], disabled=True, width="small"),
+                "Valor Total": st.column_config.NumberColumn("VGV (Venda)", format="R$ %.2f", min_value=0),
+                "Custo Previsto": st.column_config.NumberColumn("Budget (Custo)", format="R$ %.2f", min_value=0),
+                "Area Construida": st.column_config.NumberColumn("Área Const.", format="%.0f m²"),
+                "Area Terreno": st.column_config.NumberColumn("Terreno", format="%.0f m²"),
+                "Prazo": st.column_config.TextColumn("Entrega")
             }
         )
     else:
