@@ -447,19 +447,20 @@ elif sel == "Financeiro":
         dview = df_fin[df_fin["Obra Vinculada"].isin(fob)] if fob else df_fin
         st.dataframe(dview.sort_values("Data_DT", ascending=False), use_container_width=True, hide_index=True)
 
-# --- OBRAS (CADASTRO IMOBILIÁRIO OTIMIZADO) ---
+# --- OBRAS (COM VALIDAÇÃO RÍGIDA) ---
 elif sel == "Obras":
     st.title("📂 Gestão de Incorporação e Obras")
     st.markdown("---")
 
     # 1. FORMULÁRIO DE CADASTRO
     with st.expander("➕ Cadastrar Novo Empreendimento / Obra", expanded=True):
-        with st.form("f_obra_completa", clear_on_submit=True):
+        # AQUI ESTÁ A CHAVE: clear_on_submit=False evita perder dados ao errar a validação
+        with st.form("f_obra_completa", clear_on_submit=False):
             
             st.markdown("#### 1. Identificação")
             c1, c2 = st.columns([3, 2])
-            nome_obra = c1.text_input("Nome do Empreendimento", placeholder="Ex: Res. Vila Verde - Casa 04")
-            endereco = c2.text_input("Endereço", placeholder="Rua, Bairro...")
+            nome_obra = c1.text_input("Nome do Empreendimento *", placeholder="Ex: Res. Vila Verde - Casa 04")
+            endereco = c2.text_input("Endereço *", placeholder="Rua, Bairro...")
 
             st.markdown("#### 2. Características Físicas (Produto)")
             c4, c5, c6, c7 = st.columns(4)
@@ -470,32 +471,48 @@ elif sel == "Obras":
 
             st.markdown("#### 3. Viabilidade Financeira e Prazos")
             c8, c9, c10, c11 = st.columns(4)
-            custo_previsto = c8.number_input("Orçamento Previsto (Custo)", min_value=0.0, format="%.2f", help="Quanto você ESTIMA gastar para construir.")
-            valor_venda = c9.number_input("VGV (Valor de Venda)", min_value=0.0, format="%.2f", help="Valor final de venda esperado.")
+            custo_previsto = c8.number_input("Orçamento (Custo) *", min_value=0.0, format="%.2f")
+            valor_venda = c9.number_input("VGV (Venda) *", min_value=0.0, format="%.2f")
             data_inicio = c10.date_input("Início da Obra", value=date.today())
-            prazo_entrega = c11.text_input("Prazo / Entrega", placeholder="Ex: dez/2025")
+            prazo_entrega = c11.text_input("Prazo / Entrega *", placeholder="Ex: dez/2025")
 
-            # Cálculo automático de margem projetada na tela
+            # Cálculo automático visual
             if valor_venda > 0 and custo_previsto > 0:
                 margem_proj = ((valor_venda - custo_previsto) / custo_previsto) * 100
                 lucro_proj = valor_venda - custo_previsto
                 st.info(f"💰 **Projeção:** Lucro de **{fmt_moeda(lucro_proj)}** (Margem: **{margem_proj:.1f}%**)")
 
             st.markdown("---")
+            st.caption("(*) Campos Obrigatórios")
             
-            if st.form_submit_button("✅ SALVAR PROJETO", use_container_width=True):
-                if not nome_obra:
-                    st.warning("O nome do empreendimento é obrigatório.")
+            submitted = st.form_submit_button("✅ SALVAR PROJETO", use_container_width=True)
+
+            if submitted:
+                # --- LÓGICA DE VALIDAÇÃO ---
+                erros = []
+                
+                # 1. Valida Textos (não podem ser vazios)
+                if not nome_obra.strip(): erros.append("O 'Nome do Empreendimento' é obrigatório.")
+                if not endereco.strip(): erros.append("O 'Endereço' é obrigatório.")
+                if not prazo_entrega.strip(): erros.append("O 'Prazo' é obrigatório.")
+
+                # 2. Valida Números (não podem ser zero)
+                if valor_venda <= 0: erros.append("O 'Valor de Venda (VGV)' deve ser maior que zero.")
+                if custo_previsto <= 0: erros.append("O 'Orçamento Previsto' deve ser maior que zero.")
+                if area_const <= 0 and area_terr <= 0: erros.append("Preencha ao menos a Área Construída ou do Terreno.")
+
+                if erros:
+                    st.error("⚠️ Não foi possível salvar. Verifique os campos:")
+                    for e in erros:
+                        st.markdown(f"- {e}")
                 else:
                     try:
                         conn = get_conn()
                         ws = conn.worksheet("Obras")
-
-                        # ID Automático
+                        
                         ids_existentes = pd.to_numeric(df_obras["ID"], errors="coerce").fillna(0)
                         novo_id = int(ids_existentes.max()) + 1 if not ids_existentes.empty else 1
 
-                        # Salvando sem a coluna Matricula, na ordem exata de OBRAS_COLS
                         ws.append_row([
                             novo_id,
                             nome_obra.strip(),
@@ -510,11 +527,11 @@ elif sel == "Obras":
                             float(custo_previsto)
                         ])
                         
-                        st.toast(f"Obra '{nome_obra}' registrada!", icon="🏡")
+                        st.toast(f"Sucesso! Obra '{nome_obra}' cadastrada.", icon="🏡")
                         st.cache_data.clear()
                         st.rerun()
                     except Exception as e:
-                        st.error(f"Erro ao salvar: {e}")
+                        st.error(f"Erro no Google Sheets: {e}")
 
     # 2. TABELA DE VISUALIZAÇÃO
     st.markdown("### 📋 Carteira de Obras")
