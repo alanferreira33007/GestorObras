@@ -111,6 +111,11 @@ def safe_float(x) -> float:
     try: return float(s)
     except: return 0.0
 
+def normalize_text(text):
+    """Remove espaços extras e padroniza para comparação segura"""
+    if not isinstance(text, str): return str(text)
+    return " ".join(text.split()).strip()
+
 # ==============================================================================
 # 3. MOTOR PDF (ENTERPRISE V5)
 # ==============================================================================
@@ -333,7 +338,7 @@ def fetch_data_from_google():
             for c in OBRAS_COLS: 
                 if c not in df_o.columns: df_o[c] = None
         
-        # --- CARREGAMENTO DO FINANCEIRO ROBUSTO E SANITIZADO ---
+        # --- CARREGAMENTO ROBUSTO FINANCEIRO ---
         ws_f = db.worksheet("Financeiro")
         raw_f = ws_f.get_all_values()
         
@@ -342,16 +347,20 @@ def fetch_data_from_google():
         else:
             data_rows = raw_f[1:] 
             df_f = pd.DataFrame(data_rows)
-            # Garante largura correta
+            # Ajusta colunas
             while df_f.shape[1] < len(FIN_COLS):
                 df_f[df_f.shape[1]] = ""
             df_f = df_f.iloc[:, :len(FIN_COLS)]
             df_f.columns = FIN_COLS
         
-        # --- LIMPEZA DE DADOS (SANITIZAÇÃO) ---
-        # Remove espaços em branco que quebram filtros (ex: "Obra A " vs "Obra A")
-        for col in ["Obra Vinculada", "Categoria", "Tipo", "Fornecedor", "Pagamento"]:
-             df_f[col] = df_f[col].astype(str).str.strip()
+        # --- NORMALIZAÇÃO AGRESSIVA DE STRINGS PARA FILTRO FUNCIONAR ---
+        # Remove espaços duplos, invisíveis, tabs e espaços nas pontas
+        cols_text = ["Obra Vinculada", "Categoria", "Tipo", "Fornecedor", "Pagamento"]
+        for col in cols_text:
+             df_f[col] = df_f[col].astype(str).apply(normalize_text)
+        
+        # Normaliza também a coluna Cliente em Obras para o match ser perfeito
+        df_o["Cliente"] = df_o["Cliente"].astype(str).apply(normalize_text)
 
         df_o["Valor Total"] = df_o["Valor Total"].apply(safe_float)
         if "Custo Previsto" in df_o.columns:
@@ -443,7 +452,7 @@ with st.sidebar:
 
     st.markdown("""
         <div style='margin-top: 30px; text-align: center;'>
-            <p style='color: #adb5bd; font-size: 10px;'>v1.3.2 • © 2026 Gestor Pro</p>
+            <p style='color: #adb5bd; font-size: 10px;'>v1.3.3 • © 2026 Gestor Pro</p>
         </div>
     """, unsafe_allow_html=True)
 
@@ -491,9 +500,11 @@ if sel == "Dashboard":
         df_show = df_fin[df_fin["Tipo"].astype(str).str.contains("Saída|Despesa", case=False, na=False)].copy()
         label_btn_pdf = "⬇️ PDF Consolidado"
     else:
-        row = df_obras[df_obras["Cliente"] == escopo].iloc[0]
+        # Busca normalizada
+        safe_escopo = normalize_text(escopo)
+        row = df_obras[df_obras["Cliente"] == safe_escopo].iloc[0]
         vgv = row["Valor Total"]
-        df_show = df_fin[(df_fin["Obra Vinculada"] == escopo) & (df_fin["Tipo"].astype(str).str.contains("Saída|Despesa", case=False, na=False))].copy()
+        df_show = df_fin[(df_fin["Obra Vinculada"] == safe_escopo) & (df_fin["Tipo"].astype(str).str.contains("Saída|Despesa", case=False, na=False))].copy()
         label_btn_pdf = f"⬇️ PDF: {escopo}"
     
     custos = df_show["Valor"].sum()
@@ -634,12 +645,12 @@ elif sel == "Financeiro":
 
         df_view = df_fin.copy()
         
-        # Filtragem Robusta (String Cleaning)
+        # --- FILTRO SEGURO ---
         if filtro_obra != "Todas as Obras": 
-            df_view = df_view[df_view["Obra Vinculada"].astype(str).str.strip() == filtro_obra.strip()]
+            df_view = df_view[df_view["Obra Vinculada"] == normalize_text(filtro_obra)]
             
         if filtro_cat != "Todas as Categorias": 
-            df_view = df_view[df_view["Categoria"].astype(str).str.strip() == filtro_cat.strip()]
+            df_view = df_view[df_view["Categoria"] == normalize_text(filtro_cat)]
 
         total_filtrado = df_view["Valor"].sum()
         count_filtrado = len(df_view)
