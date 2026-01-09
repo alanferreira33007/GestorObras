@@ -328,14 +328,34 @@ def load_data():
 # ==============================================================================
 if "auth" not in st.session_state: st.session_state.auth = False
 
+# --- FUNÇÃO DE CALLBACK PARA LOGIN (CAPTURA O ENTER) ---
+def password_entered():
+    """Checa a senha quando o usuário aperta Enter ou clica no botão"""
+    if st.session_state["password_input"] == st.secrets["password"]:
+        st.session_state.auth = True
+        # Limpa erro anterior se existir
+        if "login_error" in st.session_state: 
+            del st.session_state["login_error"]
+    else:
+        st.session_state.auth = False
+        st.session_state.login_error = "Senha incorreta"
+
 if not st.session_state.auth:
     _, c2, _ = st.columns([1,1,1])
     with c2:
         st.markdown("<br><h2 style='text-align:center; color:#2D6A4F'>GESTOR PRO</h2>", unsafe_allow_html=True)
-        pwd = st.text_input("Senha", type="password")
-        if st.button("ENTRAR", use_container_width=True):
-            if pwd == st.secrets["password"]: st.session_state.auth = True; st.rerun()
-            else: st.error("Senha incorreta")
+        
+        # Mostra mensagem de erro se o login falhar
+        if st.session_state.get("login_error"):
+            st.error(st.session_state["login_error"])
+        
+        # Input de senha com CALLBACK (on_change)
+        # Ao apertar ENTER, o Streamlit executa 'password_entered' automaticamente
+        st.text_input("Senha", type="password", key="password_input", on_change=password_entered)
+        
+        # Botão também chama a mesma função
+        st.button("ENTRAR", use_container_width=True, on_click=password_entered)
+        
     st.stop()
 
 df_obras, df_fin = load_data()
@@ -464,7 +484,6 @@ elif sel == "Financeiro":
                 opcoes_obras = [""] + lista_obras
                 ob = st.selectbox("Obra *", opcoes_obras, key="k_fin_obra")
                 
-                # AQUI: Mudança para number_input (Bloqueia letras)
                 vl = st.number_input("Valor R$ *", min_value=0.0, format="%.2f", step=100.0, value=st.session_state.k_fin_valor, key="k_fin_valor_input")
                 
                 dc = st.text_input("Descrição *", value=st.session_state.k_fin_desc, key="k_fin_desc")
@@ -560,8 +579,6 @@ elif sel == "Obras":
             st.markdown("#### 3. Viabilidade Financeira e Prazos")
             c8, c9, c10, c11 = st.columns(4)
             
-            # AQUI: Mudança de volta para number_input (Bloqueia letras)
-            # Usei step=100.0 para facilitar preencher valores altos, mas aceita centavos se digitar
             with c8: custo_previsto = st.number_input("Orçamento (Custo) *", min_value=0.0, format="%.2f", step=1000.0, value=st.session_state.k_ob_custo, key="k_ob_custo_input")
             with c9: valor_venda = st.number_input("VGV (Venda) *", min_value=0.0, format="%.2f", step=1000.0, value=st.session_state.k_ob_vgv, key="k_ob_vgv_input")
             
