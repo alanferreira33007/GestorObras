@@ -79,6 +79,36 @@ def safe_float(x) -> float:
     try: return float(s)
     except: return 0.0
 
+# --- NOVO COMPONENTE DE INPUT MONETÁRIO ---
+def input_moeda(label, valor_inicial=0.0, key=None):
+    """
+    Cria um campo de texto que aceita formatação brasileira (vírgula para decimais)
+    e converte automaticamente para float.
+    """
+    # 1. Se tiver valor inicial, formata para string BR (ex: 1250.50 -> "1.250,50")
+    if valor_inicial > 0:
+        val_str = f"{valor_inicial:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+    else:
+        val_str = ""
+    
+    # 2. Input como Texto (placeholder ajuda a entender o formato)
+    entrada = st.text_input(label, value=val_str, key=key, placeholder="0,00")
+    
+    # 3. Processamento (Converter String BR para Float Python)
+    if entrada:
+        # Remove caracteres que não sejam números ou separadores
+        clean = entrada.replace("R$", "").strip()
+        # Remove ponto de milhar (1.000 -> 1000)
+        clean = clean.replace(".", "")
+        # Troca vírgula por ponto decimal (50,00 -> 50.00)
+        clean = clean.replace(",", ".")
+        
+        try:
+            return float(clean)
+        except:
+            return 0.0
+    return 0.0
+
 # ==============================================================================
 # 3. MOTOR PDF (ENTERPRISE V5)
 # ==============================================================================
@@ -429,7 +459,7 @@ if sel == "Dashboard":
             use_container_width=True
         )
 
-# --- FINANCEIRO (ATUALIZADO COM FILTROS AVANÇADOS) ---
+# --- FINANCEIRO (COM INPUT MELHORADO) ---
 elif sel == "Financeiro":
     st.title("Financeiro")
 
@@ -466,12 +496,18 @@ elif sel == "Financeiro":
             opcoes_obras = [""] + lista_obras
             ob = c2.selectbox("Obra *", opcoes_obras, key="k_fin_obra")
             
-            vl = c2.number_input("Valor R$ *", min_value=0.0, value=st.session_state.k_fin_valor, key="k_fin_valor")
+            # --- INPUT MELHORADO (Texto -> Float) ---
+            # Passamos o valor atual do state para renderizar, mas o componente retorna o float processado
+            vl = input_moeda("Valor R$ *", valor_inicial=st.session_state.k_fin_valor, key="k_fin_valor_txt")
+            
             dc = c2.text_input("Descrição *", value=st.session_state.k_fin_desc, key="k_fin_desc")
             
             submitted_fin = st.form_submit_button("Salvar", use_container_width=True)
 
             if submitted_fin:
+                # Atualizamos o state numérico com o valor que veio do input de texto
+                st.session_state.k_fin_valor = vl
+                
                 erros = []
                 if not ob or ob == "": erros.append("Selecione a Obra Vinculada.")
                 if not ct or ct == "": erros.append("Selecione a Categoria.")
@@ -496,27 +532,16 @@ elif sel == "Financeiro":
     st.markdown("### 🔍 Consultar Lançamentos")
 
     if not df_fin.empty:
-        # Colunas de filtros
         c_filter1, c_filter2 = st.columns(2)
-        
         with c_filter1:
             sel_obras = st.multiselect("1. Filtrar por Obra", options=lista_obras, placeholder="Todas as Obras")
-        
         with c_filter2:
             sel_cats = st.multiselect("2. Filtrar por Categoria", options=CATS, placeholder="Todas as Categorias")
             
-        # Lógica de Filtro
         df_view = df_fin.copy()
-        
-        # Filtro 1: Obra
-        if sel_obras:
-            df_view = df_view[df_view["Obra Vinculada"].isin(sel_obras)]
+        if sel_obras: df_view = df_view[df_view["Obra Vinculada"].isin(sel_obras)]
+        if sel_cats: df_view = df_view[df_view["Categoria"].isin(sel_cats)]
             
-        # Filtro 2: Categoria (Aplicado sobre o resultado da obra ou sobre tudo)
-        if sel_cats:
-            df_view = df_view[df_view["Categoria"].isin(sel_cats)]
-            
-        # Feedback de Total
         total_filtrado = df_view["Valor"].sum()
         count_filtrado = len(df_view)
         st.caption(f"Exibindo **{count_filtrado}** lançamentos | Total Filtrado: **{fmt_moeda(total_filtrado)}**")
@@ -533,7 +558,7 @@ elif sel == "Financeiro":
     else:
         st.info("Nenhum lançamento registrado.")
 
-# --- OBRAS (COM EDIÇÃO SEGURA E DESIGN LIMPO) ---
+# --- OBRAS (COM INPUT MELHORADO) ---
 elif sel == "Obras":
     st.title("📂 Gestão de Incorporação e Obras")
     st.markdown("---")
@@ -583,8 +608,11 @@ elif sel == "Obras":
 
             st.markdown("#### 3. Viabilidade Financeira e Prazos")
             c8, c9, c10, c11 = st.columns(4)
-            custo_previsto = c8.number_input("Orçamento (Custo) *", min_value=0.0, format="%.2f", value=st.session_state.k_ob_custo, key="k_ob_custo")
-            valor_venda = c9.number_input("VGV (Venda) *", min_value=0.0, format="%.2f", value=st.session_state.k_ob_vgv, key="k_ob_vgv")
+            
+            # --- INPUTS FINANCEIROS MELHORADOS ---
+            custo_previsto = input_moeda("Orçamento (Custo) *", valor_inicial=st.session_state.k_ob_custo, key="k_ob_custo_txt")
+            valor_venda = input_moeda("VGV (Venda) *", valor_inicial=st.session_state.k_ob_vgv, key="k_ob_vgv_txt")
+            
             data_inicio = c10.date_input("Início da Obra", value=st.session_state.k_ob_data, key="k_ob_data")
             prazo_entrega = c11.text_input("Prazo / Entrega *", placeholder="Ex: dez/2025", value=st.session_state.k_ob_prazo, key="k_ob_prazo")
 
@@ -599,6 +627,10 @@ elif sel == "Obras":
             submitted = st.form_submit_button("✅ SALVAR PROJETO", use_container_width=True)
 
             if submitted:
+                # Sincroniza estados
+                st.session_state.k_ob_custo = custo_previsto
+                st.session_state.k_ob_vgv = valor_venda
+                
                 erros = []
                 if not nome_obra.strip(): erros.append("O 'Nome do Empreendimento' é obrigatório.")
                 if not endereco.strip(): erros.append("O 'Endereço' é obrigatório.")
