@@ -403,6 +403,7 @@ if sel == "Dashboard":
         st.write("")
         st.markdown("---")
         
+        # PDF Call
         dmin = df_show["Data_DT"].min().strftime("%d/%m/%Y")
         dmax = df_show["Data_DT"].max().strftime("%d/%m/%Y")
         per_str = f"De {dmin} até {dmax}"
@@ -421,17 +422,27 @@ if sel == "Dashboard":
             use_container_width=True
         )
 
-# --- FINANCEIRO (COM RESET MANUAL E VALIDAÇÃO) ---
+# --- FINANCEIRO (CORREÇÃO DE RESET) ---
 elif sel == "Financeiro":
     st.title("Financeiro")
+
+    # 1. RESET SEGURO (Executa ANTES dos widgets)
+    if st.session_state.get("sucesso_fin"):
+        st.session_state["k_fin_data"] = date.today()
+        st.session_state["k_fin_tipo"] = "Saída (Despesa)"
+        st.session_state["k_fin_cat"] = ""
+        st.session_state["k_fin_obra"] = ""
+        st.session_state["k_fin_valor"] = 0.0
+        st.session_state["k_fin_desc"] = ""
+        st.session_state["sucesso_fin"] = False
+
     with st.expander("Novo Lançamento", expanded=True):
         with st.form("ffin", clear_on_submit=False):
             c1, c2 = st.columns(2)
-            # ADICIONEI KEYS EM CADA CAMPO PARA CONTROLE
+            
             dt = c1.date_input("Data", date.today(), key="k_fin_data")
             tp = c1.selectbox("Tipo", ["Saída (Despesa)", "Entrada"], key="k_fin_tipo")
             
-            # Selectboxes com opção vazia inicial
             opcoes_cats = [""] + CATS
             ct = c1.selectbox("Categoria *", opcoes_cats, key="k_fin_cat")
             
@@ -460,12 +471,8 @@ elif sel == "Financeiro":
                         st.toast("Lançamento salvo com sucesso!")
                         st.cache_data.clear()
                         
-                        # --- O TRUQUE DO RESET: Limpa as chaves antes de recarregar ---
-                        st.session_state["k_fin_valor"] = 0.0
-                        st.session_state["k_fin_desc"] = ""
-                        st.session_state["k_fin_cat"] = ""
-                        st.session_state["k_fin_obra"] = ""
-                        
+                        # Ativa Flag e Recarrega
+                        st.session_state["sucesso_fin"] = True
                         st.rerun() 
                     except Exception as e: st.error(f"Erro: {e}")
 
@@ -474,17 +481,29 @@ elif sel == "Financeiro":
         dview = df_fin[df_fin["Obra Vinculada"].isin(fob)] if fob else df_fin
         st.dataframe(dview.sort_values("Data_DT", ascending=False), use_container_width=True, hide_index=True)
 
-# --- OBRAS (COM RESET MANUAL E VALIDAÇÃO) ---
+# --- OBRAS (CORREÇÃO DE RESET) ---
 elif sel == "Obras":
     st.title("📂 Gestão de Incorporação e Obras")
     st.markdown("---")
+
+    # 1. RESET SEGURO (Antes dos widgets)
+    if st.session_state.get("sucesso_obra"):
+        st.session_state["k_ob_nome"] = ""
+        st.session_state["k_ob_end"] = ""
+        st.session_state["k_ob_area_c"] = 0.0
+        st.session_state["k_ob_area_t"] = 0.0
+        st.session_state["k_ob_quartos"] = 0
+        st.session_state["k_ob_status"] = "Projeto"
+        st.session_state["k_ob_custo"] = 0.0
+        st.session_state["k_ob_vgv"] = 0.0
+        st.session_state["k_ob_prazo"] = ""
+        st.session_state["sucesso_obra"] = False
 
     with st.expander("➕ Cadastrar Novo Empreendimento / Obra", expanded=True):
         with st.form("f_obra_completa", clear_on_submit=False):
             
             st.markdown("#### 1. Identificação")
             c1, c2 = st.columns([3, 2])
-            # ADICIONANDO KEYS PARA RESET
             nome_obra = c1.text_input("Nome do Empreendimento *", placeholder="Ex: Res. Vila Verde - Casa 04", key="k_ob_nome")
             endereco = c2.text_input("Endereço *", placeholder="Rua, Bairro...", key="k_ob_end")
 
@@ -550,17 +569,10 @@ elif sel == "Obras":
                         st.toast(f"Sucesso! Obra '{nome_obra}' cadastrada.", icon="🏡")
                         st.cache_data.clear()
 
-                        # --- RESET MANUAL DOS CAMPOS ---
-                        st.session_state["k_ob_nome"] = ""
-                        st.session_state["k_ob_end"] = ""
-                        st.session_state["k_ob_area_c"] = 0.0
-                        st.session_state["k_ob_area_t"] = 0.0
-                        st.session_state["k_ob_quartos"] = 0
-                        st.session_state["k_ob_custo"] = 0.0
-                        st.session_state["k_ob_vgv"] = 0.0
-                        st.session_state["k_ob_prazo"] = ""
-
+                        # Ativa Flag e Recarrega
+                        st.session_state["sucesso_obra"] = True
                         st.rerun()
+
                     except Exception as e:
                         st.error(f"Erro no Google Sheets: {e}")
 
