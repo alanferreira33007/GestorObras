@@ -20,7 +20,7 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# CSS OTIMIZADO (VISUAL CLEAN E PROFISSIONAL)
+# CSS OTIMIZADO (VISUAL CLEAN, PROFISSIONAL E FUNCIONAL)
 st.markdown("""
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap');
@@ -35,8 +35,8 @@ st.markdown("""
     /* --- SIDEBAR --- */
     [data-testid="stSidebar"] {
         background-color: #ffffff;
-        border-right: none;
-        box-shadow: 2px 0 10px rgba(0,0,0,0.03);
+        border-right: 1px solid #f0f2f6;
+        box-shadow: none;
     }
     [data-testid="stSidebarUserContent"] { padding-top: 2rem; }
 
@@ -58,7 +58,7 @@ st.markdown("""
         box-shadow: 0 4px 6px rgba(45, 106, 79, 0.2) !important;
     }
     
-    /* Botões Secundários (ex: Exclusão) */
+    /* Botões Secundários */
     div.stButton > button[kind="secondary"] {
         background-color: #f8f9fa;
         color: #495057;
@@ -397,6 +397,7 @@ with st.sidebar:
         </div>
     """, unsafe_allow_html=True)
 
+    # CORREÇÃO AQUI: --hover-color verde claro explícito
     sel = option_menu(
         menu_title=None,
         options=["Dashboard", "Financeiro", "Obras"],
@@ -405,7 +406,13 @@ with st.sidebar:
         styles={
             "container": {"padding": "0!important", "background-color": "transparent"},
             "icon": {"color": "#2D6A4F", "font-size": "16px"}, 
-            "nav-link": {"font-size": "14px", "text-align": "left", "margin":"5px", "--hover-color": "#f1f3f5", "color": "#495057"},
+            "nav-link": {
+                "font-size": "14px", 
+                "text-align": "left", 
+                "margin": "5px", 
+                "--hover-color": "#d4edda", # Verde claro visível para hover
+                "color": "#343a40"
+            },
             "nav-link-selected": {"background-color": "#2D6A4F", "color": "white"},
         }
     )
