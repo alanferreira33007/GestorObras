@@ -1,5 +1,3 @@
-
-
 import streamlit as st
 import pandas as pd
 import gspread
@@ -10,6 +8,7 @@ from streamlit_option_menu import option_menu
 import io
 import random
 import re
+import plotly.express as px
 
 # ==============================================================================
 # 1. CONFIGURAÇÃO VISUAL (UI)
@@ -733,10 +732,8 @@ elif sel == "Obras":
             submitted = st.form_submit_button("✅ SALVAR PROJETO", use_container_width=True)
 
             if submitted:
-                st.session_state.k_ob_custo = custo_previsto
-                st.session_state.k_ob_vgv = valor_venda
-                st.session_state.k_ob_area_c = area_const
-                st.session_state.k_ob_area_t = area_terr
+                # REMOVIDO: Atribuições manuais ao session_state que causavam conflito com os widgets
+                # O Streamlit já atualiza essas chaves automaticamente.
                 
                 erros = []
                 if not nome_obra.strip(): erros.append("O 'Nome do Empreendimento' é obrigatório.")
