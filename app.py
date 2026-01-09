@@ -3,21 +3,11 @@ import pandas as pd
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 import json
-import plotly.express as px
 from datetime import date, datetime, timedelta
 from streamlit_option_menu import option_menu
 import io
 import random
 import re
-
-# --- BIBLIOTECAS PDF (REPORTLAB) ---
-from reportlab.lib.pagesizes import A4
-from reportlab.lib import colors
-from reportlab.lib.enums import TA_CENTER, TA_RIGHT, TA_LEFT
-from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, KeepTogether
-from reportlab.pdfgen import canvas
-from reportlab.lib.units import cm
 
 # ==============================================================================
 # 1. CONFIGURAÇÃO VISUAL (UI)
@@ -29,6 +19,7 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
+# CSS OTIMIZADO
 st.markdown("""
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap');
@@ -52,7 +43,6 @@ st.markdown("""
         box-shadow: 0 4px 8px rgba(0,0,0,0.2);
     }
     
-    /* Estilo para botão desabilitado */
     button:disabled {
         background-color: #e9ecef !important;
         color: #adb5bd !important;
@@ -64,7 +54,6 @@ st.markdown("""
         border-right: 1px solid #e9ecef; 
     }
     
-    /* Ajuste fino no cabeçalho da sidebar */
     [data-testid="stSidebarUserContent"] {
         padding-top: 2rem;
     }
@@ -89,41 +78,51 @@ def safe_float(x) -> float:
     except: return 0.0
 
 # ==============================================================================
-# 3. MOTOR PDF (ENTERPRISE V5)
+# 3. MOTOR PDF (ENTERPRISE V5) - COM LAZY IMPORT
 # ==============================================================================
-class EnterpriseCanvas(canvas.Canvas):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self._saved_page_states = []
-
-    def showPage(self):
-        self._saved_page_states.append(dict(self.__dict__))
-        super().showPage()
-
-    def save(self):
-        num_pages = len(self._saved_page_states)
-        for state in self._saved_page_states:
-            self.__dict__.update(state)
-            self._draw_footer(num_pages)
-            super().showPage()
-        super().save()
-
-    def _draw_footer(self, page_count):
-        width, height = A4
-        self.setStrokeColor(colors.lightgrey)
-        self.setLineWidth(0.5)
-        self.line(30, 50, width-30, 50)
-        
-        self.setFillColor(colors.grey)
-        self.setFont("Helvetica", 8)
-        self.drawString(30, 35, "GESTOR PRO • Sistema Integrado de Gestão de Obras")
-        self.drawString(30, 25, "Relatório contábil individualizado.")
-        
-        data_hora = datetime.now().strftime("%d/%m/%Y às %H:%M")
-        self.drawRightString(width-30, 35, f"Emitido em: {data_hora}")
-        self.drawRightString(width-30, 25, f"Página {self.getPageNumber()} de {page_count}")
-
+# O import do ReportLab foi movido para DENTRO da função para não travar o inicio do app
 def gerar_pdf_empresarial(escopo, periodo, vgv, custos, lucro, roi, df_cat, df_lanc):
+    # LAZY IMPORT: Só carrega a biblioteca pesada quando clica no botão de PDF
+    from reportlab.lib.pagesizes import A4
+    from reportlab.lib import colors
+    from reportlab.lib.enums import TA_CENTER, TA_RIGHT, TA_LEFT
+    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+    from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, KeepTogether
+    from reportlab.pdfgen import canvas
+    from reportlab.lib.units import cm
+
+    class EnterpriseCanvas(canvas.Canvas):
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, **kwargs)
+            self._saved_page_states = []
+
+        def showPage(self):
+            self._saved_page_states.append(dict(self.__dict__))
+            super().showPage()
+
+        def save(self):
+            num_pages = len(self._saved_page_states)
+            for state in self._saved_page_states:
+                self.__dict__.update(state)
+                self._draw_footer(num_pages)
+                super().showPage()
+            super().save()
+
+        def _draw_footer(self, page_count):
+            width, height = A4
+            self.setStrokeColor(colors.lightgrey)
+            self.setLineWidth(0.5)
+            self.line(30, 50, width-30, 50)
+            
+            self.setFillColor(colors.grey)
+            self.setFont("Helvetica", 8)
+            self.drawString(30, 35, "GESTOR PRO • Sistema Integrado de Gestão de Obras")
+            self.drawString(30, 25, "Relatório contábil individualizado.")
+            
+            data_hora = datetime.now().strftime("%d/%m/%Y às %H:%M")
+            self.drawRightString(width-30, 35, f"Emitido em: {data_hora}")
+            self.drawRightString(width-30, 25, f"Página {self.getPageNumber()} de {page_count}")
+
     buffer = io.BytesIO()
     doc = SimpleDocTemplate(
         buffer, 
@@ -137,7 +136,6 @@ def gerar_pdf_empresarial(escopo, periodo, vgv, custos, lucro, roi, df_cat, df_l
     style_header_sub = ParagraphStyle('HeadSub', parent=styles['Normal'], fontSize=9, leading=11, textColor=colors.whitesmoke)
     style_h2 = ParagraphStyle('SecTitle', parent=styles['Heading2'], fontSize=11, textColor=colors.HexColor("#1B4332"), spaceBefore=15, spaceAfter=8, fontName='Helvetica-Bold')
     
-    # --- 1. CABEÇALHO DINÂMICO ---
     if "Visão Geral" in escopo:
         titulo_principal = "RELATÓRIO DE PORTFÓLIO (CONSOLIDADO)"
     else:
@@ -155,7 +153,6 @@ def gerar_pdf_empresarial(escopo, periodo, vgv, custos, lucro, roi, df_cat, df_l
     story.append(t_header)
     story.append(Spacer(1, 15))
     
-    # --- 2. RESUMO (KPIs) ---
     story.append(Paragraph("RESUMO FINANCEIRO", style_h2))
     perc_gasto = (custos/vgv*100) if vgv > 0 else 0
     resumo_data = [
@@ -177,7 +174,6 @@ def gerar_pdf_empresarial(escopo, periodo, vgv, custos, lucro, roi, df_cat, df_l
     story.append(t_resumo)
     story.append(Spacer(1, 15))
     
-    # --- 3. CATEGORIAS ---
     if not df_cat.empty:
         story.append(Paragraph("DISTRIBUIÇÃO POR CATEGORIA", style_h2))
         df_c = df_cat.copy()
@@ -198,7 +194,6 @@ def gerar_pdf_empresarial(escopo, periodo, vgv, custos, lucro, roi, df_cat, df_l
         story.append(t_cat)
         story.append(Spacer(1, 15))
         
-    # --- 4. EXTRATO FINANCEIRO ---
     story.append(Paragraph("EXTRATO DE LANÇAMENTOS", style_h2))
     
     if not df_lanc.empty:
@@ -207,7 +202,6 @@ def gerar_pdf_empresarial(escopo, periodo, vgv, custos, lucro, roi, df_cat, df_l
         cols_sel = ["Data", "Categoria", "Descrição", "Valor"]
         data_lanc = [cols_sel] + df_l[cols_sel].values.tolist()
         
-        # LINHA DE TOTAL NA TABELA
         data_lanc.append(["", "", "SUBTOTAL (Página):", fmt_moeda(custos)])
         
         t_lanc = Table(data_lanc, colWidths=[2.5*cm, 3.5*cm, 8*cm, 3*cm])
@@ -237,7 +231,6 @@ def gerar_pdf_empresarial(escopo, periodo, vgv, custos, lucro, roi, df_cat, df_l
 
     story.append(Spacer(1, 25))
 
-    # --- 5. BLOCO DE TOTALIZAÇÃO FINAL (DESTAQUE) ---
     bloco_total = []
     msg_total = "TOTAL ACUMULADO GASTO (ATÉ EMISSÃO)"
     
@@ -260,7 +253,6 @@ def gerar_pdf_empresarial(escopo, periodo, vgv, custos, lucro, roi, df_cat, df_l
     
     story.append(Spacer(1, 40))
 
-    # --- 6. ASSINATURAS ---
     sig_data = [
         ["_______________________________________", "_______________________________________"],
         ["GESTOR RESPONSÁVEL", "DIRETORIA FINANCEIRA"],
@@ -371,8 +363,6 @@ if not st.session_state.auth:
 # ==============================================================================
 # 6. RENDERIZAÇÃO DA BARRA LATERAL (PRIORIDADE TOTAL)
 # ==============================================================================
-# Esta seção é renderizada ANTES de qualquer tentativa de carregar dados.
-# Isso garante que a UI apareça instantaneamente após o login.
 with st.sidebar:
     st.markdown("""
         <div style='text-align: left; margin-bottom: 20px;'>
@@ -415,34 +405,37 @@ with st.sidebar:
     """, unsafe_allow_html=True)
 
 # ==============================================================================
-# 7. SINCRONIZAÇÃO DE DADOS (CARREGAMENTO PROGRESSIVO)
+# 7. SINCRONIZAÇÃO DE DADOS (FLUXO CONTÍNUO)
 # ==============================================================================
-# Aqui está o truque para remover o delay do primeiro acesso.
-# 1. Se os dados não existem, inicializamos a página com o sidebar JÁ DESENHADO.
-# 2. Mostramos um spinner apenas na área principal.
-# 3. Buscamos os dados e salvamos na sessão.
-# 4. A interface se atualiza.
-
+# Se dados não existem, carrega e CONTINUA (sem st.rerun), apenas renderiza.
 if "data_obras" not in st.session_state or "data_fin" not in st.session_state:
-    # Mostra status APENAS na área principal, sem travar a sidebar
     with st.container():
-        st.write("")
-        with st.status("Conectando ao banco de dados...", expanded=True) as status:
-            st.write("Baixando carteira de obras...")
+        # Feedback visual sutil enquanto carrega
+        with st.status("Sincronizando dados...", expanded=False) as status:
             df_obras, df_fin = fetch_data_from_google()
             st.session_state["data_obras"] = df_obras
             st.session_state["data_fin"] = df_fin
-            status.update(label="Dados sincronizados!", state="complete", expanded=False)
-        st.rerun() # Recarrega a página instantaneamente com os dados
+            status.update(label="Pronto!", state="complete")
+else:
+    # Dados já em memória
+    df_obras = st.session_state["data_obras"]
+    df_fin = st.session_state["data_fin"]
 
-# Se chegamos aqui, os dados já estão na memória e o acesso é instantâneo
-df_obras = st.session_state["data_obras"]
-df_fin = st.session_state["data_fin"]
+# Garante que variáveis existem para o resto do script
+if "data_obras" in st.session_state:
+    df_obras = st.session_state["data_obras"]
+    df_fin = st.session_state["data_fin"]
+else:
+    # Fallback seguro (raro acontecer)
+    df_obras, df_fin = pd.DataFrame(), pd.DataFrame()
 
 lista_obras = df_obras["Cliente"].unique().tolist() if not df_obras.empty else []
 
 # --- DASHBOARD ---
 if sel == "Dashboard":
+    # Lazy Import do Plotly só quando necessário
+    import plotly.express as px
+    
     c_tit, c_sel, c_btn = st.columns([1.5, 2, 1])
     with c_tit: st.title("Visão Geral")
     with c_sel:
@@ -451,7 +444,7 @@ if sel == "Dashboard":
             escopo = st.selectbox("Escopo", opcoes, label_visibility="collapsed")
         else: st.warning("Cadastre uma obra."); st.stop()
     with c_btn:
-        # Botão de atualizar limpa a sessão para forçar nova busca
+        # Botão de atualizar
         if st.button("🔄 Atualizar Dados", use_container_width=True): 
             st.cache_data.clear()
             if "data_obras" in st.session_state: del st.session_state["data_obras"]
@@ -496,7 +489,7 @@ if sel == "Dashboard":
         st.subheader("Categorias")
         if not df_show.empty:
             df_cat = df_show.groupby("Categoria", as_index=False)["Valor"].sum()
-            # AQUI: Cores 'Bold' para melhor distinção
+            # AQUI: Cores 'Bold'
             fig2 = px.pie(df_cat, values="Valor", names="Categoria", hole=0.6, color_discrete_sequence=px.colors.qualitative.Bold)
             fig2.update_layout(showlegend=False, margin=dict(t=0,l=0,r=0,b=0), height=200)
             st.plotly_chart(fig2, use_container_width=True)
@@ -584,7 +577,7 @@ elif sel == "Financeiro":
                     try:
                         conn = get_conn()
                         conn.worksheet("Financeiro").append_row([dt.strftime("%Y-%m-%d"),tp,ct,dc,vl,ob])
-                        # Limpa cache da sessão
+                        # Limpa o estado para forçar atualização
                         if "data_fin" in st.session_state: del st.session_state["data_fin"]
                         st.cache_data.clear()
                         st.session_state["sucesso_fin"] = True
