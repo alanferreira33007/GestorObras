@@ -1,3 +1,5 @@
+
+
 import streamlit as st
 import pandas as pd
 import gspread
@@ -8,7 +10,6 @@ from streamlit_option_menu import option_menu
 import io
 import random
 import re
-import plotly.express as px
 
 # ==============================================================================
 # 1. CONFIGURAÇÃO VISUAL (UI)
@@ -23,74 +24,41 @@ st.set_page_config(
 # CSS OTIMIZADO
 st.markdown("""
 <style>
-    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap');
+    html, body, [class*="css"] { font-family: 'Inter', sans-serif; }
     
-    html, body, [class*="css"] {
-        font-family: 'Inter', sans-serif;
-        color: #343a40;
-    }
+    [data-testid="stMetricValue"] { font-size: 1.8rem !important; font-weight: 700; color: #1a1a1a; }
     
-    .stApp { background-color: #ffffff; }
-
-    /* --- SIDEBAR --- */
-    [data-testid="stSidebar"] {
-        background-color: #ffffff;
-        border-right: 1px solid #f0f2f6;
-        box-shadow: none;
-    }
-    [data-testid="stSidebarUserContent"] { padding-top: 2rem; }
-
-    /* --- BOTÕES PRINCIPAIS (VERDE) --- */
     div.stButton > button {
-        background-color: #2D6A4F !important;
-        color: white !important;
+        background-color: #2D6A4F;
+        color: white;
         border: none;
         border-radius: 6px;
-        padding: 0.6rem 1rem;
+        padding: 0.75rem 1rem;
         font-weight: 600;
-        font-size: 0.95rem;
-        box-shadow: 0 2px 4px rgba(45, 106, 79, 0.2) !important; 
-        transition: all 0.2s ease-in-out;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        transition: all 0.2s;
     }
     div.stButton > button:hover {
-        background-color: #1B4332 !important;
+        background-color: #1B4332;
         transform: translateY(-1px);
-        box-shadow: 0 4px 8px rgba(45, 106, 79, 0.3) !important;
+        box-shadow: 0 4px 8px rgba(0,0,0,0.2);
     }
     
-    /* Botões Secundários */
-    div.stButton > button[kind="secondary"] {
-        background-color: #f8f9fa !important;
-        color: #495057 !important;
-        border: 1px solid #dee2e6 !important;
-        box-shadow: none !important;
-        font-weight: 500;
-    }
-    div.stButton > button[kind="secondary"]:hover {
-        background-color: #e9ecef !important;
-        color: #212529 !important;
-        border-color: #ced4da !important;
-    }
-
     button:disabled {
         background-color: #e9ecef !important;
         color: #adb5bd !important;
         cursor: not-allowed;
-        box-shadow: none !important;
     }
     
-    /* --- INPUTS --- */
-    input, select, textarea, [data-baseweb="select"] > div {
-        border-color: #dee2e6 !important;
-        border-radius: 6px !important;
+    [data-testid="stSidebar"] { 
+        background-color: #f8f9fa; 
+        border-right: 1px solid #e9ecef; 
     }
-    [data-baseweb="input"]:focus-within, [data-baseweb="select"]:focus-within > div {
-        border-color: #2D6A4F !important;
-        box-shadow: 0 0 0 2px rgba(45, 106, 79, 0.15) !important;
+    
+    [data-testid="stSidebarUserContent"] {
+        padding-top: 2rem;
     }
-
-    /* --- DATA FRAME --- */
-    [data-testid="stDataFrame"] { border: 1px solid #f1f3f5; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -111,13 +79,8 @@ def safe_float(x) -> float:
     try: return float(s)
     except: return 0.0
 
-def normalize_text(text):
-    """Remove espaços extras e padroniza para comparação segura"""
-    if not isinstance(text, str): return str(text)
-    return " ".join(text.split()).strip()
-
 # ==============================================================================
-# 3. MOTOR PDF (ENTERPRISE V5)
+# 3. MOTOR PDF (ENTERPRISE V5) - COM LAZY IMPORT
 # ==============================================================================
 def gerar_pdf_empresarial(escopo, periodo, vgv, custos, lucro, roi, df_cat, df_lanc):
     from reportlab.lib.pagesizes import A4
@@ -236,12 +199,8 @@ def gerar_pdf_empresarial(escopo, periodo, vgv, custos, lucro, roi, df_cat, df_l
     if not df_lanc.empty:
         df_l = df_lanc.copy()
         df_l["Valor"] = df_l["Valor"].apply(fmt_moeda)
-        # Adaptar colunas para o PDF se existirem
+        # Seleção de colunas para o PDF (Fornecedor não incluído para manter layout)
         cols_sel = ["Data", "Categoria", "Descrição", "Valor"]
-        # Nota: O layout da tabela do PDF é fixo para 4 colunas para caber na A4 vertical.
-        # Se quiser adicionar Fornecedor/Pagamento no PDF, precisaria mudar para Landscape ou reduzir fontes.
-        # Mantendo o padrão para garantir a geração.
-        
         data_lanc = [cols_sel] + df_l[cols_sel].values.tolist()
         
         data_lanc.append(["", "", "SUBTOTAL (Página):", fmt_moeda(custos)])
@@ -320,9 +279,9 @@ OBRAS_COLS = [
     "Data Início", "Prazo", "Area Construida", "Area Terreno", 
     "Quartos", "Custo Previsto"
 ]
-FIN_COLS   = ["Data", "Tipo", "Categoria", "Descrição", "Valor", "Obra Vinculada", "Fornecedor", "Pagamento"]
+# Fornecedor adicionado
+FIN_COLS   = ["Data", "Tipo", "Categoria", "Descrição", "Valor", "Obra Vinculada", "Fornecedor"]
 CATS       = ["Material", "Mão de Obra", "Serviços", "Administrativo", "Impostos", "Outros"]
-PAY_METHODS = ["PIX", "Dinheiro", "Cartão de Crédito", "Boleto", "Transferência"]
 
 @st.cache_resource
 def get_conn():
@@ -331,10 +290,9 @@ def get_conn():
 
 @st.cache_data(ttl=120)
 def fetch_data_from_google():
+    """Busca dados brutos do Google Sheets com Cache"""
     try:
         db = get_conn()
-        
-        # --- OBRAS ---
         ws_o = db.worksheet("Obras")
         raw_o = ws_o.get_all_records()
         df_o = pd.DataFrame(raw_o)
@@ -345,33 +303,16 @@ def fetch_data_from_google():
             for c in OBRAS_COLS: 
                 if c not in df_o.columns: df_o[c] = None
         
-        # --- FINANCEIRO (CORREÇÃO DE CARREGAMENTO) ---
         ws_f = db.worksheet("Financeiro")
-        # Usando get_all_records para garantir o mapeamento correto dos cabeçalhos
         raw_f = ws_f.get_all_records()
         df_f = pd.DataFrame(raw_f)
 
         if df_f.empty:
              df_f = pd.DataFrame(columns=FIN_COLS)
         else:
-            # Garante que todas as colunas existem, mesmo se a planilha for velha
             for c in FIN_COLS:
-                if c not in df_f.columns: df_f[c] = ""
+                if c not in df_f.columns: df_f[c] = None
         
-        # Seleciona e ordena apenas as colunas oficiais para evitar lixo
-        df_f = df_f[FIN_COLS]
-        
-        # --- NORMALIZAÇÃO ROBUSTA ---
-        # Garante que textos sejam comparáveis (remove espaços invisíveis)
-        cols_to_normalize = ["Obra Vinculada", "Categoria", "Tipo", "Fornecedor", "Pagamento"]
-        for col in cols_to_normalize:
-             if col in df_f.columns:
-                df_f[col] = df_f[col].astype(str).apply(normalize_text)
-        
-        if "Cliente" in df_o.columns:
-            df_o["Cliente"] = df_o["Cliente"].astype(str).apply(normalize_text)
-
-        # Conversão numérica
         df_o["Valor Total"] = df_o["Valor Total"].apply(safe_float)
         if "Custo Previsto" in df_o.columns:
             df_o["Custo Previsto"] = df_o["Custo Previsto"].apply(safe_float)
@@ -385,14 +326,18 @@ def fetch_data_from_google():
         return pd.DataFrame(), pd.DataFrame()
 
 # ==============================================================================
-# 5. AUTH E FLUXO PRINCIPAL
+# 5. APP PRINCIPAL
 # ==============================================================================
 if "auth" not in st.session_state: st.session_state.auth = False
 
+# --- CALLBACKS DE LOGIN ---
 def password_entered():
+    """Valida senha e carrega dados imediatamente para evitar delay"""
     if st.session_state["password_input"] == st.secrets["password"]:
         st.session_state.auth = True
         if "login_error" in st.session_state: del st.session_state["login_error"]
+        
+        # Carregamento antecipado de dados
         try:
             df_o, df_f = fetch_data_from_google()
             st.session_state["data_obras"] = df_o
@@ -404,22 +349,24 @@ def password_entered():
         st.session_state.login_error = "Senha incorreta"
 
 def logout():
+    """Logout e limpeza"""
     st.session_state.auth = False
     if "password_input" in st.session_state: st.session_state["password_input"] = ""
     if "data_obras" in st.session_state: del st.session_state["data_obras"]
     if "data_fin" in st.session_state: del st.session_state["data_fin"]
 
+# --- TELA DE LOGIN ---
 if not st.session_state.auth:
     _, c2, _ = st.columns([1,1,1])
     with c2:
         st.markdown("<br><h2 style='text-align:center; color:#2D6A4F'>GESTOR PRO</h2>", unsafe_allow_html=True)
         if st.session_state.get("login_error"): st.error(st.session_state["login_error"])
-        st.text_input("Senha", type="password", key="password_input", on_change=password_entered, label_visibility="collapsed")
+        st.text_input("Senha", type="password", key="password_input", on_change=password_entered)
         st.button("ENTRAR", use_container_width=True, on_click=password_entered)
     st.stop()
 
 # ==============================================================================
-# 6. RENDERIZAÇÃO DA BARRA LATERAL
+# 6. RENDERIZAÇÃO DA BARRA LATERAL (IMEDIATA)
 # ==============================================================================
 with st.sidebar:
     st.markdown("""
@@ -437,13 +384,7 @@ with st.sidebar:
         styles={
             "container": {"padding": "0!important", "background-color": "transparent"},
             "icon": {"color": "#2D6A4F", "font-size": "16px"}, 
-            "nav-link": {
-                "font-size": "14px", 
-                "text-align": "left", 
-                "margin": "5px", 
-                "--hover-color": "#d4edda", 
-                "color": "#343a40"
-            },
+            "nav-link": {"font-size": "14px", "text-align": "left", "margin":"5px", "--hover-color": "#eee"},
             "nav-link-selected": {"background-color": "#2D6A4F", "color": "white"},
         }
     )
@@ -462,15 +403,15 @@ with st.sidebar:
 
     st.markdown("""
         <div style='margin-top: 30px; text-align: center;'>
-            <p style='color: #adb5bd; font-size: 10px;'>v1.3.4 • © 2026 Gestor Pro</p>
+            <p style='color: #adb5bd; font-size: 10px;'>v1.2.0 • © 2026 Gestor Pro</p>
         </div>
     """, unsafe_allow_html=True)
 
 # ==============================================================================
-# 7. GESTÃO DE DADOS
+# 7. GESTÃO DE DADOS (CACHE)
 # ==============================================================================
 if "data_obras" not in st.session_state or "data_fin" not in st.session_state:
-    with st.spinner("Sincronizando..."):
+    with st.spinner("Sincronizando base de dados..."):
         try:
             df_obras, df_fin = fetch_data_from_google()
             st.session_state["data_obras"] = df_obras
@@ -490,6 +431,7 @@ lista_obras = df_obras["Cliente"].unique().tolist() if not df_obras.empty else [
 
 # --- DASHBOARD ---
 if sel == "Dashboard":
+    import plotly.express as px
     
     c_tit, c_sel, c_btn = st.columns([1.5, 2, 1])
     with c_tit: st.title("Visão Geral")
@@ -508,14 +450,12 @@ if sel == "Dashboard":
     if escopo == "Visão Geral (Todas as Obras)":
         vgv = df_obras["Valor Total"].sum()
         df_show = df_fin[df_fin["Tipo"].astype(str).str.contains("Saída|Despesa", case=False, na=False)].copy()
-        label_btn_pdf = "⬇️ PDF Consolidado"
+        label_btn_pdf = "⬇️ BAIXAR PDF (PORTFÓLIO CONSOLIDADO)"
     else:
-        # Busca normalizada
-        safe_escopo = normalize_text(escopo)
-        row = df_obras[df_obras["Cliente"] == safe_escopo].iloc[0]
+        row = df_obras[df_obras["Cliente"] == escopo].iloc[0]
         vgv = row["Valor Total"]
-        df_show = df_fin[(df_fin["Obra Vinculada"] == safe_escopo) & (df_fin["Tipo"].astype(str).str.contains("Saída|Despesa", case=False, na=False))].copy()
-        label_btn_pdf = f"⬇️ PDF: {escopo}"
+        df_show = df_fin[(df_fin["Obra Vinculada"] == escopo) & (df_fin["Tipo"].astype(str).str.contains("Saída|Despesa", case=False, na=False))].copy()
+        label_btn_pdf = f"⬇️ BAIXAR RELATÓRIO PDF: {escopo.upper()}"
     
     custos = df_show["Valor"].sum()
     lucro = vgv - custos
@@ -534,8 +474,7 @@ if sel == "Dashboard":
         if not df_show.empty:
             df_ev = df_show.sort_values("Data_DT")
             df_ev["Acumulado"] = df_ev["Valor"].cumsum()
-            fig = px.area(df_ev, x="Data_DT", y="Acumulado")
-            fig.update_traces(line_color='#2D6A4F', fillcolor="rgba(45, 106, 79, 0.2)")
+            fig = px.area(df_ev, x="Data_DT", y="Acumulado", color_discrete_sequence=["#2D6A4F"])
             fig.update_layout(plot_bgcolor="white", margin=dict(t=10,l=10,r=10,b=10), height=300)
             st.plotly_chart(fig, use_container_width=True)
         else: st.info("Sem dados")
@@ -543,7 +482,7 @@ if sel == "Dashboard":
         st.subheader("Categorias")
         if not df_show.empty:
             df_cat = df_show.groupby("Categoria", as_index=False)["Valor"].sum()
-            fig2 = px.pie(df_cat, values="Valor", names="Categoria", hole=0.6, color_discrete_sequence=px.colors.qualitative.Prism)
+            fig2 = px.pie(df_cat, values="Valor", names="Categoria", hole=0.6, color_discrete_sequence=px.colors.qualitative.Bold)
             fig2.update_layout(showlegend=False, margin=dict(t=0,l=0,r=0,b=0), height=200)
             st.plotly_chart(fig2, use_container_width=True)
             st.dataframe(df_cat.sort_values("Valor", ascending=False).head(3), use_container_width=True, hide_index=True, column_config={"Valor": st.column_config.NumberColumn(format="R$ %.2f")})
@@ -551,9 +490,10 @@ if sel == "Dashboard":
 
     st.markdown("### Lançamentos")
     if not df_show.empty:
+        # Verifica se fornecedor existe para exibir
         cols_view = ["Data", "Categoria", "Descrição", "Valor"]
-        if "Fornecedor" in df_show.columns: cols_view.insert(3, "Fornecedor")
-        if "Pagamento" in df_show.columns: cols_view.insert(4, "Pagamento")
+        if "Fornecedor" in df_show.columns:
+            cols_view.insert(3, "Fornecedor")
             
         df_tab = df_show[cols_view].sort_values("Data", ascending=False)
         st.dataframe(df_tab, use_container_width=True, hide_index=True, height=250, column_config={"Valor": st.column_config.NumberColumn(format="R$ %.2f")})
@@ -565,8 +505,19 @@ if sel == "Dashboard":
         dmax = df_show["Data_DT"].max().strftime("%d/%m/%Y")
         per_str = f"De {dmin} até {dmax}"
         
-        pdf_data = gerar_pdf_empresarial(escopo, per_str, vgv, custos, lucro, roi, df_cat if 'df_cat' in locals() else pd.DataFrame(), df_tab)
-        st.download_button(label=label_btn_pdf, data=pdf_data, file_name=f"Relatorio_{escopo}_{date.today()}.pdf", mime="application/pdf", use_container_width=True)
+        pdf_data = gerar_pdf_empresarial(
+            escopo, per_str, vgv, custos, lucro, roi,
+            df_cat if 'df_cat' in locals() else pd.DataFrame(),
+            df_tab
+        )
+        
+        st.download_button(
+            label=label_btn_pdf,
+            data=pdf_data,
+            file_name=f"Relatorio_{escopo}_{date.today()}.pdf",
+            mime="application/pdf",
+            use_container_width=True
+        )
 
 # --- FINANCEIRO ---
 elif sel == "Financeiro":
@@ -581,7 +532,6 @@ elif sel == "Financeiro":
         st.session_state["k_fin_valor"] = 0.0
         st.session_state["k_fin_desc"] = ""
         st.session_state["k_fin_forn"] = "" 
-        st.session_state["k_fin_pay"] = "" 
         st.session_state["sucesso_fin"] = False
 
     if "k_fin_data" not in st.session_state: st.session_state.k_fin_data = date.today()
@@ -591,29 +541,31 @@ elif sel == "Financeiro":
     if "k_fin_valor" not in st.session_state: st.session_state.k_fin_valor = 0.0
     if "k_fin_desc" not in st.session_state: st.session_state.k_fin_desc = ""
     if "k_fin_forn" not in st.session_state: st.session_state.k_fin_forn = ""
-    if "k_fin_pay" not in st.session_state: st.session_state.k_fin_pay = ""
 
-    with st.expander("➕ Novo Lançamento", expanded=True):
+    with st.expander("Novo Lançamento", expanded=True):
         with st.form("ffin", clear_on_submit=False):
+            
             c_row1_1, c_row1_2, c_row1_3 = st.columns([1, 1, 1])
-            with c_row1_1: dt = st.date_input("Data", value=st.session_state.k_fin_data, key="k_fin_data")
-            with c_row1_2: tp = st.selectbox("Tipo", ["Saída (Despesa)", "Entrada"], key="k_fin_tipo")
-            with c_row1_3: vl = st.number_input("Valor R$ *", min_value=0.0, format="%.2f", step=100.0, value=st.session_state.k_fin_valor, key="k_fin_valor_input")
+            with c_row1_1:
+                dt = st.date_input("Data", value=st.session_state.k_fin_data, key="k_fin_data")
+            with c_row1_2:
+                tp = st.selectbox("Tipo", ["Saída (Despesa)", "Entrada"], key="k_fin_tipo")
+            with c_row1_3:
+                vl = st.number_input("Valor R$ *", min_value=0.0, format="%.2f", step=100.0, value=st.session_state.k_fin_valor, key="k_fin_valor_input")
 
-            c_row2_1, c_row2_2, c_row2_3 = st.columns([1, 1, 1])
+            c_row2_1, c_row2_2 = st.columns([1, 1])
             with c_row2_1:
                 opcoes_obras = [""] + lista_obras
                 ob = st.selectbox("Obra *", opcoes_obras, key="k_fin_obra")
             with c_row2_2:
                 opcoes_cats = [""] + CATS
                 ct = st.selectbox("Categoria *", opcoes_cats, key="k_fin_cat")
-            with c_row2_3:
-                opcoes_pay = [""] + PAY_METHODS
-                pay = st.selectbox("Pagamento *", opcoes_pay, key="k_fin_pay")
 
             c_row3_1, c_row3_2 = st.columns([1, 1])
-            with c_row3_1: fn = st.text_input("Fornecedor", value=st.session_state.k_fin_forn, key="k_fin_forn", placeholder="Obrigatório se Categoria = Material")
-            with c_row3_2: dc = st.text_input("Descrição *", value=st.session_state.k_fin_desc, key="k_fin_desc")
+            with c_row3_1:
+                fn = st.text_input("Fornecedor", value=st.session_state.k_fin_forn, key="k_fin_forn", placeholder="Obrigatório se Categoria = Material")
+            with c_row3_2:
+                dc = st.text_input("Descrição *", value=st.session_state.k_fin_desc, key="k_fin_desc", placeholder="Detalhes do gasto")
             
             st.write("") 
             submitted_fin = st.form_submit_button("Salvar Lançamento", use_container_width=True)
@@ -621,21 +573,25 @@ elif sel == "Financeiro":
             if submitted_fin:
                 st.session_state.k_fin_valor = vl
                 erros = []
-                if not ob: erros.append("Selecione a Obra Vinculada.")
-                if not ct: erros.append("Selecione a Categoria.")
-                if not pay: erros.append("Selecione a Forma de Pagamento.")
+                if not ob or ob == "": erros.append("Selecione a Obra Vinculada.")
+                if not ct or ct == "": erros.append("Selecione a Categoria.")
                 if vl <= 0: erros.append("O Valor deve ser maior que zero.")
                 if not dc.strip(): erros.append("A Descrição é obrigatória.")
-                if ct == "Material" and not fn.strip(): erros.append("Para 'Material', o Fornecedor é obrigatório.")
+                
+                if ct == "Material" and not fn.strip():
+                    erros.append("Para a categoria 'Material', o campo Fornecedor é obrigatório.")
 
                 if erros:
-                    st.error("⚠️ Atenção: " + ", ".join(erros))
+                    st.error("⚠️ Atenção:")
+                    for e in erros: st.caption(f"- {e}")
                 else:
                     try:
                         conn = get_conn()
-                        conn.worksheet("Financeiro").append_row([dt.strftime("%Y-%m-%d"),tp,ct,dc,vl,ob,fn,pay])
+                        conn.worksheet("Financeiro").append_row([dt.strftime("%Y-%m-%d"),tp,ct,dc,vl,ob,fn])
+                        
                         if "data_fin" in st.session_state: del st.session_state["data_fin"]
                         st.cache_data.clear()
+                        
                         st.session_state["sucesso_fin"] = True
                         st.rerun() 
                     except Exception as e: st.error(f"Erro: {e}")
@@ -644,36 +600,48 @@ elif sel == "Financeiro":
     st.markdown("### 🔍 Consultar Lançamentos")
     
     if not df_fin.empty:
-        with st.expander("Filtros de Busca", expanded=False):
+        # Filtros agora usam Selectbox (fecha sozinho) + opção "Todas..."
+        with st.expander("Filtros de Busca", expanded=True):
             c_filter1, c_filter2 = st.columns(2)
+            
             with c_filter1:
                 opcoes_filtro_obra = ["Todas as Obras"] + lista_obras
-                filtro_obra = st.selectbox("Filtrar por Obra", options=opcoes_filtro_obra, key="f_obra_sel")
+                filtro_obra = st.selectbox("Filtrar por Obra", options=opcoes_filtro_obra)
+            
             with c_filter2:
                 opcoes_filtro_cat = ["Todas as Categorias"] + CATS
-                filtro_cat = st.selectbox("Filtrar por Categoria", options=opcoes_filtro_cat, key="f_cat_sel")
+                filtro_cat = st.selectbox("Filtrar por Categoria", options=opcoes_filtro_cat)
 
         df_view = df_fin.copy()
         
-        # --- FILTRO CORRIGIDO E ROBUSTO ---
-        if filtro_obra != "Todas as Obras": 
-            # Normaliza ambos os lados para garantir match
-            df_view = df_view[df_view["Obra Vinculada"] == normalize_text(filtro_obra)]
+        if filtro_obra != "Todas as Obras":
+            df_view = df_view[df_view["Obra Vinculada"] == filtro_obra]
             
-        if filtro_cat != "Todas as Categorias": 
-            df_view = df_view[df_view["Categoria"] == normalize_text(filtro_cat)]
+        if filtro_cat != "Todas as Categorias":
+            df_view = df_view[df_view["Categoria"] == filtro_cat]
 
         total_filtrado = df_view["Valor"].sum()
         count_filtrado = len(df_view)
         
         st.caption(f"Exibindo **{count_filtrado}** lançamentos | Total Filtrado: **{fmt_moeda(total_filtrado)}**")
         
+        # Prepara tabela com Fornecedor
         cols_view = ["Data", "Categoria", "Descrição", "Valor"]
-        if "Fornecedor" in df_view.columns: cols_view.insert(3, "Fornecedor")
-        if "Pagamento" in df_view.columns: cols_view.insert(4, "Pagamento")
+        if "Fornecedor" in df_view.columns:
+            cols_view.insert(3, "Fornecedor")
             
         df_tab = df_view[cols_view].sort_values("Data", ascending=False)
-        st.dataframe(df_tab, use_container_width=True, hide_index=True, height=300, column_config={"Valor": st.column_config.NumberColumn(format="R$ %.2f"), "Data": st.column_config.DateColumn(format="DD/MM/YYYY")})
+        
+        st.dataframe(
+            df_tab, 
+            use_container_width=True, 
+            hide_index=True, 
+            height=300,
+            column_config={
+                "Valor": st.column_config.NumberColumn(format="R$ %.2f"),
+                "Data": st.column_config.DateColumn("Data", format="DD/MM/YYYY")
+            }
+        )
         
         st.write("")
         st.markdown("---")
@@ -682,10 +650,28 @@ elif sel == "Financeiro":
             dmin = df_view["Data_DT"].min().strftime("%d/%m/%Y")
             dmax = df_view["Data_DT"].max().strftime("%d/%m/%Y")
             per_str = f"De {dmin} até {dmax}"
+            
             escopo_pdf = filtro_obra if filtro_obra != "Todas as Obras" else "Visão Geral (Filtro)"
-            pdf_data = gerar_pdf_empresarial(escopo_pdf, per_str, 0.0, total_filtrado, 0.0, 0.0, df_cat if 'df_cat' in locals() else pd.DataFrame(), df_tab)
-            st.download_button(label="⬇️ BAIXAR RELATÓRIO DA CONSULTA (PDF)", data=pdf_data, file_name=f"Extrato_{date.today()}.pdf", mime="application/pdf", use_container_width=True)
-    else: st.info("Nenhum lançamento registrado.")
+            
+            pdf_data = gerar_pdf_empresarial(
+                escopo_pdf, per_str, 
+                0.0, 
+                total_filtrado, 
+                0.0, 
+                0.0, 
+                df_cat if 'df_cat' in locals() else pd.DataFrame(),
+                df_tab
+            )
+            
+            st.download_button(
+                label="⬇️ BAIXAR RELATÓRIO DA CONSULTA (PDF)",
+                data=pdf_data,
+                file_name=f"Extrato_{date.today()}.pdf",
+                mime="application/pdf",
+                use_container_width=True
+            )
+    else:
+        st.info("Nenhum lançamento registrado.")
 
 # --- OBRAS ---
 elif sel == "Obras":
@@ -761,7 +747,8 @@ elif sel == "Obras":
                 if area_const <= 0 and area_terr <= 0: erros.append("Preencha ao menos a Área Construída ou do Terreno.")
 
                 if erros:
-                    st.error("⚠️ Verifique os campos: " + ", ".join(erros))
+                    st.error("⚠️ Não foi possível salvar. Verifique os campos:")
+                    for e in erros: st.markdown(f"- {e}")
                 else:
                     try:
                         conn = get_conn()
@@ -769,8 +756,10 @@ elif sel == "Obras":
                         ids_existentes = pd.to_numeric(df_obras["ID"], errors="coerce").fillna(0)
                         novo_id = int(ids_existentes.max()) + 1 if not ids_existentes.empty else 1
                         ws.append_row([novo_id, nome_obra.strip(), endereco.strip(), status, float(valor_venda), data_inicio.strftime("%Y-%m-%d"), prazo_entrega.strip(), float(area_const), float(area_terr), int(quartos), float(custo_previsto)])
+                        
                         if "data_obras" in st.session_state: del st.session_state["data_obras"]
                         st.cache_data.clear()
+                        
                         st.session_state["sucesso_obra"] = True
                         st.rerun()
                     except Exception as e: st.error(f"Erro no Google Sheets: {e}")
@@ -801,10 +790,10 @@ elif sel == "Obras":
         st.write("")
         has_changes = not edited_df.equals(df_to_edit)
         if has_changes:
-            with st.container():
-                st.warning("⚠️ Alterações pendentes.")
-                c_pwd, c_btn = st.columns([2, 1])
-                with c_pwd: pwd_confirm = st.text_input("Senha ADM", type="password", label_visibility="collapsed", placeholder="Confirme senha ADM")
+            with st.container(border=True):
+                c_alert, c_pwd, c_btn = st.columns([2, 1.5, 1])
+                with c_alert: st.warning("⚠️ Alterações pendentes. Confirme para salvar.", icon="⚠️")
+                with c_pwd: pwd_confirm = st.text_input("Senha", type="password", placeholder="Senha ADM", label_visibility="collapsed")
                 with c_btn:
                     if st.button("💾 SALVAR", type="primary", use_container_width=True):
                         if pwd_confirm == st.secrets["password"]:
@@ -826,50 +815,12 @@ elif sel == "Obras":
                                                 elif pd.isna(val): val = ""
                                                 update_values.append(val)
                                             ws.update(f"A{found_cell.row}:K{found_cell.row}", [update_values])
+                                
                                 if "data_obras" in st.session_state: del st.session_state["data_obras"]
                                 st.cache_data.clear()
                                 st.session_state["sucesso_obra"] = True
                                 st.rerun()
                             except Exception as e: st.error(f"Erro ao salvar: {e}")
                         else: st.toast("Senha incorreta!", icon="⛔")
-        else: st.caption("💡 Edite diretamente na tabela acima.")
-        
-        st.write("")
-        st.write("")
-        
-        # --- ZONA DE EXCLUSÃO ---
-        with st.expander("⚙️ Opções Avançadas (Remoção de Obras)", expanded=False):
-            st.caption("Atenção: Esta ação é **irreversível**. Todos os dados e lançamentos financeiros vinculados serão apagados permanentemente.")
-            
-            with st.form("form_exclusao", clear_on_submit=True):
-                lista_formatada = df_obras.apply(lambda x: f"{x['ID']} | {x['Cliente']}", axis=1).tolist()
-                opcoes_exclusao = ["(Selecione para remover...)"] + lista_formatada
-                
-                selected_obra_delete = st.selectbox("Obra Alvo:", options=opcoes_exclusao, label_visibility="collapsed")
-
-                col_del_1, col_del_2 = st.columns([1.5, 1])
-                with col_del_1:
-                    pwd_del = st.text_input("Senha ADM", type="password", placeholder="Confirme sua senha", label_visibility="collapsed")
-                with col_del_2:
-                    btn_del = st.form_submit_button("Confirmar Exclusão", type="secondary", use_container_width=True)
-
-                if btn_del:
-                    if not selected_obra_delete or selected_obra_delete == "(Selecione para remover...)":
-                        st.toast("Selecione uma obra válida.", icon="⚠️")
-                    elif pwd_del == st.secrets["password"]:
-                        try:
-                            id_del = selected_obra_delete.split(" | ")[0]
-                            conn = get_conn()
-                            ws = conn.worksheet("Obras")
-                            cell = ws.find(id_del, in_column=1) 
-
-                            if cell:
-                                ws.delete_rows(cell.row)
-                                st.toast("Obra removida.", icon="🗑️")
-                                if "data_obras" in st.session_state: del st.session_state["data_obras"]
-                                st.cache_data.clear()
-                                st.rerun()
-                            else: st.error("ID não encontrado.")
-                        except Exception as e: st.error(f"Erro: {e}")
-                    else: st.toast("Senha incorreta.", icon="⛔")
+        else: st.caption("💡 Edite diretamente na tabela acima. O botão de salvar aparecerá automaticamente.")
     else: st.info("Nenhuma obra cadastrada.")
