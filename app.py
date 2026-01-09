@@ -333,29 +333,26 @@ def fetch_data_from_google():
             for c in OBRAS_COLS: 
                 if c not in df_o.columns: df_o[c] = None
         
-        # --- CORREÇÃO AQUI (FINANCEIRO ROBUSTO) ---
+        # --- CARREGAMENTO DO FINANCEIRO ROBUSTO E SANITIZADO ---
         ws_f = db.worksheet("Financeiro")
-        # Usamos get_all_values para ignorar erros de cabeçalho na planilha
         raw_f = ws_f.get_all_values()
         
         if not raw_f:
              df_f = pd.DataFrame(columns=FIN_COLS)
         else:
-            # Assumimos que a ordem das colunas no Google Sheets segue a ordem de FIN_COLS
-            # porque o sistema grava (append_row) nessa ordem.
-            data_rows = raw_f[1:] # Pula a primeira linha (cabeçalho)
+            data_rows = raw_f[1:] 
             df_f = pd.DataFrame(data_rows)
-            
-            # Ajusta largura se necessário (cria colunas vazias se faltar na planilha)
+            # Garante largura correta
             while df_f.shape[1] < len(FIN_COLS):
                 df_f[df_f.shape[1]] = ""
-            
-            # Corta se tiver colunas extras
             df_f = df_f.iloc[:, :len(FIN_COLS)]
-            
-            # Força os nomes das colunas corretos
             df_f.columns = FIN_COLS
         
+        # --- LIMPEZA DE DADOS (SANITIZAÇÃO) ---
+        # Remove espaços em branco que quebram filtros (ex: "Obra A " vs "Obra A")
+        for col in ["Obra Vinculada", "Categoria", "Tipo", "Fornecedor", "Pagamento"]:
+             df_f[col] = df_f[col].astype(str).str.strip()
+
         df_o["Valor Total"] = df_o["Valor Total"].apply(safe_float)
         if "Custo Previsto" in df_o.columns:
             df_o["Custo Previsto"] = df_o["Custo Previsto"].apply(safe_float)
@@ -446,7 +443,7 @@ with st.sidebar:
 
     st.markdown("""
         <div style='margin-top: 30px; text-align: center;'>
-            <p style='color: #adb5bd; font-size: 10px;'>v1.3.1 • © 2026 Gestor Pro</p>
+            <p style='color: #adb5bd; font-size: 10px;'>v1.3.2 • © 2026 Gestor Pro</p>
         </div>
     """, unsafe_allow_html=True)
 
@@ -630,14 +627,19 @@ elif sel == "Financeiro":
             c_filter1, c_filter2 = st.columns(2)
             with c_filter1:
                 opcoes_filtro_obra = ["Todas as Obras"] + lista_obras
-                filtro_obra = st.selectbox("Filtrar por Obra", options=opcoes_filtro_obra)
+                filtro_obra = st.selectbox("Filtrar por Obra", options=opcoes_filtro_obra, key="f_obra_sel")
             with c_filter2:
                 opcoes_filtro_cat = ["Todas as Categorias"] + CATS
-                filtro_cat = st.selectbox("Filtrar por Categoria", options=opcoes_filtro_cat)
+                filtro_cat = st.selectbox("Filtrar por Categoria", options=opcoes_filtro_cat, key="f_cat_sel")
 
         df_view = df_fin.copy()
-        if filtro_obra != "Todas as Obras": df_view = df_view[df_view["Obra Vinculada"] == filtro_obra]
-        if filtro_cat != "Todas as Categorias": df_view = df_view[df_view["Categoria"] == filtro_cat]
+        
+        # Filtragem Robusta (String Cleaning)
+        if filtro_obra != "Todas as Obras": 
+            df_view = df_view[df_view["Obra Vinculada"].astype(str).str.strip() == filtro_obra.strip()]
+            
+        if filtro_cat != "Todas as Categorias": 
+            df_view = df_view[df_view["Categoria"].astype(str).str.strip() == filtro_cat.strip()]
 
         total_filtrado = df_view["Valor"].sum()
         count_filtrado = len(df_view)
@@ -813,7 +815,7 @@ elif sel == "Obras":
         st.write("")
         st.write("")
         
-        # --- ZONA DE EXCLUSÃO (DISCRETA E FINAL) ---
+        # --- ZONA DE EXCLUSÃO ---
         with st.expander("⚙️ Opções Avançadas (Remoção de Obras)", expanded=False):
             st.caption("Atenção: Esta ação é **irreversível**. Todos os dados e lançamentos financeiros vinculados serão apagados permanentemente.")
             
