@@ -80,9 +80,7 @@ def safe_float(x) -> float:
 # ==============================================================================
 # 3. MOTOR PDF (ENTERPRISE V5) - COM LAZY IMPORT
 # ==============================================================================
-# O import do ReportLab foi movido para DENTRO da função para não travar o inicio do app
 def gerar_pdf_empresarial(escopo, periodo, vgv, custos, lucro, roi, df_cat, df_lanc):
-    # LAZY IMPORT: Só carrega a biblioteca pesada quando clica no botão de PDF
     from reportlab.lib.pagesizes import A4
     from reportlab.lib import colors
     from reportlab.lib.enums import TA_CENTER, TA_RIGHT, TA_LEFT
@@ -330,10 +328,22 @@ if "auth" not in st.session_state: st.session_state.auth = False
 
 # --- FUNÇÕES DE CALLBACK (SEGURANÇA E UX) ---
 def password_entered():
-    """Valida senha ao dar Enter ou clicar em Entrar"""
+    """Valida senha E carrega dados imediatamente para evitar delay visual"""
     if st.session_state["password_input"] == st.secrets["password"]:
         st.session_state.auth = True
         if "login_error" in st.session_state: del st.session_state["login_error"]
+        
+        # --- OTIMIZAÇÃO DE PERFORMANCE ---
+        # Carregamos os dados AQUI, durante o evento de clique/enter.
+        # Assim, quando o Streamlit redesenhar a página, os dados já existem 
+        # e a barra lateral carrega instantaneamente.
+        try:
+            df_o, df_f = fetch_data_from_google()
+            st.session_state["data_obras"] = df_o
+            st.session_state["data_fin"] = df_f
+        except Exception as e:
+            st.error(f"Erro ao sincronizar login: {e}")
+            
     else:
         st.session_state.auth = False
         st.session_state.login_error = "Senha incorreta"
@@ -343,7 +353,7 @@ def logout():
     st.session_state.auth = False
     if "password_input" in st.session_state:
         st.session_state["password_input"] = ""
-    # Limpa dados para forçar nova busca ao relogar
+    # Limpa dados para forçar nova busca segura ao relogar
     if "data_obras" in st.session_state: del st.session_state["data_obras"]
     if "data_fin" in st.session_state: del st.session_state["data_fin"]
 
@@ -356,6 +366,7 @@ if not st.session_state.auth:
             st.error(st.session_state["login_error"])
         
         st.text_input("Senha", type="password", key="password_input", on_change=password_entered)
+        # Ao clicar, executamos password_entered que carrega os dados ANTES de renderizar a UI
         st.button("ENTRAR", use_container_width=True, on_click=password_entered)
         
     st.stop()
@@ -405,35 +416,28 @@ with st.sidebar:
     """, unsafe_allow_html=True)
 
 # ==============================================================================
-# 7. SINCRONIZAÇÃO DE DADOS (FLUXO CONTÍNUO)
+# 7. GESTÃO DE DADOS (CACHE INSTANTÂNEO)
 # ==============================================================================
-# Se dados não existem, carrega e CONTINUA (sem st.rerun), apenas renderiza.
-if "data_obras" not in st.session_state or "data_fin" not in st.session_state:
-    with st.container():
-        # Feedback visual sutil enquanto carrega
-        with st.status("Sincronizando dados...", expanded=False) as status:
-            df_obras, df_fin = fetch_data_from_google()
-            st.session_state["data_obras"] = df_obras
-            st.session_state["data_fin"] = df_fin
-            status.update(label="Pronto!", state="complete")
-else:
-    # Dados já em memória
-    df_obras = st.session_state["data_obras"]
-    df_fin = st.session_state["data_fin"]
+# Como os dados foram carregados no LOGIN (password_entered), 
+# esta verificação abaixo serve apenas como fallback ou recarregamento manual.
+# Isso evita o "pulo" visual da barra lateral carregando.
 
-# Garante que variáveis existem para o resto do script
-if "data_obras" in st.session_state:
+if "data_obras" not in st.session_state or "data_fin" not in st.session_state:
+    # Se chegou aqui sem dados, mostra status (Raro acontecer no login agora)
+    with st.status("Sincronizando dados...", expanded=False) as status:
+        df_obras, df_fin = fetch_data_from_google()
+        st.session_state["data_obras"] = df_obras
+        st.session_state["data_fin"] = df_fin
+        status.update(label="Pronto!", state="complete")
+else:
+    # Recupera da memória instantaneamente
     df_obras = st.session_state["data_obras"]
     df_fin = st.session_state["data_fin"]
-else:
-    # Fallback seguro (raro acontecer)
-    df_obras, df_fin = pd.DataFrame(), pd.DataFrame()
 
 lista_obras = df_obras["Cliente"].unique().tolist() if not df_obras.empty else []
 
 # --- DASHBOARD ---
 if sel == "Dashboard":
-    # Lazy Import do Plotly só quando necessário
     import plotly.express as px
     
     c_tit, c_sel, c_btn = st.columns([1.5, 2, 1])
@@ -444,7 +448,6 @@ if sel == "Dashboard":
             escopo = st.selectbox("Escopo", opcoes, label_visibility="collapsed")
         else: st.warning("Cadastre uma obra."); st.stop()
     with c_btn:
-        # Botão de atualizar
         if st.button("🔄 Atualizar Dados", use_container_width=True): 
             st.cache_data.clear()
             if "data_obras" in st.session_state: del st.session_state["data_obras"]
@@ -489,7 +492,6 @@ if sel == "Dashboard":
         st.subheader("Categorias")
         if not df_show.empty:
             df_cat = df_show.groupby("Categoria", as_index=False)["Valor"].sum()
-            # AQUI: Cores 'Bold'
             fig2 = px.pie(df_cat, values="Valor", names="Categoria", hole=0.6, color_discrete_sequence=px.colors.qualitative.Bold)
             fig2.update_layout(showlegend=False, margin=dict(t=0,l=0,r=0,b=0), height=200)
             st.plotly_chart(fig2, use_container_width=True)
@@ -558,6 +560,7 @@ elif sel == "Financeiro":
                 ob = st.selectbox("Obra *", opcoes_obras, key="k_fin_obra")
                 
                 vl = st.number_input("Valor R$ *", min_value=0.0, format="%.2f", step=100.0, value=st.session_state.k_fin_valor, key="k_fin_valor_input")
+                
                 dc = st.text_input("Descrição *", value=st.session_state.k_fin_desc, key="k_fin_desc")
             
             submitted_fin = st.form_submit_button("Salvar", use_container_width=True)
@@ -577,9 +580,10 @@ elif sel == "Financeiro":
                     try:
                         conn = get_conn()
                         conn.worksheet("Financeiro").append_row([dt.strftime("%Y-%m-%d"),tp,ct,dc,vl,ob])
-                        # Limpa o estado para forçar atualização
+                        
                         if "data_fin" in st.session_state: del st.session_state["data_fin"]
                         st.cache_data.clear()
+                        
                         st.session_state["sucesso_fin"] = True
                         st.rerun() 
                     except Exception as e: st.error(f"Erro: {e}")
