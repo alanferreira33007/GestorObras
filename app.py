@@ -829,44 +829,46 @@ elif sel == "Obras":
                             except Exception as e: st.error(f"Erro ao salvar: {e}")
                         else: st.toast("Senha incorreta!", icon="⛔")
         else: st.caption("💡 Edite diretamente na tabela acima. O botão de salvar aparecerá automaticamente.")
-    
-        # --- ZONA DE EXCLUSÃO (INDENTADA CORRETAMENTE) ---
+        
+        # --- ZONA DE EXCLUSÃO (FORMULÁRIO PARA LIMPEZA AUTOMÁTICA) ---
         st.write("")
         st.markdown("### 🗑️ Zona de Exclusão")
         with st.expander("Excluir Obra Definitivamente", expanded=False):
-            obra_options = df_obras.apply(lambda x: f"{x['ID']} | {x['Cliente']}", axis=1).tolist()
-            selected_obra_delete = st.selectbox("Selecione a obra para excluir:", obra_options)
+            # Usamos st.form para limpar os campos após o envio
+            with st.form("form_exclusao", clear_on_submit=True):
+                obra_options = df_obras.apply(lambda x: f"{x['ID']} | {x['Cliente']}", axis=1).tolist()
+                selected_obra_delete = st.selectbox("Selecione a obra para excluir:", obra_options)
 
-            st.warning(f"⚠️ Atenção: Ao excluir '{selected_obra_delete}', todos os dados desta obra serão perdidos na tabela de cadastro. Lançamentos financeiros vinculados ficarão órfãos.")
+                st.warning(f"⚠️ Atenção: Ao excluir o item selecionado, todos os dados desta obra serão perdidos.")
 
-            col_del_1, col_del_2 = st.columns([2, 1])
-            with col_del_1:
-                pwd_del = st.text_input("Senha de Administrador para Exclusão", type="password", key="pwd_del")
-            with col_del_2:
-                st.write("") # Espaçamento visual
-                btn_del = st.button("🚫 CONFIRMAR EXCLUSÃO", type="primary", use_container_width=True)
+                col_del_1, col_del_2 = st.columns([2, 1])
+                with col_del_1:
+                    pwd_del = st.text_input("Senha de Administrador para Exclusão", type="password")
+                with col_del_2:
+                    st.write("") # Espaçamento visual
+                    # Botão de submit do formulário
+                    btn_del = st.form_submit_button("🚫 CONFIRMAR EXCLUSÃO", type="primary", use_container_width=True)
 
-            if btn_del:
-                if pwd_del == st.secrets["password"]:
-                    try:
-                        id_del = selected_obra_delete.split(" | ")[0]
-                        conn = get_conn()
-                        ws = conn.worksheet("Obras")
-                        cell = ws.find(id_del, in_column=1) 
+                if btn_del:
+                    if pwd_del == st.secrets["password"]:
+                        try:
+                            id_del = selected_obra_delete.split(" | ")[0]
+                            conn = get_conn()
+                            ws = conn.worksheet("Obras")
+                            cell = ws.find(id_del, in_column=1) 
 
-                        if cell:
-                            ws.delete_rows(cell.row)
-                            st.toast("Obra excluída com sucesso!", icon="🗑️")
-                            
-                            if "data_obras" in st.session_state: del st.session_state["data_obras"]
-                            st.cache_data.clear()
-                            st.rerun()
-                        else:
-                            st.error("ID não encontrado na planilha.")
-                    except Exception as e:
-                        st.error(f"Erro ao excluir: {e}")
-                else:
-                    st.error("Senha incorreta.")
-    
+                            if cell:
+                                ws.delete_rows(cell.row)
+                                st.toast("Obra excluída com sucesso!", icon="🗑️")
+                                
+                                if "data_obras" in st.session_state: del st.session_state["data_obras"]
+                                st.cache_data.clear()
+                                st.rerun()
+                            else:
+                                st.error("ID não encontrado na planilha.")
+                        except Exception as e:
+                            st.error(f"Erro ao excluir: {e}")
+                    else:
+                        st.error("Senha incorreta.")
     else:
         st.info("Nenhuma obra cadastrada.")
