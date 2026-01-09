@@ -1,24 +1,13 @@
-
 import streamlit as st
 import pandas as pd
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 import json
-import plotly.express as px
 from datetime import date, datetime, timedelta
 from streamlit_option_menu import option_menu
 import io
 import random
 import re
-
-# --- BIBLIOTECAS PDF (REPORTLAB) ---
-from reportlab.lib.pagesizes import A4
-from reportlab.lib import colors
-from reportlab.lib.enums import TA_CENTER, TA_RIGHT, TA_LEFT
-from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, KeepTogether
-from reportlab.pdfgen import canvas
-from reportlab.lib.units import cm
 
 # ==============================================================================
 # 1. CONFIGURAÇÃO VISUAL (UI)
@@ -30,6 +19,7 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
+# CSS OTIMIZADO
 st.markdown("""
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap');
@@ -53,14 +43,20 @@ st.markdown("""
         box-shadow: 0 4px 8px rgba(0,0,0,0.2);
     }
     
-    /* Estilo para botão desabilitado */
     button:disabled {
         background-color: #e9ecef !important;
         color: #adb5bd !important;
         cursor: not-allowed;
     }
     
-    [data-testid="stSidebar"] { background-color: #f8f9fa; border-right: 1px solid #e9ecef; }
+    [data-testid="stSidebar"] { 
+        background-color: #f8f9fa; 
+        border-right: 1px solid #e9ecef; 
+    }
+    
+    [data-testid="stSidebarUserContent"] {
+        padding-top: 2rem;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -82,41 +78,51 @@ def safe_float(x) -> float:
     except: return 0.0
 
 # ==============================================================================
-# 3. MOTOR PDF (ENTERPRISE V5)
+# 3. MOTOR PDF (ENTERPRISE V5) - COM LAZY IMPORT
 # ==============================================================================
-class EnterpriseCanvas(canvas.Canvas):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self._saved_page_states = []
-
-    def showPage(self):
-        self._saved_page_states.append(dict(self.__dict__))
-        super().showPage()
-
-    def save(self):
-        num_pages = len(self._saved_page_states)
-        for state in self._saved_page_states:
-            self.__dict__.update(state)
-            self._draw_footer(num_pages)
-            super().showPage()
-        super().save()
-
-    def _draw_footer(self, page_count):
-        width, height = A4
-        self.setStrokeColor(colors.lightgrey)
-        self.setLineWidth(0.5)
-        self.line(30, 50, width-30, 50)
-        
-        self.setFillColor(colors.grey)
-        self.setFont("Helvetica", 8)
-        self.drawString(30, 35, "GESTOR PRO • Sistema Integrado de Gestão de Obras")
-        self.drawString(30, 25, "Relatório contábil individualizado.")
-        
-        data_hora = datetime.now().strftime("%d/%m/%Y às %H:%M")
-        self.drawRightString(width-30, 35, f"Emitido em: {data_hora}")
-        self.drawRightString(width-30, 25, f"Página {self.getPageNumber()} de {page_count}")
-
+# O import do ReportLab foi movido para DENTRO da função para não travar o inicio do app
 def gerar_pdf_empresarial(escopo, periodo, vgv, custos, lucro, roi, df_cat, df_lanc):
+    # LAZY IMPORT: Só carrega a biblioteca pesada quando clica no botão de PDF
+    from reportlab.lib.pagesizes import A4
+    from reportlab.lib import colors
+    from reportlab.lib.enums import TA_CENTER, TA_RIGHT, TA_LEFT
+    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+    from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, KeepTogether
+    from reportlab.pdfgen import canvas
+    from reportlab.lib.units import cm
+
+    class EnterpriseCanvas(canvas.Canvas):
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, **kwargs)
+            self._saved_page_states = []
+
+        def showPage(self):
+            self._saved_page_states.append(dict(self.__dict__))
+            super().showPage()
+
+        def save(self):
+            num_pages = len(self._saved_page_states)
+            for state in self._saved_page_states:
+                self.__dict__.update(state)
+                self._draw_footer(num_pages)
+                super().showPage()
+            super().save()
+
+        def _draw_footer(self, page_count):
+            width, height = A4
+            self.setStrokeColor(colors.lightgrey)
+            self.setLineWidth(0.5)
+            self.line(30, 50, width-30, 50)
+            
+            self.setFillColor(colors.grey)
+            self.setFont("Helvetica", 8)
+            self.drawString(30, 35, "GESTOR PRO • Sistema Integrado de Gestão de Obras")
+            self.drawString(30, 25, "Relatório contábil individualizado.")
+            
+            data_hora = datetime.now().strftime("%d/%m/%Y às %H:%M")
+            self.drawRightString(width-30, 35, f"Emitido em: {data_hora}")
+            self.drawRightString(width-30, 25, f"Página {self.getPageNumber()} de {page_count}")
+
     buffer = io.BytesIO()
     doc = SimpleDocTemplate(
         buffer, 
@@ -130,7 +136,6 @@ def gerar_pdf_empresarial(escopo, periodo, vgv, custos, lucro, roi, df_cat, df_l
     style_header_sub = ParagraphStyle('HeadSub', parent=styles['Normal'], fontSize=9, leading=11, textColor=colors.whitesmoke)
     style_h2 = ParagraphStyle('SecTitle', parent=styles['Heading2'], fontSize=11, textColor=colors.HexColor("#1B4332"), spaceBefore=15, spaceAfter=8, fontName='Helvetica-Bold')
     
-    # --- 1. CABEÇALHO DINÂMICO ---
     if "Visão Geral" in escopo:
         titulo_principal = "RELATÓRIO DE PORTFÓLIO (CONSOLIDADO)"
     else:
@@ -148,7 +153,6 @@ def gerar_pdf_empresarial(escopo, periodo, vgv, custos, lucro, roi, df_cat, df_l
     story.append(t_header)
     story.append(Spacer(1, 15))
     
-    # --- 2. RESUMO (KPIs) ---
     story.append(Paragraph("RESUMO FINANCEIRO", style_h2))
     perc_gasto = (custos/vgv*100) if vgv > 0 else 0
     resumo_data = [
@@ -170,7 +174,6 @@ def gerar_pdf_empresarial(escopo, periodo, vgv, custos, lucro, roi, df_cat, df_l
     story.append(t_resumo)
     story.append(Spacer(1, 15))
     
-    # --- 3. CATEGORIAS ---
     if not df_cat.empty:
         story.append(Paragraph("DISTRIBUIÇÃO POR CATEGORIA", style_h2))
         df_c = df_cat.copy()
@@ -191,7 +194,6 @@ def gerar_pdf_empresarial(escopo, periodo, vgv, custos, lucro, roi, df_cat, df_l
         story.append(t_cat)
         story.append(Spacer(1, 15))
         
-    # --- 4. EXTRATO FINANCEIRO ---
     story.append(Paragraph("EXTRATO DE LANÇAMENTOS", style_h2))
     
     if not df_lanc.empty:
@@ -200,7 +202,6 @@ def gerar_pdf_empresarial(escopo, periodo, vgv, custos, lucro, roi, df_cat, df_l
         cols_sel = ["Data", "Categoria", "Descrição", "Valor"]
         data_lanc = [cols_sel] + df_l[cols_sel].values.tolist()
         
-        # LINHA DE TOTAL NA TABELA
         data_lanc.append(["", "", "SUBTOTAL (Página):", fmt_moeda(custos)])
         
         t_lanc = Table(data_lanc, colWidths=[2.5*cm, 3.5*cm, 8*cm, 3*cm])
@@ -230,7 +231,6 @@ def gerar_pdf_empresarial(escopo, periodo, vgv, custos, lucro, roi, df_cat, df_l
 
     story.append(Spacer(1, 25))
 
-    # --- 5. BLOCO DE TOTALIZAÇÃO FINAL (DESTAQUE) ---
     bloco_total = []
     msg_total = "TOTAL ACUMULADO GASTO (ATÉ EMISSÃO)"
     
@@ -253,7 +253,6 @@ def gerar_pdf_empresarial(escopo, periodo, vgv, custos, lucro, roi, df_cat, df_l
     
     story.append(Spacer(1, 40))
 
-    # --- 6. ASSINATURAS ---
     sig_data = [
         ["_______________________________________", "_______________________________________"],
         ["GESTOR RESPONSÁVEL", "DIRETORIA FINANCEIRA"],
@@ -288,7 +287,8 @@ def get_conn():
     return gspread.authorize(ServiceAccountCredentials.from_json_keyfile_dict(creds, ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"])).open("GestorObras_DB")
 
 @st.cache_data(ttl=120)
-def load_data():
+def fetch_data_from_google():
+    """Busca dados brutos do Google Sheets com Cache"""
     try:
         db = get_conn()
         ws_o = db.worksheet("Obras")
@@ -341,9 +341,11 @@ def password_entered():
 def logout():
     """Função de Logout executada antes do rerun"""
     st.session_state.auth = False
-    # Limpa a senha do estado para forçar novo login limpo
     if "password_input" in st.session_state:
         st.session_state["password_input"] = ""
+    # Limpa dados para forçar nova busca ao relogar
+    if "data_obras" in st.session_state: del st.session_state["data_obras"]
+    if "data_fin" in st.session_state: del st.session_state["data_fin"]
 
 if not st.session_state.auth:
     _, c2, _ = st.columns([1,1,1])
@@ -353,28 +355,87 @@ if not st.session_state.auth:
         if st.session_state.get("login_error"):
             st.error(st.session_state["login_error"])
         
-        # O argumento on_change detecta o ENTER
         st.text_input("Senha", type="password", key="password_input", on_change=password_entered)
-        # O argumento on_click detecta o CLIQUE
         st.button("ENTRAR", use_container_width=True, on_click=password_entered)
         
     st.stop()
 
-# --- CARREGAMENTO DE DADOS COM SPINNER PARA MELHORAR PERCEPÇÃO DE VELOCIDADE ---
-with st.spinner("Carregando carteira de obras e financeiro..."):
-    df_obras, df_fin = load_data()
+# ==============================================================================
+# 6. RENDERIZAÇÃO DA BARRA LATERAL (PRIORIDADE TOTAL)
+# ==============================================================================
+with st.sidebar:
+    st.markdown("""
+        <div style='text-align: left; margin-bottom: 20px;'>
+            <h1 style='color: #2D6A4F; font-size: 24px; margin-bottom: 0px;'>GESTOR PRO</h1>
+            <p style='color: gray; font-size: 12px; margin-top: 0px;'>Incorporação & Obras</p>
+        </div>
+    """, unsafe_allow_html=True)
+
+    sel = option_menu(
+        menu_title=None,
+        options=["Dashboard", "Financeiro", "Obras"],
+        icons=["pie-chart-fill", "wallet-fill", "building-fill"], 
+        default_index=0,
+        styles={
+            "container": {"padding": "0!important", "background-color": "transparent"},
+            "icon": {"color": "#2D6A4F", "font-size": "16px"}, 
+            "nav-link": {"font-size": "14px", "text-align": "left", "margin":"5px", "--hover-color": "#eee"},
+            "nav-link-selected": {"background-color": "#2D6A4F", "color": "white"},
+        }
+    )
+    
+    st.write("") 
+    st.markdown("---")
+    
+    col_p1, col_p2 = st.columns([1, 4])
+    with col_p1:
+        st.markdown("<h2 style='text-align: center; margin: 0;'>👤</h2>", unsafe_allow_html=True)
+    with col_p2:
+        st.caption("Logado como:")
+        st.markdown("**Administrador**")
+
+    st.write("") 
+
+    st.button("🚪 Sair do Sistema", on_click=logout, use_container_width=True)
+
+    st.markdown("""
+        <div style='margin-top: 30px; text-align: center;'>
+            <p style='color: #adb5bd; font-size: 10px;'>v1.2.0 • © 2026 Gestor Pro</p>
+        </div>
+    """, unsafe_allow_html=True)
+
+# ==============================================================================
+# 7. SINCRONIZAÇÃO DE DADOS (FLUXO CONTÍNUO)
+# ==============================================================================
+# Se dados não existem, carrega e CONTINUA (sem st.rerun), apenas renderiza.
+if "data_obras" not in st.session_state or "data_fin" not in st.session_state:
+    with st.container():
+        # Feedback visual sutil enquanto carrega
+        with st.status("Sincronizando dados...", expanded=False) as status:
+            df_obras, df_fin = fetch_data_from_google()
+            st.session_state["data_obras"] = df_obras
+            st.session_state["data_fin"] = df_fin
+            status.update(label="Pronto!", state="complete")
+else:
+    # Dados já em memória
+    df_obras = st.session_state["data_obras"]
+    df_fin = st.session_state["data_fin"]
+
+# Garante que variáveis existem para o resto do script
+if "data_obras" in st.session_state:
+    df_obras = st.session_state["data_obras"]
+    df_fin = st.session_state["data_fin"]
+else:
+    # Fallback seguro (raro acontecer)
+    df_obras, df_fin = pd.DataFrame(), pd.DataFrame()
 
 lista_obras = df_obras["Cliente"].unique().tolist() if not df_obras.empty else []
 
-with st.sidebar:
-    st.markdown("### 🏢 MENU")
-    sel = option_menu(None, ["Dashboard", "Financeiro", "Obras"], icons=["graph-up", "wallet", "building"], default_index=0, styles={"nav-link-selected": {"background-color": "#2D6A4F"}})
-    st.markdown("---")
-    # CORREÇÃO DO LOGOUT: Usando callback para garantir execução imediata
-    st.button("Sair", on_click=logout)
-
 # --- DASHBOARD ---
 if sel == "Dashboard":
+    # Lazy Import do Plotly só quando necessário
+    import plotly.express as px
+    
     c_tit, c_sel, c_btn = st.columns([1.5, 2, 1])
     with c_tit: st.title("Visão Geral")
     with c_sel:
@@ -383,7 +444,12 @@ if sel == "Dashboard":
             escopo = st.selectbox("Escopo", opcoes, label_visibility="collapsed")
         else: st.warning("Cadastre uma obra."); st.stop()
     with c_btn:
-        if st.button("🔄 Atualizar Dados", use_container_width=True): st.cache_data.clear(); st.rerun()
+        # Botão de atualizar
+        if st.button("🔄 Atualizar Dados", use_container_width=True): 
+            st.cache_data.clear()
+            if "data_obras" in st.session_state: del st.session_state["data_obras"]
+            if "data_fin" in st.session_state: del st.session_state["data_fin"]
+            st.rerun()
 
     # Filtros
     if escopo == "Visão Geral (Todas as Obras)":
@@ -423,7 +489,7 @@ if sel == "Dashboard":
         st.subheader("Categorias")
         if not df_show.empty:
             df_cat = df_show.groupby("Categoria", as_index=False)["Valor"].sum()
-            # AQUI: MUDANÇA PARA 'BOLD' (CORES DISTINTAS)
+            # AQUI: Cores 'Bold'
             fig2 = px.pie(df_cat, values="Valor", names="Categoria", hole=0.6, color_discrete_sequence=px.colors.qualitative.Bold)
             fig2.update_layout(showlegend=False, margin=dict(t=0,l=0,r=0,b=0), height=200)
             st.plotly_chart(fig2, use_container_width=True)
@@ -491,9 +557,7 @@ elif sel == "Financeiro":
                 opcoes_obras = [""] + lista_obras
                 ob = st.selectbox("Obra *", opcoes_obras, key="k_fin_obra")
                 
-                # AQUI: Mudança para number_input (Bloqueia letras)
                 vl = st.number_input("Valor R$ *", min_value=0.0, format="%.2f", step=100.0, value=st.session_state.k_fin_valor, key="k_fin_valor_input")
-                
                 dc = st.text_input("Descrição *", value=st.session_state.k_fin_desc, key="k_fin_desc")
             
             submitted_fin = st.form_submit_button("Salvar", use_container_width=True)
@@ -513,6 +577,8 @@ elif sel == "Financeiro":
                     try:
                         conn = get_conn()
                         conn.worksheet("Financeiro").append_row([dt.strftime("%Y-%m-%d"),tp,ct,dc,vl,ob])
+                        # Limpa o estado para forçar atualização
+                        if "data_fin" in st.session_state: del st.session_state["data_fin"]
                         st.cache_data.clear()
                         st.session_state["sucesso_fin"] = True
                         st.rerun() 
@@ -545,16 +611,12 @@ elif sel == "Obras":
         st.success(f"✅ Dados atualizados com sucesso!", icon="🏡")
         st.session_state["k_ob_nome"] = ""
         st.session_state["k_ob_end"] = ""
-        
         st.session_state["k_ob_area_c"] = 0.0
         st.session_state["k_ob_area_t"] = 0.0
         st.session_state["k_ob_quartos"] = 0
         st.session_state["k_ob_status"] = "Projeto"
-        
-        # Reset de valores monetários
         st.session_state["k_ob_custo"] = 0.0
         st.session_state["k_ob_vgv"] = 0.0
-        
         st.session_state["k_ob_prazo"] = ""
         st.session_state["sucesso_obra"] = False
     
@@ -578,7 +640,6 @@ elif sel == "Obras":
 
             st.markdown("#### 2. Características Físicas (Produto)")
             c4, c5, c6, c7 = st.columns(4)
-            # Areas e Quartos continuam number_input (como solicitado anteriormente)
             with c4: area_const = st.number_input("Área Construída (m²)", min_value=0.0, format="%.2f", value=st.session_state.k_ob_area_c, key="k_ob_area_c")
             with c5: area_terr = st.number_input("Área Terreno (m²)", min_value=0.0, format="%.2f", value=st.session_state.k_ob_area_t, key="k_ob_area_t")
             with c6: quartos = st.number_input("Qtd. Quartos", min_value=0, step=1, value=st.session_state.k_ob_quartos, key="k_ob_quartos")
@@ -586,12 +647,8 @@ elif sel == "Obras":
 
             st.markdown("#### 3. Viabilidade Financeira e Prazos")
             c8, c9, c10, c11 = st.columns(4)
-            
-            # AQUI: Mudança de volta para number_input (Bloqueia letras)
-            # Usei step=100.0 para facilitar preencher valores altos, mas aceita centavos se digitar
             with c8: custo_previsto = st.number_input("Orçamento (Custo) *", min_value=0.0, format="%.2f", step=1000.0, value=st.session_state.k_ob_custo, key="k_ob_custo_input")
             with c9: valor_venda = st.number_input("VGV (Venda) *", min_value=0.0, format="%.2f", step=1000.0, value=st.session_state.k_ob_vgv, key="k_ob_vgv_input")
-            
             with c10: data_inicio = st.date_input("Início da Obra", value=st.session_state.k_ob_data, key="k_ob_data")
             with c11: prazo_entrega = st.text_input("Prazo / Entrega *", placeholder="Ex: dez/2025", value=st.session_state.k_ob_prazo, key="k_ob_prazo")
 
@@ -605,11 +662,8 @@ elif sel == "Obras":
             submitted = st.form_submit_button("✅ SALVAR PROJETO", use_container_width=True)
 
             if submitted:
-                # Sincroniza estados
                 st.session_state.k_ob_custo = custo_previsto
                 st.session_state.k_ob_vgv = valor_venda
-                
-                # Areas e quartos já estão no state pelo number_input, mas garantimos
                 st.session_state.k_ob_area_c = area_const
                 st.session_state.k_ob_area_t = area_terr
                 
@@ -631,7 +685,10 @@ elif sel == "Obras":
                         ids_existentes = pd.to_numeric(df_obras["ID"], errors="coerce").fillna(0)
                         novo_id = int(ids_existentes.max()) + 1 if not ids_existentes.empty else 1
                         ws.append_row([novo_id, nome_obra.strip(), endereco.strip(), status, float(valor_venda), data_inicio.strftime("%Y-%m-%d"), prazo_entrega.strip(), float(area_const), float(area_terr), int(quartos), float(custo_previsto)])
+                        
+                        if "data_obras" in st.session_state: del st.session_state["data_obras"]
                         st.cache_data.clear()
+                        
                         st.session_state["sucesso_obra"] = True
                         st.rerun()
                     except Exception as e: st.error(f"Erro no Google Sheets: {e}")
@@ -687,6 +744,8 @@ elif sel == "Obras":
                                                 elif pd.isna(val): val = ""
                                                 update_values.append(val)
                                             ws.update(f"A{found_cell.row}:K{found_cell.row}", [update_values])
+                                
+                                if "data_obras" in st.session_state: del st.session_state["data_obras"]
                                 st.cache_data.clear()
                                 st.session_state["sucesso_obra"] = True
                                 st.rerun()
