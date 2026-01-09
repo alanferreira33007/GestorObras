@@ -79,16 +79,20 @@ def safe_float(x) -> float:
     try: return float(s)
     except: return 0.0
 
-# --- NOVO COMPONENTE DE INPUT MONETÁRIO (AJUSTADO) ---
-def input_moeda(label, valor_ref_float, key_txt):
+# --- NOVO COMPONENTE DE INPUT (GENÉRICO BR) ---
+def input_formata_br(label, valor_ref_float, key_txt, prefix=""):
     """
     label: Título do campo
     valor_ref_float: O valor numérico atual (do session state)
     key_txt: A chave única para o componente de texto
+    prefix: Prefixo visual (ex: 'R$ ')
     """
-    # Se o valor numérico for > 0, formata para texto. Se for 0, deixa vazio para placeholder.
+    # Formata para exibição (BR) se tiver valor
     if valor_ref_float > 0:
+        # Formata com separador de milhar (.) e decimal (,)
         val_inicial = f"{valor_ref_float:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+        if prefix:
+            val_inicial = f"{prefix}{val_inicial}"
     else:
         val_inicial = ""
     
@@ -97,7 +101,7 @@ def input_moeda(label, valor_ref_float, key_txt):
     
     # Converte de volta para float
     if val_str:
-        clean = val_str.replace("R$", "").strip()
+        clean = val_str.replace("R$", "").replace("m²", "").strip() # Remove prefixos/sufixos comuns
         clean = clean.replace(".", "") # Tira ponto de milhar
         clean = clean.replace(",", ".") # Troca vírgula decimal por ponto
         try:
@@ -456,24 +460,21 @@ if sel == "Dashboard":
             use_container_width=True
         )
 
-# --- FINANCEIRO (CORRIGIDO: ALINHAMENTO E RESET) ---
+# --- FINANCEIRO ---
 elif sel == "Financeiro":
     st.title("Financeiro")
 
-    # 1. RESET SEGURO E FEEDBACK
     if st.session_state.get("sucesso_fin"):
         st.success("✅ Lançamento realizado com sucesso!", icon="✅")
-        
         st.session_state["k_fin_data"] = date.today()
         st.session_state["k_fin_tipo"] = "Saída (Despesa)"
         st.session_state["k_fin_cat"] = ""
         st.session_state["k_fin_obra"] = ""
         st.session_state["k_fin_valor"] = 0.0
-        st.session_state["k_fin_valor_txt"] = "" # Limpa o campo de texto visual
+        st.session_state["k_fin_valor_txt"] = "" 
         st.session_state["k_fin_desc"] = ""
         st.session_state["sucesso_fin"] = False
 
-    # 2. INICIALIZAÇÃO
     if "k_fin_data" not in st.session_state: st.session_state.k_fin_data = date.today()
     if "k_fin_tipo" not in st.session_state: st.session_state.k_fin_tipo = "Saída (Despesa)"
     if "k_fin_cat" not in st.session_state: st.session_state.k_fin_cat = ""
@@ -484,29 +485,21 @@ elif sel == "Financeiro":
     with st.expander("Novo Lançamento", expanded=True):
         with st.form("ffin", clear_on_submit=False):
             c1, c2 = st.columns(2)
-            
             with c1:
                 dt = st.date_input("Data", value=st.session_state.k_fin_data, key="k_fin_data")
                 tp = st.selectbox("Tipo", ["Saída (Despesa)", "Entrada"], key="k_fin_tipo")
-                
                 opcoes_cats = [""] + CATS
                 ct = st.selectbox("Categoria *", opcoes_cats, key="k_fin_cat")
-            
             with c2:
                 opcoes_obras = [""] + lista_obras
                 ob = st.selectbox("Obra *", opcoes_obras, key="k_fin_obra")
-                
-                # Input monetário DENTRO da coluna para alinhar
-                vl = input_moeda("Valor R$ *", valor_ref_float=st.session_state.k_fin_valor, key_txt="k_fin_valor_txt")
-                
+                vl = input_formata_br("Valor R$ *", valor_ref_float=st.session_state.k_fin_valor, key_txt="k_fin_valor_txt", prefix="R$ ")
                 dc = st.text_input("Descrição *", value=st.session_state.k_fin_desc, key="k_fin_desc")
             
             submitted_fin = st.form_submit_button("Salvar", use_container_width=True)
 
             if submitted_fin:
-                # Atualiza valor numérico
                 st.session_state.k_fin_valor = vl
-                
                 erros = []
                 if not ob or ob == "": erros.append("Selecione a Obra Vinculada.")
                 if not ct or ct == "": erros.append("Selecione a Categoria.")
@@ -521,68 +514,56 @@ elif sel == "Financeiro":
                         conn = get_conn()
                         conn.worksheet("Financeiro").append_row([dt.strftime("%Y-%m-%d"),tp,ct,dc,vl,ob])
                         st.cache_data.clear()
-                        
                         st.session_state["sucesso_fin"] = True
                         st.rerun() 
                     except Exception as e: st.error(f"Erro: {e}")
 
-    # 3. FILTRAGEM E EXIBIÇÃO
     st.markdown("---")
     st.markdown("### 🔍 Consultar Lançamentos")
-
     if not df_fin.empty:
         c_filter1, c_filter2 = st.columns(2)
         with c_filter1:
             sel_obras = st.multiselect("1. Filtrar por Obra", options=lista_obras, placeholder="Todas as Obras")
         with c_filter2:
             sel_cats = st.multiselect("2. Filtrar por Categoria", options=CATS, placeholder="Todas as Categorias")
-            
         df_view = df_fin.copy()
         if sel_obras: df_view = df_view[df_view["Obra Vinculada"].isin(sel_obras)]
         if sel_cats: df_view = df_view[df_view["Categoria"].isin(sel_cats)]
-            
         total_filtrado = df_view["Valor"].sum()
         count_filtrado = len(df_view)
         st.caption(f"Exibindo **{count_filtrado}** lançamentos | Total Filtrado: **{fmt_moeda(total_filtrado)}**")
-        
-        st.dataframe(
-            df_view.sort_values("Data_DT", ascending=False), 
-            use_container_width=True, 
-            hide_index=True,
-            column_config={
-                "Valor": st.column_config.NumberColumn(format="R$ %.2f"),
-                "Data": st.column_config.DateColumn("Data", format="DD/MM/YYYY"),
-            }
-        )
+        st.dataframe(df_view.sort_values("Data_DT", ascending=False), use_container_width=True, hide_index=True, column_config={"Valor": st.column_config.NumberColumn(format="R$ %.2f"),"Data": st.column_config.DateColumn("Data", format="DD/MM/YYYY")})
     else:
         st.info("Nenhum lançamento registrado.")
 
-# --- OBRAS (CORRIGIDO: ALINHAMENTO E RESET) ---
+# --- OBRAS ---
 elif sel == "Obras":
     st.title("📂 Gestão de Incorporação e Obras")
     st.markdown("---")
 
-    # 1. RESET SEGURO E FEEDBACK
     if st.session_state.get("sucesso_obra"):
         st.success(f"✅ Dados atualizados com sucesso!", icon="🏡")
-        
         st.session_state["k_ob_nome"] = ""
         st.session_state["k_ob_end"] = ""
+        
+        # Limpa Areas
         st.session_state["k_ob_area_c"] = 0.0
+        st.session_state["k_ob_area_c_txt"] = ""
         st.session_state["k_ob_area_t"] = 0.0
+        st.session_state["k_ob_area_t_txt"] = ""
+        
         st.session_state["k_ob_quartos"] = 0
         st.session_state["k_ob_status"] = "Projeto"
         
+        # Limpa Valores
         st.session_state["k_ob_custo"] = 0.0
-        st.session_state["k_ob_custo_txt"] = "" # Limpa visual
-        
+        st.session_state["k_ob_custo_txt"] = "" 
         st.session_state["k_ob_vgv"] = 0.0
-        st.session_state["k_ob_vgv_txt"] = "" # Limpa visual
+        st.session_state["k_ob_vgv_txt"] = "" 
         
         st.session_state["k_ob_prazo"] = ""
         st.session_state["sucesso_obra"] = False
     
-    # 2. INICIALIZAÇÃO
     if "k_ob_nome" not in st.session_state: st.session_state.k_ob_nome = ""
     if "k_ob_end" not in st.session_state: st.session_state.k_ob_end = ""
     if "k_ob_area_c" not in st.session_state: st.session_state.k_ob_area_c = 0.0
@@ -596,37 +577,25 @@ elif sel == "Obras":
 
     with st.expander("➕ Novo Cadastro (Clique para expandir)", expanded=False):
         with st.form("f_obra_completa", clear_on_submit=False):
-            
             st.markdown("#### 1. Identificação")
             c1, c2 = st.columns([3, 2])
-            with c1:
-                nome_obra = st.text_input("Nome do Empreendimento *", placeholder="Ex: Res. Vila Verde - Casa 04", value=st.session_state.k_ob_nome, key="k_ob_nome")
-            with c2:
-                endereco = st.text_input("Endereço *", placeholder="Rua, Bairro...", value=st.session_state.k_ob_end, key="k_ob_end")
+            with c1: nome_obra = st.text_input("Nome do Empreendimento *", placeholder="Ex: Res. Vila Verde - Casa 04", value=st.session_state.k_ob_nome, key="k_ob_nome")
+            with c2: endereco = st.text_input("Endereço *", placeholder="Rua, Bairro...", value=st.session_state.k_ob_end, key="k_ob_end")
 
             st.markdown("#### 2. Características Físicas (Produto)")
             c4, c5, c6, c7 = st.columns(4)
-            with c4:
-                area_const = st.number_input("Área Construída (m²)", min_value=0.0, format="%.2f", value=st.session_state.k_ob_area_c, key="k_ob_area_c")
-            with c5:
-                area_terr = st.number_input("Área Terreno (m²)", min_value=0.0, format="%.2f", value=st.session_state.k_ob_area_t, key="k_ob_area_t")
-            with c6:
-                quartos = st.number_input("Qtd. Quartos", min_value=0, step=1, value=st.session_state.k_ob_quartos, key="k_ob_quartos")
-            with c7:
-                status = st.selectbox("Fase Atual", ["Projeto", "Fundação", "Alvenaria", "Acabamento", "Concluída", "Vendida"], key="k_ob_status")
+            # AQUI: Mudança para Input Texto (Estilo App de Banco) para Áreas
+            with c4: area_const = input_formata_br("Área Construída (m²)", valor_ref_float=st.session_state.k_ob_area_c, key_txt="k_ob_area_c_txt", prefix="")
+            with c5: area_terr = input_formata_br("Área Terreno (m²)", valor_ref_float=st.session_state.k_ob_area_t, key_txt="k_ob_area_t_txt", prefix="")
+            with c6: quartos = st.number_input("Qtd. Quartos", min_value=0, step=1, value=st.session_state.k_ob_quartos, key="k_ob_quartos")
+            with c7: status = st.selectbox("Fase Atual", ["Projeto", "Fundação", "Alvenaria", "Acabamento", "Concluída", "Vendida"], key="k_ob_status")
 
             st.markdown("#### 3. Viabilidade Financeira e Prazos")
             c8, c9, c10, c11 = st.columns(4)
-            
-            # --- INPUTS FINANCEIROS MELHORADOS E ALINHADOS ---
-            with c8:
-                custo_previsto = input_moeda("Orçamento (Custo) *", valor_ref_float=st.session_state.k_ob_custo, key_txt="k_ob_custo_txt")
-            with c9:
-                valor_venda = input_moeda("VGV (Venda) *", valor_ref_float=st.session_state.k_ob_vgv, key_txt="k_ob_vgv_txt")
-            with c10:
-                data_inicio = st.date_input("Início da Obra", value=st.session_state.k_ob_data, key="k_ob_data")
-            with c11:
-                prazo_entrega = st.text_input("Prazo / Entrega *", placeholder="Ex: dez/2025", value=st.session_state.k_ob_prazo, key="k_ob_prazo")
+            with c8: custo_previsto = input_formata_br("Orçamento (Custo) *", valor_ref_float=st.session_state.k_ob_custo, key_txt="k_ob_custo_txt", prefix="R$ ")
+            with c9: valor_venda = input_formata_br("VGV (Venda) *", valor_ref_float=st.session_state.k_ob_vgv, key_txt="k_ob_vgv_txt", prefix="R$ ")
+            with c10: data_inicio = st.date_input("Início da Obra", value=st.session_state.k_ob_data, key="k_ob_data")
+            with c11: prazo_entrega = st.text_input("Prazo / Entrega *", placeholder="Ex: dez/2025", value=st.session_state.k_ob_prazo, key="k_ob_prazo")
 
             if valor_venda > 0 and custo_previsto > 0:
                 margem_proj = ((valor_venda - custo_previsto) / custo_previsto) * 100
@@ -635,13 +604,14 @@ elif sel == "Obras":
 
             st.markdown("---")
             st.caption("(*) Campos Obrigatórios")
-            
             submitted = st.form_submit_button("✅ SALVAR PROJETO", use_container_width=True)
 
             if submitted:
                 # Sincroniza estados
                 st.session_state.k_ob_custo = custo_previsto
                 st.session_state.k_ob_vgv = valor_venda
+                st.session_state.k_ob_area_c = area_const
+                st.session_state.k_ob_area_t = area_terr
                 
                 erros = []
                 if not nome_obra.strip(): erros.append("O 'Nome do Empreendimento' é obrigatório.")
@@ -653,150 +623,74 @@ elif sel == "Obras":
 
                 if erros:
                     st.error("⚠️ Não foi possível salvar. Verifique os campos:")
-                    for e in erros:
-                        st.markdown(f"- {e}")
+                    for e in erros: st.markdown(f"- {e}")
                 else:
                     try:
                         conn = get_conn()
                         ws = conn.worksheet("Obras")
-                        
                         ids_existentes = pd.to_numeric(df_obras["ID"], errors="coerce").fillna(0)
                         novo_id = int(ids_existentes.max()) + 1 if not ids_existentes.empty else 1
-
-                        ws.append_row([
-                            novo_id,
-                            nome_obra.strip(),
-                            endereco.strip(),
-                            status,
-                            float(valor_venda),
-                            data_inicio.strftime("%Y-%m-%d"),
-                            prazo_entrega.strip(),
-                            float(area_const),
-                            float(area_terr),
-                            int(quartos),
-                            float(custo_previsto)
-                        ])
-                        
+                        ws.append_row([novo_id, nome_obra.strip(), endereco.strip(), status, float(valor_venda), data_inicio.strftime("%Y-%m-%d"), prazo_entrega.strip(), float(area_const), float(area_terr), int(quartos), float(custo_previsto)])
                         st.cache_data.clear()
                         st.session_state["sucesso_obra"] = True
                         st.rerun()
+                    except Exception as e: st.error(f"Erro no Google Sheets: {e}")
 
-                    except Exception as e:
-                        st.error(f"Erro no Google Sheets: {e}")
-
-    # 3. EDITOR DE DADOS (VISUAL CLEAN)
     st.markdown("### 📋 Carteira de Obras")
-    
     if not df_obras.empty:
-        cols_order = [
-            "ID", "Cliente", "Status", "Prazo", 
-            "Valor Total", "Custo Previsto", 
-            "Area Construida", "Area Terreno", "Quartos"
-        ]
-        
+        cols_order = ["ID", "Cliente", "Status", "Prazo", "Valor Total", "Custo Previsto", "Area Construida", "Area Terreno", "Quartos"]
         valid_cols = [c for c in cols_order if c in df_obras.columns]
-        
-        # --- LIMPEZA DE DADOS PARA REMOVER "NONE" VISUAL ---
-        # Cria cópia, preenche 0/vazio para visualização
         df_to_edit = df_obras[valid_cols].copy().reset_index(drop=True)
-        
         num_cols = ["Valor Total", "Custo Previsto", "Area Construida", "Area Terreno", "Quartos", "ID"]
         for c in df_to_edit.columns:
-            if c in num_cols:
-                df_to_edit[c] = pd.to_numeric(df_to_edit[c], errors='coerce').fillna(0)
-            else:
-                df_to_edit[c] = df_to_edit[c].fillna("")
+            if c in num_cols: df_to_edit[c] = pd.to_numeric(df_to_edit[c], errors='coerce').fillna(0)
+            else: df_to_edit[c] = df_to_edit[c].fillna("")
 
-        # CONFIGURAÇÃO DO EDITOR
-        edited_df = st.data_editor(
-            df_to_edit,
-            use_container_width=True,
-            hide_index=True,
-            num_rows="fixed",
-            disabled=["ID"],
+        edited_df = st.data_editor(df_to_edit, use_container_width=True, hide_index=True, num_rows="fixed", disabled=["ID"],
             column_config={
                 "ID": st.column_config.NumberColumn("#", width=40),
                 "Cliente": st.column_config.TextColumn("Empreendimento", width="large", required=True),
-                "Status": st.column_config.SelectboxColumn(
-                    "Fase", 
-                    options=["Projeto", "Fundação", "Alvenaria", "Acabamento", "Concluída", "Vendida"],
-                    required=True,
-                    width="medium"
-                ),
+                "Status": st.column_config.SelectboxColumn("Fase", options=["Projeto", "Fundação", "Alvenaria", "Acabamento", "Concluída", "Vendida"], required=True, width="medium"),
                 "Prazo": st.column_config.TextColumn("Entrega", width="small"),
                 "Valor Total": st.column_config.NumberColumn("VGV", format="R$ %.0f", min_value=0),
                 "Custo Previsto": st.column_config.NumberColumn("Custo", format="R$ %.0f", min_value=0),
                 "Area Construida": st.column_config.NumberColumn("Área", format="%.0f m²"),
                 "Area Terreno": st.column_config.NumberColumn("Terr.", format="%.0f m²"),
                 "Quartos": st.column_config.NumberColumn("Qts", min_value=0, step=1, width="small"),
-            }
-        )
+            })
         
         st.write("")
-        
-        # --- LÓGICA DE DETECÇÃO DE MUDANÇA (VISUAL LIMPO) ---
         has_changes = not edited_df.equals(df_to_edit)
-        
         if has_changes:
             with st.container(border=True):
                 c_alert, c_pwd, c_btn = st.columns([2, 1.5, 1])
-                
-                with c_alert:
-                    st.warning("⚠️ Alterações pendentes. Confirme para salvar.", icon="⚠️")
-                
-                with c_pwd:
-                    pwd_confirm = st.text_input("Senha", type="password", placeholder="Senha ADM", label_visibility="collapsed")
-                
+                with c_alert: st.warning("⚠️ Alterações pendentes. Confirme para salvar.", icon="⚠️")
+                with c_pwd: pwd_confirm = st.text_input("Senha", type="password", placeholder="Senha ADM", label_visibility="collapsed")
                 with c_btn:
                     if st.button("💾 SALVAR", type="primary", use_container_width=True):
                         if pwd_confirm == st.secrets["password"]:
                             try:
                                 conn = get_conn()
                                 ws = conn.worksheet("Obras")
-                                
                                 with st.spinner("Salvando..."):
-                                    # Para salvar, reconstruímos a linha completa
-                                    # usando dados do editor + dados originais (colunas ocultas)
                                     sheet_data = ws.get_all_records()
-                                    
                                     for index, row in edited_df.iterrows():
                                         id_obra = row["ID"]
-                                        
-                                        # Localiza linha no Sheets
                                         found_cell = ws.find(str(id_obra), in_column=1) 
-                                        
                                         if found_cell:
-                                            # Pega linha original completa para mesclar
                                             original_row = df_obras[df_obras["ID"] == id_obra].iloc[0]
-                                            
                                             update_values = []
                                             for col in OBRAS_COLS:
-                                                if col in row:
-                                                    val = row[col]
-                                                else:
-                                                    val = original_row[col]
-                                                
-                                                # Converte formatos
-                                                if isinstance(val, (pd.Timestamp, date, datetime)):
-                                                    val = val.strftime("%Y-%m-%d")
-                                                elif pd.isna(val):
-                                                    val = ""
+                                                if col in row: val = row[col]
+                                                else: val = original_row[col]
+                                                if isinstance(val, (pd.Timestamp, date, datetime)): val = val.strftime("%Y-%m-%d")
+                                                elif pd.isna(val): val = ""
                                                 update_values.append(val)
-                                            
-                                            # Atualiza linha
                                             ws.update(f"A{found_cell.row}:K{found_cell.row}", [update_values])
-                                
                                 st.cache_data.clear()
                                 st.session_state["sucesso_obra"] = True
                                 st.rerun()
-                                
-                            except Exception as e:
-                                st.error(f"Erro ao salvar: {e}")
-                        else:
-                            st.toast("Senha incorreta!", icon="⛔")
-        
-        else:
-            st.caption("💡 Edite diretamente na tabela acima. O botão de salvar aparecerá automaticamente.")
-
-    else:
-        st.info("Nenhuma obra cadastrada.")
+                            except Exception as e: st.error(f"Erro ao salvar: {e}")
+                        else: st.toast("Senha incorreta!", icon="⛔")
+        else: st.caption("💡 Edite diretamente na tabela acima. O botão de salvar aparecerá automaticamente.")
+    else: st.info("Nenhuma obra cadastrada.")
