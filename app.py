@@ -425,7 +425,7 @@ if sel == "Dashboard":
             use_container_width=True
         )
 
-# --- FINANCEIRO (COM VALIDAÇÃO TOTAL) ---
+# --- FINANCEIRO (COM VALIDAÇÃO TOTAL DE OBRA E CATEGORIA) ---
 elif sel == "Financeiro":
     st.title("Financeiro")
     with st.expander("Novo Lançamento", expanded=True):
@@ -433,10 +433,12 @@ elif sel == "Financeiro":
             c1, c2 = st.columns(2)
             dt = c1.date_input("Data", date.today())
             tp = c1.selectbox("Tipo", ["Saída (Despesa)", "Entrada"])
-            ct = c1.selectbox("Categoria", CATS)
             
-            # --- ATUALIZAÇÃO: Obra inicia vazia e validação é exigida ---
-            # Adicionei a opção vazia "" na lista
+            # --- ATUALIZAÇÃO: Categoria inicia vazia ---
+            opcoes_cats = [""] + CATS
+            ct = c1.selectbox("Categoria *", opcoes_cats)
+            
+            # --- ATUALIZAÇÃO: Obra inicia vazia ---
             opcoes_obras = [""] + lista_obras
             ob = c2.selectbox("Obra *", opcoes_obras)
             
@@ -447,8 +449,10 @@ elif sel == "Financeiro":
 
             if submitted_fin:
                 erros = []
-                # Validando a seleção da Obra (não pode ser vazia)
+                # Validando a seleção da Obra e Categoria (não podem ser vazias)
                 if not ob or ob == "": erros.append("Selecione a Obra Vinculada.")
+                if not ct or ct == "": erros.append("Selecione a Categoria.")
+                
                 if vl <= 0: erros.append("O Valor deve ser maior que zero.")
                 if not dc.strip(): erros.append("A Descrição é obrigatória.")
 
