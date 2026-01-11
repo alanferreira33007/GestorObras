@@ -414,7 +414,7 @@ with st.sidebar:
 
     st.markdown("""
         <div style='margin-top: 30px; text-align: center;'>
-            <p style='color: #adb5bd; font-size: 10px;'>v1.2.1 • © 2026 Gestor Pro</p>
+            <p style='color: #adb5bd; font-size: 10px;'>v1.3.0 • © 2026 Gestor Pro</p>
         </div>
     """, unsafe_allow_html=True)
 
@@ -810,31 +810,75 @@ elif sel == "Obras":
                 with c_alert: st.warning("⚠️ Alterações pendentes. Confirme para salvar.", icon="⚠️")
                 with c_pwd: pwd_confirm = st.text_input("Senha", type="password", placeholder="Senha ADM", label_visibility="collapsed")
                 with c_btn:
+                    # ==========================================================
+                    # LÓGICA DE SALVAMENTO COM CASCATA (OBRAS -> FINANCEIRO)
+                    # ==========================================================
                     if st.button("💾 SALVAR", type="primary", use_container_width=True):
                         if pwd_confirm == st.secrets["password"]:
                             try:
                                 conn = get_conn()
                                 ws = conn.worksheet("Obras")
-                                with st.spinner("Salvando..."):
-                                    sheet_data = ws.get_all_records()
+                                ws_fin = conn.worksheet("Financeiro") # Conecta também ao financeiro
+                                
+                                with st.spinner("Salvando alterações e sincronizando Financeiro..."):
+                                    # Pega os dados originais para comparação
+                                    # df_obras contém o estado ANTES da edição (carregado da sessão)
+                                    
                                     for index, row in edited_df.iterrows():
                                         id_obra = row["ID"]
+                                        
+                                        # Encontra a linha onde atualizar na planilha Obras
                                         found_cell = ws.find(str(id_obra), in_column=1) 
+                                        
                                         if found_cell:
+                                            # Recupera a linha original para comparar nomes
                                             original_row = df_obras[df_obras["ID"] == id_obra].iloc[0]
+                                            
+                                            old_name = str(original_row["Cliente"]).strip()
+                                            new_name = str(row["Cliente"]).strip()
+                                            
+                                            # --- LÓGICA DE CASCATA (ATUALIZAÇÃO FINANCEIRA) ---
+                                            if old_name != new_name and old_name != "":
+                                                # Descobre em qual coluna está "Obra Vinculada" no Financeiro
+                                                # (Geralmente coluna F / indice 6, mas vamos buscar dinamicamente por segurança)
+                                                headers_fin = ws_fin.row_values(1)
+                                                try:
+                                                    col_idx_fin = headers_fin.index("Obra Vinculada") + 1
+                                                except ValueError:
+                                                    col_idx_fin = 6 # Fallback para coluna F se não achar cabeçalho
+                                                
+                                                # Encontra todas as células no Financeiro com o nome ANTIGO
+                                                cells_to_update = ws_fin.findall(old_name, in_column=col_idx_fin)
+                                                
+                                                # Atualiza os objetos Cell com o NOVO nome
+                                                for cell in cells_to_update:
+                                                    cell.value = new_name
+                                                
+                                                # Envia atualização em lote para o Google Sheets (muito mais rápido)
+                                                if cells_to_update:
+                                                    ws_fin.update_cells(cells_to_update)
+                                                    st.toast(f"♻️ Atualizados {len(cells_to_update)} lançamentos financeiros para '{new_name}'")
+
+                                            # --- ATUALIZAÇÃO DA PLANILHA OBRAS (NORMAL) ---
                                             update_values = []
                                             for col in OBRAS_COLS:
                                                 if col in row: val = row[col]
                                                 else: val = original_row[col]
+                                                
                                                 if isinstance(val, (pd.Timestamp, date, datetime)): val = val.strftime("%Y-%m-%d")
                                                 elif pd.isna(val): val = ""
                                                 update_values.append(val)
+                                            
+                                            # Atualiza a linha na aba Obras
                                             ws.update(f"A{found_cell.row}:K{found_cell.row}", [update_values])
-                                
-                                if "data_obras" in st.session_state: del st.session_state["data_obras"]
-                                st.cache_data.clear()
-                                st.session_state["sucesso_obra"] = True
-                                st.rerun()
+                                    
+                                    # Limpeza de cache para refletir mudanças
+                                    if "data_obras" in st.session_state: del st.session_state["data_obras"]
+                                    if "data_fin" in st.session_state: del st.session_state["data_fin"]
+                                    st.cache_data.clear()
+                                    
+                                    st.session_state["sucesso_obra"] = True
+                                    st.rerun()
                             except Exception as e: st.error(f"Erro ao salvar: {e}")
                         else: st.toast("Senha incorreta!", icon="⛔")
         else: st.caption("💡 Edite diretamente na tabela acima. O botão de salvar aparecerá automaticamente.")
