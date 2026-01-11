@@ -614,29 +614,33 @@ elif sel == "Financeiro":
         # ... (dentro de if sel == "Financeiro":)
 
         df_view = df_fin.copy()
+
+        # --- CORREÇÃO ROBUSTA (NORMALIZAÇÃO) ---
         
-        # --- INÍCIO DA CORREÇÃO ---
-        # Normalização: Converte colunas para string e remove espaços vazios (strip)
-        # Isso garante que "Obra X " seja igual a "Obra X"
+        # 1. Cria colunas auxiliares de comparação (Tudo Maiúsculo + Sem Espaços)
+        # Isso garante que a comparação ignore diferenças de caixa alta/baixa e espaços
         if "Obra Vinculada" in df_view.columns:
-            df_view["Obra Vinculada"] = df_view["Obra Vinculada"].astype(str).str.strip()
+            df_view["_temp_obra"] = df_view["Obra Vinculada"].astype(str).str.strip().str.upper()
+        else:
+            df_view["_temp_obra"] = "" # Prevenção de erro se coluna não existir
             
         if "Categoria" in df_view.columns:
-            df_view["Categoria"] = df_view["Categoria"].astype(str).str.strip()
-            
-        # Aplicação dos filtros
+            df_view["_temp_categoria"] = df_view["Categoria"].astype(str).str.strip().str.upper()
+        else:
+            df_view["_temp_categoria"] = ""
+
+        # 2. Aplica o filtro usando os valores normalizados
         if filtro_obra and filtro_obra != "Todas as Obras":
-            # Também aplicamos .strip() na variável do filtro por segurança
-            df_view = df_view[df_view["Obra Vinculada"] == filtro_obra.strip()]
+            # Normaliza também o valor que veio do SelectBox
+            filtro_obra_clean = str(filtro_obra).strip().upper()
+            df_view = df_view[df_view["_temp_obra"] == filtro_obra_clean]
             
         if filtro_cat and filtro_cat != "Todas as Categorias":
-            df_view = df_view[df_view["Categoria"] == filtro_cat.strip()]
-        # --- FIM DA CORREÇÃO ---
+            # Normaliza também o valor que veio do SelectBox
+            filtro_cat_clean = str(filtro_cat).strip().upper()
+            df_view = df_view[df_view["_temp_categoria"] == filtro_cat_clean]
 
-        total_filtrado = df_view["Valor"].sum()
-        count_filtrado = len(df_view)
-        
-        # ... (restante do código)
+        # --- FIM DA CORREÇÃO ---
 
         total_filtrado = df_view["Valor"].sum()
         count_filtrado = len(df_view)
