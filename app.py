@@ -418,7 +418,7 @@ with st.sidebar:
 
     st.markdown("""
         <div style='margin-top: 30px; text-align: center;'>
-            <p style='color: #adb5bd; font-size: 10px;'>v1.4.0 • © 2026 Gestor Pro</p>
+            <p style='color: #adb5bd; font-size: 10px;'>v1.4.1 • © 2026 Gestor Pro</p>
         </div>
     """, unsafe_allow_html=True)
 
@@ -437,6 +437,19 @@ if "data_obras" not in st.session_state or "data_fin" not in st.session_state:
 else:
     df_obras = st.session_state["data_obras"]
     df_fin = st.session_state["data_fin"]
+    
+    # ---------------------------------------------------------
+    # CORREÇÃO AUTOMÁTICA DE CACHE (SELF-HEALING)
+    # Garante que, se mudarmos as colunas no código, o app recarrega
+    # ---------------------------------------------------------
+    expected_cols = ["ID", "Data", "Tipo", "Categoria", "Descrição", "Valor", "Obra Vinculada", "Fornecedor"]
+    missing = [c for c in expected_cols if c not in df_fin.columns]
+    
+    if missing:
+        st.cache_data.clear()
+        del st.session_state["data_fin"]
+        if "data_obras" in st.session_state: del st.session_state["data_obras"]
+        st.rerun()
 
 # Cria lista de obras BASEADA nos dados limpos
 lista_obras = sorted(df_obras["Cliente"].unique().tolist()) if not df_obras.empty else []
