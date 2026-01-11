@@ -1,5 +1,3 @@
-
-
 import streamlit as st
 import pandas as pd
 import gspread
@@ -80,7 +78,7 @@ def safe_float(x) -> float:
     except: return 0.0
 
 # ==============================================================================
-# 3. MOTOR PDF (ENTERPRISE V5) - COM LAZY IMPORT
+# 3. MOTOR PDF (ENTERPRISE V5)
 # ==============================================================================
 def gerar_pdf_empresarial(escopo, periodo, vgv, custos, lucro, roi, df_cat, df_lanc):
     from reportlab.lib.pagesizes import A4
@@ -199,7 +197,7 @@ def gerar_pdf_empresarial(escopo, periodo, vgv, custos, lucro, roi, df_cat, df_l
     if not df_lanc.empty:
         df_l = df_lanc.copy()
         df_l["Valor"] = df_l["Valor"].apply(fmt_moeda)
-        # Seleção de colunas para o PDF (Fornecedor não incluído para manter layout)
+        # Seleção de colunas para o PDF
         cols_sel = ["Data", "Categoria", "Descrição", "Valor"]
         data_lanc = [cols_sel] + df_l[cols_sel].values.tolist()
         
@@ -290,7 +288,7 @@ def get_conn():
 
 @st.cache_data(ttl=120)
 def fetch_data_from_google():
-    """Busca dados brutos do Google Sheets com Cache"""
+    """Busca dados brutos do Google Sheets com Cache e LIMPEZA de STRINGS"""
     try:
         db = get_conn()
         ws_o = db.worksheet("Obras")
@@ -313,6 +311,7 @@ def fetch_data_from_google():
             for c in FIN_COLS:
                 if c not in df_f.columns: df_f[c] = None
         
+        # Conversão de Valores
         df_o["Valor Total"] = df_o["Valor Total"].apply(safe_float)
         if "Custo Previsto" in df_o.columns:
             df_o["Custo Previsto"] = df_o["Custo Previsto"].apply(safe_float)
@@ -320,6 +319,18 @@ def fetch_data_from_google():
         df_f["Valor"] = df_f["Valor"].apply(safe_float)
         df_f["Data_DT"] = pd.to_datetime(df_f["Data"], errors="coerce")
         
+        # --- CORREÇÃO DE LIMPEZA DE DADOS (STRIP) ---
+        # Garante que não haja espaços vazios no final das strings que quebrem os filtros
+        if "Obra Vinculada" in df_f.columns:
+            df_f["Obra Vinculada"] = df_f["Obra Vinculada"].astype(str).str.strip()
+        
+        if "Categoria" in df_f.columns:
+            df_f["Categoria"] = df_f["Categoria"].astype(str).str.strip()
+            
+        if "Cliente" in df_o.columns:
+            df_o["Cliente"] = df_o["Cliente"].astype(str).str.strip()
+        # ----------------------------------------------
+
         return df_o, df_f
     except Exception as e:
         st.error(f"Erro DB: {e}")
@@ -403,7 +414,7 @@ with st.sidebar:
 
     st.markdown("""
         <div style='margin-top: 30px; text-align: center;'>
-            <p style='color: #adb5bd; font-size: 10px;'>v1.2.0 • © 2026 Gestor Pro</p>
+            <p style='color: #adb5bd; font-size: 10px;'>v1.2.1 • © 2026 Gestor Pro</p>
         </div>
     """, unsafe_allow_html=True)
 
@@ -423,7 +434,8 @@ else:
     df_obras = st.session_state["data_obras"]
     df_fin = st.session_state["data_fin"]
 
-lista_obras = df_obras["Cliente"].unique().tolist() if not df_obras.empty else []
+# Cria lista de obras BASEADA nos dados limpos
+lista_obras = sorted(df_obras["Cliente"].unique().tolist()) if not df_obras.empty else []
 
 # ==============================================================================
 # 8. CONTEÚDO DAS PÁGINAS
@@ -587,7 +599,8 @@ elif sel == "Financeiro":
                 else:
                     try:
                         conn = get_conn()
-                        conn.worksheet("Financeiro").append_row([dt.strftime("%Y-%m-%d"),tp,ct,dc,vl,ob,fn])
+                        # Garante que salva sem espaços extras
+                        conn.worksheet("Financeiro").append_row([dt.strftime("%Y-%m-%d"),tp,ct.strip(),dc,vl,ob.strip(),fn])
                         
                         if "data_fin" in st.session_state: del st.session_state["data_fin"]
                         st.cache_data.clear()
@@ -600,7 +613,10 @@ elif sel == "Financeiro":
     st.markdown("### 🔍 Consultar Lançamentos")
     
     if not df_fin.empty:
-        # Filtros agora usam Selectbox (fecha sozinho) + opção "Todas..."
+        # --- CORREÇÃO DE FILTRO ---
+        df_view = df_fin.copy()
+        
+        # Filtros
         with st.expander("Filtros de Busca", expanded=True):
             c_filter1, c_filter2 = st.columns(2)
             
@@ -612,13 +628,12 @@ elif sel == "Financeiro":
                 opcoes_filtro_cat = ["Todas as Categorias"] + CATS
                 filtro_cat = st.selectbox("Filtrar por Categoria", options=opcoes_filtro_cat)
 
-        df_view = df_fin.copy()
-        
+        # Lógica de Filtro mais Robusta (String vs String)
         if filtro_obra != "Todas as Obras":
-            df_view = df_view[df_view["Obra Vinculada"] == filtro_obra]
+            df_view = df_view[df_view["Obra Vinculada"].astype(str) == str(filtro_obra)]
             
         if filtro_cat != "Todas as Categorias":
-            df_view = df_view[df_view["Categoria"] == filtro_cat]
+            df_view = df_view[df_view["Categoria"].astype(str) == str(filtro_cat)]
 
         total_filtrado = df_view["Valor"].sum()
         count_filtrado = len(df_view)
