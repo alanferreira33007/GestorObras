@@ -79,7 +79,7 @@ def safe_float(x) -> float:
     except: return 0.0
 
 # ==============================================================================
-# 3. MOTOR PDF (ENTERPRISE V5) - COM LAZY IMPORT
+# 3. MOTOR PDF (ENTERPRISE V5)
 # ==============================================================================
 def gerar_pdf_empresarial(escopo, periodo, vgv, custos, lucro, roi, df_cat, df_lanc):
     from reportlab.lib.pagesizes import A4
@@ -198,7 +198,7 @@ def gerar_pdf_empresarial(escopo, periodo, vgv, custos, lucro, roi, df_cat, df_l
     if not df_lanc.empty:
         df_l = df_lanc.copy()
         df_l["Valor"] = df_l["Valor"].apply(fmt_moeda)
-        # Seleção de colunas para o PDF (Fornecedor não incluído para manter layout)
+        # Seleção de colunas para o PDF
         cols_sel = ["Data", "Categoria", "Descrição", "Valor"]
         data_lanc = [cols_sel] + df_l[cols_sel].values.tolist()
         
@@ -289,7 +289,7 @@ def get_conn():
 
 @st.cache_data(ttl=120)
 def fetch_data_from_google():
-    """Busca dados brutos do Google Sheets com Cache"""
+    """Busca dados brutos do Google Sheets com Cache e LIMPEZA de STRINGS"""
     try:
         db = get_conn()
         ws_o = db.worksheet("Obras")
@@ -312,6 +312,7 @@ def fetch_data_from_google():
             for c in FIN_COLS:
                 if c not in df_f.columns: df_f[c] = None
         
+        # Conversão de Valores
         df_o["Valor Total"] = df_o["Valor Total"].apply(safe_float)
         if "Custo Previsto" in df_o.columns:
             df_o["Custo Previsto"] = df_o["Custo Previsto"].apply(safe_float)
@@ -319,6 +320,18 @@ def fetch_data_from_google():
         df_f["Valor"] = df_f["Valor"].apply(safe_float)
         df_f["Data_DT"] = pd.to_datetime(df_f["Data"], errors="coerce")
         
+        # --- CORREÇÃO DE LIMPEZA DE DADOS (STRIP) ---
+        # Garante que não haja espaços vazios no final das strings que quebrem os filtros
+        if "Obra Vinculada" in df_f.columns:
+            df_f["Obra Vinculada"] = df_f["Obra Vinculada"].astype(str).str.strip()
+        
+        if "Categoria" in df_f.columns:
+            df_f["Categoria"] = df_f["Categoria"].astype(str).str.strip()
+            
+        if "Cliente" in df_o.columns:
+            df_o["Cliente"] = df_o["Cliente"].astype(str).str.strip()
+        # ----------------------------------------------
+
         return df_o, df_f
     except Exception as e:
         st.error(f"Erro DB: {e}")
@@ -402,7 +415,7 @@ with st.sidebar:
 
     st.markdown("""
         <div style='margin-top: 30px; text-align: center;'>
-            <p style='color: #adb5bd; font-size: 10px;'>v1.2.0 • © 2026 Gestor Pro</p>
+            <p style='color: #adb5bd; font-size: 10px;'>v1.3.0 • © 2026 Gestor Pro</p>
         </div>
     """, unsafe_allow_html=True)
 
@@ -422,7 +435,8 @@ else:
     df_obras = st.session_state["data_obras"]
     df_fin = st.session_state["data_fin"]
 
-lista_obras = df_obras["Cliente"].unique().tolist() if not df_obras.empty else []
+# Cria lista de obras BASEADA nos dados limpos
+lista_obras = sorted(df_obras["Cliente"].unique().tolist()) if not df_obras.empty else []
 
 # ==============================================================================
 # 8. CONTEÚDO DAS PÁGINAS
@@ -586,7 +600,8 @@ elif sel == "Financeiro":
                 else:
                     try:
                         conn = get_conn()
-                        conn.worksheet("Financeiro").append_row([dt.strftime("%Y-%m-%d"),tp,ct,dc,vl,ob,fn])
+                        # Garante que salva sem espaços extras
+                        conn.worksheet("Financeiro").append_row([dt.strftime("%Y-%m-%d"),tp,ct.strip(),dc,vl,ob.strip(),fn])
                         
                         if "data_fin" in st.session_state: del st.session_state["data_fin"]
                         st.cache_data.clear()
@@ -599,7 +614,10 @@ elif sel == "Financeiro":
     st.markdown("### 🔍 Consultar Lançamentos")
     
     if not df_fin.empty:
-        # Filtros agora usam Selectbox (fecha sozinho) + opção "Todas..."
+        # --- CORREÇÃO DE FILTRO ---
+        df_view = df_fin.copy()
+        
+        # Filtros
         with st.expander("Filtros de Busca", expanded=True):
             c_filter1, c_filter2 = st.columns(2)
             
@@ -611,13 +629,12 @@ elif sel == "Financeiro":
                 opcoes_filtro_cat = ["Todas as Categorias"] + CATS
                 filtro_cat = st.selectbox("Filtrar por Categoria", options=opcoes_filtro_cat)
 
-        df_view = df_fin.copy()
-        
+        # Lógica de Filtro mais Robusta (String vs String)
         if filtro_obra != "Todas as Obras":
-            df_view = df_view[df_view["Obra Vinculada"] == filtro_obra]
+            df_view = df_view[df_view["Obra Vinculada"].astype(str) == str(filtro_obra)]
             
         if filtro_cat != "Todas as Categorias":
-            df_view = df_view[df_view["Categoria"] == filtro_cat]
+            df_view = df_view[df_view["Categoria"].astype(str) == str(filtro_cat)]
 
         total_filtrado = df_view["Valor"].sum()
         count_filtrado = len(df_view)
@@ -794,31 +811,75 @@ elif sel == "Obras":
                 with c_alert: st.warning("⚠️ Alterações pendentes. Confirme para salvar.", icon="⚠️")
                 with c_pwd: pwd_confirm = st.text_input("Senha", type="password", placeholder="Senha ADM", label_visibility="collapsed")
                 with c_btn:
+                    # ==========================================================
+                    # LÓGICA DE SALVAMENTO COM CASCATA (OBRAS -> FINANCEIRO)
+                    # ==========================================================
                     if st.button("💾 SALVAR", type="primary", use_container_width=True):
                         if pwd_confirm == st.secrets["password"]:
                             try:
                                 conn = get_conn()
                                 ws = conn.worksheet("Obras")
-                                with st.spinner("Salvando..."):
-                                    sheet_data = ws.get_all_records()
+                                ws_fin = conn.worksheet("Financeiro") # Conecta também ao financeiro
+                                
+                                with st.spinner("Salvando alterações e sincronizando Financeiro..."):
+                                    # Pega os dados originais para comparação
+                                    # df_obras contém o estado ANTES da edição (carregado da sessão)
+                                    
                                     for index, row in edited_df.iterrows():
                                         id_obra = row["ID"]
+                                        
+                                        # Encontra a linha onde atualizar na planilha Obras
                                         found_cell = ws.find(str(id_obra), in_column=1) 
+                                        
                                         if found_cell:
+                                            # Recupera a linha original para comparar nomes
                                             original_row = df_obras[df_obras["ID"] == id_obra].iloc[0]
+                                            
+                                            old_name = str(original_row["Cliente"]).strip()
+                                            new_name = str(row["Cliente"]).strip()
+                                            
+                                            # --- LÓGICA DE CASCATA (ATUALIZAÇÃO FINANCEIRA) ---
+                                            if old_name != new_name and old_name != "":
+                                                # Descobre em qual coluna está "Obra Vinculada" no Financeiro
+                                                # (Geralmente coluna F / indice 6, mas vamos buscar dinamicamente por segurança)
+                                                headers_fin = ws_fin.row_values(1)
+                                                try:
+                                                    col_idx_fin = headers_fin.index("Obra Vinculada") + 1
+                                                except ValueError:
+                                                    col_idx_fin = 6 # Fallback para coluna F se não achar cabeçalho
+                                                
+                                                # Encontra todas as células no Financeiro com o nome ANTIGO
+                                                cells_to_update = ws_fin.findall(old_name, in_column=col_idx_fin)
+                                                
+                                                # Atualiza os objetos Cell com o NOVO nome
+                                                for cell in cells_to_update:
+                                                    cell.value = new_name
+                                                
+                                                # Envia atualização em lote para o Google Sheets (muito mais rápido)
+                                                if cells_to_update:
+                                                    ws_fin.update_cells(cells_to_update)
+                                                    st.toast(f"♻️ Atualizados {len(cells_to_update)} lançamentos financeiros para '{new_name}'")
+
+                                            # --- ATUALIZAÇÃO DA PLANILHA OBRAS (NORMAL) ---
                                             update_values = []
                                             for col in OBRAS_COLS:
                                                 if col in row: val = row[col]
                                                 else: val = original_row[col]
+                                                
                                                 if isinstance(val, (pd.Timestamp, date, datetime)): val = val.strftime("%Y-%m-%d")
                                                 elif pd.isna(val): val = ""
                                                 update_values.append(val)
+                                            
+                                            # Atualiza a linha na aba Obras
                                             ws.update(f"A{found_cell.row}:K{found_cell.row}", [update_values])
-                                
-                                if "data_obras" in st.session_state: del st.session_state["data_obras"]
-                                st.cache_data.clear()
-                                st.session_state["sucesso_obra"] = True
-                                st.rerun()
+                                    
+                                    # Limpeza de cache para refletir mudanças
+                                    if "data_obras" in st.session_state: del st.session_state["data_obras"]
+                                    if "data_fin" in st.session_state: del st.session_state["data_fin"]
+                                    st.cache_data.clear()
+                                    
+                                    st.session_state["sucesso_obra"] = True
+                                    st.rerun()
                             except Exception as e: st.error(f"Erro ao salvar: {e}")
                         else: st.toast("Senha incorreta!", icon="⛔")
         else: st.caption("💡 Edite diretamente na tabela acima. O botão de salvar aparecerá automaticamente.")
