@@ -1,4 +1,3 @@
-
 import streamlit as st
 import pandas as pd
 import gspread
@@ -99,6 +98,32 @@ def ensure_financeiro_id(ws_fin):
     if n_rows > 1:
         ids = [[i] for i in range(1, n_rows)]
         ws_fin.update(f"A2:A{n_rows}", ids)
+
+def ensure_financeiro_schema(ws_fin, required_cols):
+    """
+    Migração segura: garante ID e garante colunas novas (ex.: Forma Pagamento) sem quebrar base antiga.
+    - ID: sempre garante como 1ª coluna
+    - colunas ausentes: adiciona no final e preenche vazio nas linhas existentes
+    """
+    ensure_financeiro_id(ws_fin)
+    headers = ws_fin.row_values(1)
+
+    missing = [c for c in required_cols if c not in headers]
+    if not missing:
+        return
+
+    n_rows = len(ws_fin.get_all_values())
+    for col_name in missing:
+        headers = ws_fin.row_values(1)
+        new_col = len(headers) + 1
+
+        ws_fin.update_cell(1, new_col, col_name)
+
+        if n_rows > 1:
+            from gspread.utils import rowcol_to_a1
+            start = rowcol_to_a1(2, new_col)
+            end = rowcol_to_a1(n_rows, new_col)
+            ws_fin.update(f"{start}:{end}", [[""]]*(n_rows-1))
 
 # ==============================================================================
 # 3. MOTOR PDF (ENTERPRISE V5)
@@ -303,7 +328,8 @@ OBRAS_COLS = [
     "Quartos", "Custo Previsto"
 ]
 
-FIN_COLS = ["ID", "Data", "Tipo", "Categoria", "Descrição", "Valor", "Obra Vinculada", "Fornecedor"]
+# ✅ COLUNA NOVA: Forma Pagamento
+FIN_COLS = ["ID", "Data", "Tipo", "Categoria", "Descrição", "Valor", "Obra Vinculada", "Fornecedor", "Forma Pagamento"]
 
 # ✅ NOVA CATEGORIA ADICIONADA AQUI
 CATS = [
@@ -316,6 +342,18 @@ CATS = [
     "Outros"
 ]
 
+# ✅ FORMAS DE PAGAMENTO
+PAGAMENTOS = [
+    "PIX",
+    "Cartão de Crédito",
+    "Cartão de Débito",
+    "Dinheiro",
+    "Transferência",
+    "Boleto",
+    "Cheque",
+    "Outro"
+]
+
 @st.cache_resource
 def get_conn():
     creds = json.loads(st.secrets["gcp_service_account"]["json_content"], strict=False)
@@ -326,10 +364,10 @@ def get_conn():
         )
     ).open("GestorObras_DB")
 
-    # Migração segura: adiciona ID no Financeiro se não existir
+    # Migração segura: ID + colunas novas (ex.: Forma Pagamento)
     try:
         ws_fin = db.worksheet("Financeiro")
-        ensure_financeiro_id(ws_fin)
+        ensure_financeiro_schema(ws_fin, FIN_COLS)
     except Exception:
         pass
 
@@ -354,7 +392,7 @@ def fetch_data_from_google():
 
         ws_f = db.worksheet("Financeiro")
         try:
-            ensure_financeiro_id(ws_f)
+            ensure_financeiro_schema(ws_f, FIN_COLS)
         except Exception:
             pass
 
@@ -388,6 +426,10 @@ def fetch_data_from_google():
 
         if "Fornecedor" in df_f.columns:
             df_f["Fornecedor"] = df_f["Fornecedor"].astype(str).str.strip()
+
+        # ✅ NOVO: limpeza Forma Pagamento
+        if "Forma Pagamento" in df_f.columns:
+            df_f["Forma Pagamento"] = df_f["Forma Pagamento"].astype(str).str.strip()
 
         if "Cliente" in df_o.columns:
             df_o["Cliente"] = df_o["Cliente"].astype(str).str.strip()
@@ -479,7 +521,7 @@ with st.sidebar:
 
     st.markdown("""
         <div style='margin-top: 30px; text-align: center;'>
-            <p style='color: #adb5bd; font-size: 10px;'>v1.3.0 • © 2026 Gestor Pro</p>
+            <p style='color: #adb5bd; font-size: 10px;'>v1.4.0 • © 2026 Gestor Pro</p>
         </div>
     """, unsafe_allow_html=True)
 
@@ -625,6 +667,7 @@ elif sel == "Financeiro":
         st.session_state["k_fin_tipo"] = "Saída (Despesa)"
         st.session_state["k_fin_cat"] = ""
         st.session_state["k_fin_obra"] = ""
+        st.session_state["k_fin_pag"] = ""   # ✅ novo reset
         st.session_state["k_fin_valor"] = 0.0
         st.session_state["k_fin_desc"] = ""
         st.session_state["k_fin_forn"] = ""
@@ -638,6 +681,8 @@ elif sel == "Financeiro":
         st.session_state.k_fin_cat = ""
     if "k_fin_obra" not in st.session_state:
         st.session_state.k_fin_obra = ""
+    if "k_fin_pag" not in st.session_state:     # ✅ novo
+        st.session_state.k_fin_pag = ""
     if "k_fin_valor" not in st.session_state:
         st.session_state.k_fin_valor = 0.0
     if "k_fin_desc" not in st.session_state:
@@ -656,13 +701,17 @@ elif sel == "Financeiro":
             with c_row1_3:
                 vl = st.number_input("Valor R$ *", min_value=0.0, format="%.2f", step=100.0, value=st.session_state.k_fin_valor, key="k_fin_valor_input")
 
-            c_row2_1, c_row2_2 = st.columns([1, 1])
+            # ✅ agora com 3 colunas (Obra, Categoria, Pagamento)
+            c_row2_1, c_row2_2, c_row2_3 = st.columns([1, 1, 1])
             with c_row2_1:
                 opcoes_obras = [""] + lista_obras
                 ob = st.selectbox("Obra *", opcoes_obras, key="k_fin_obra")
             with c_row2_2:
                 opcoes_cats = [""] + CATS
                 ct = st.selectbox("Categoria *", opcoes_cats, key="k_fin_cat")
+            with c_row2_3:
+                opcoes_pag = [""] + PAGAMENTOS
+                pg = st.selectbox("Forma de Pagamento *", opcoes_pag, key="k_fin_pag")
 
             c_row3_1, c_row3_2 = st.columns([1, 1])
             with c_row3_1:
@@ -680,6 +729,8 @@ elif sel == "Financeiro":
                     erros.append("Selecione a Obra Vinculada.")
                 if not ct or ct == "":
                     erros.append("Selecione a Categoria.")
+                if not pg or pg == "":
+                    erros.append("Selecione a Forma de Pagamento.")
                 if vl <= 0:
                     erros.append("O Valor deve ser maior que zero.")
                 if not dc.strip():
@@ -696,7 +747,7 @@ elif sel == "Financeiro":
                     try:
                         conn = get_conn()
                         ws_fin = conn.worksheet("Financeiro")
-                        ensure_financeiro_id(ws_fin)
+                        ensure_financeiro_schema(ws_fin, FIN_COLS)
 
                         if not df_fin.empty and "ID" in df_fin.columns:
                             ids_exist = pd.to_numeric(df_fin["ID"], errors="coerce").fillna(0)
@@ -704,6 +755,7 @@ elif sel == "Financeiro":
                         else:
                             new_id = 1
 
+                        # ✅ adiciona Forma Pagamento no final
                         ws_fin.append_row([
                             new_id,
                             dt.strftime("%Y-%m-%d"),
@@ -712,7 +764,8 @@ elif sel == "Financeiro":
                             dc.strip(),
                             float(vl),
                             ob.strip(),
-                            fn.strip()
+                            fn.strip(),
+                            pg.strip()
                         ])
 
                         if "data_fin" in st.session_state:
@@ -755,7 +808,7 @@ elif sel == "Financeiro":
         # -----------------------------
         # TABELA EDITÁVEL + EXCLUSÃO (VISUAL MELHORADO)
         # -----------------------------
-        cols_order = ["ID", "Data", "Tipo", "Obra Vinculada", "Categoria", "Fornecedor", "Descrição", "Valor"]
+        cols_order = ["ID", "Data", "Tipo", "Forma Pagamento", "Obra Vinculada", "Categoria", "Fornecedor", "Descrição", "Valor"]
         for c in cols_order:
             if c not in df_view.columns:
                 df_view[c] = ""
@@ -782,6 +835,7 @@ elif sel == "Financeiro":
                 "Excluir": st.column_config.CheckboxColumn("🗑️ Excluir?", help="Marque para excluir e clique em SALVAR", width=90),
                 "Data": st.column_config.DateColumn("Data", format="DD/MM/YYYY", required=True, width=110),
                 "Tipo": st.column_config.SelectboxColumn("Tipo", options=["Saída (Despesa)", "Entrada"], required=True, width=140),
+                "Forma Pagamento": st.column_config.SelectboxColumn("Pagamento", options=[""] + PAGAMENTOS, required=False, width=160),
                 "Obra Vinculada": st.column_config.SelectboxColumn("Obra", options=[""] + lista_obras, required=True, width=220),
                 "Categoria": st.column_config.SelectboxColumn("Categoria", options=[""] + CATS, required=True, width=170),
                 "Fornecedor": st.column_config.TextColumn("Fornecedor", width=160),
@@ -834,7 +888,9 @@ elif sel == "Financeiro":
             d = df.copy()
             d["Data"] = d["Data"].astype(str)
             d["Valor"] = pd.to_numeric(d["Valor"], errors="coerce").fillna(0.0).astype(float)
-            for c in ["Tipo", "Obra Vinculada", "Categoria", "Fornecedor", "Descrição"]:
+            for c in ["Tipo", "Forma Pagamento", "Obra Vinculada", "Categoria", "Fornecedor", "Descrição"]:
+                if c not in d.columns:
+                    d[c] = ""
                 d[c] = d[c].astype(str).fillna("").str.strip()
             d["Excluir"] = d["Excluir"].astype(bool)
             d["ID"] = pd.to_numeric(d["ID"], errors="coerce").fillna(0).astype(int)
@@ -883,6 +939,8 @@ elif sel == "Financeiro":
                                 if cat == "Material" and not forn:
                                     erros.append(f"ID {int(r['ID'])}: Fornecedor é obrigatório para 'Material'.")
 
+                                # Obs.: Forma Pagamento não é obrigatória na edição para não travar registros antigos.
+
                             if erros:
                                 st.error("⚠️ Corrija antes de salvar:")
                                 for e in erros:
@@ -891,7 +949,7 @@ elif sel == "Financeiro":
                                 try:
                                     conn = get_conn()
                                     ws_fin = conn.worksheet("Financeiro")
-                                    ensure_financeiro_id(ws_fin)
+                                    ensure_financeiro_schema(ws_fin, FIN_COLS)
 
                                     headers_fin = ws_fin.row_values(1)
                                     col_id = headers_fin.index("ID") + 1
