@@ -83,6 +83,25 @@ def safe_float(x) -> float:
     except:
         return 0.0
 
+def ensure_columns(ws, required_cols):
+    """
+    Garante que a worksheet tenha todas as colunas necessárias no cabeçalho.
+    Se faltarem, adiciona colunas ao final (não reordena colunas existentes).
+    """
+    headers = ws.row_values(1)
+    if not headers:
+        ws.update("A1", [required_cols])
+        return
+
+    missing = [c for c in required_cols if c not in headers]
+    if missing:
+        try:
+            ws.add_cols(len(missing))
+        except Exception:
+            pass
+        new_headers = headers + missing
+        ws.update("A1", [new_headers])
+
 def ensure_financeiro_id(ws_fin):
     """
     Garante que a aba Financeiro tenha a coluna ID (primeira coluna).
@@ -98,6 +117,53 @@ def ensure_financeiro_id(ws_fin):
     if n_rows > 1:
         ids = [[i] for i in range(1, n_rows)]
         ws_fin.update(f"A2:A{n_rows}", ids)
+
+def ensure_checklist_sheet(db):
+    """
+    Garante que exista a aba Checklist e que contenha as colunas necessárias.
+    Também garante IDs sequenciais caso a coluna ID esteja vazia.
+    """
+    CHECK_COLS = ["ID", "Obra", "Item", "Status", "Criado Em", "Concluído Em", "Observação"]
+
+    try:
+        ws = db.worksheet("Checklist")
+    except Exception:
+        ws = db.add_worksheet(title="Checklist", rows="2000", cols="12")
+        ws.update("A1", [CHECK_COLS])
+        return ws
+
+    # Garante colunas
+    ensure_columns(ws, CHECK_COLS)
+
+    # Garante cabeçalho (se a planilha existe mas a primeira linha está vazia)
+    headers = ws.row_values(1)
+    if not headers:
+        ws.update("A1", [CHECK_COLS])
+        headers = CHECK_COLS
+
+    # Garante IDs (se coluna ID existe mas está vazia nas linhas)
+    try:
+        col_id = headers.index("ID") + 1
+        col_vals = ws.col_values(col_id)  # inclui cabeçalho
+        if len(col_vals) <= 1:
+            return ws
+        data_vals = col_vals[1:]
+        # se quase tudo vazio -> preencher
+        if sum([1 for v in data_vals if str(v).strip() != ""]) == 0:
+            n_rows = len(ws.get_all_values())
+            if n_rows > 1:
+                ids = [[i] for i in range(1, n_rows)]
+                start_col_letter = "A"
+                # se ID não é coluna A, ainda assim atualiza pelo range de coluna específica
+                # (mais simples: usa rowcol_to_a1)
+                from gspread.utils import rowcol_to_a1
+                a1_start = rowcol_to_a1(2, col_id)
+                a1_end = rowcol_to_a1(n_rows, col_id)
+                ws.update(f"{a1_start}:{a1_end}", ids)
+    except Exception:
+        pass
+
+    return ws
 
 # ==============================================================================
 # 3. MOTOR PDF (ENTERPRISE V5)
@@ -304,7 +370,6 @@ OBRAS_COLS = [
 
 FIN_COLS = ["ID", "Data", "Tipo", "Categoria", "Descrição", "Valor", "Obra Vinculada", "Fornecedor"]
 
-# ✅ NOVA CATEGORIA ADICIONADA AQUI
 CATS = [
     "Material",
     "Mão de Obra",
@@ -313,6 +378,21 @@ CATS = [
     "Impostos",
     "Emolumentos Cartorários",
     "Outros"
+]
+
+CHECK_COLS = ["ID", "Obra", "Item", "Status", "Criado Em", "Concluído Em", "Observação"]
+CHECK_STATUS = ["Pendente", "Em andamento", "Concluído"]
+
+CHECKLIST_PADRAO = [
+    "Documentos: Matrícula atualizada do imóvel",
+    "Documentos: Escritura/Contrato de compra e venda",
+    "Cartório: ITBI pago",
+    "Cartório: Registro da compra (RGI)",
+    "Obra: Alvará / licença (se aplicável)",
+    "Obra: Início da obra registrado (data)",
+    "Obra: Habite-se (se aplicável)",
+    "Venda: Contrato assinado",
+    "Venda: Registro/averbação (se aplicável)",
 ]
 
 @st.cache_resource
@@ -325,10 +405,15 @@ def get_conn():
         )
     ).open("GestorObras_DB")
 
-    # Migração segura: adiciona ID no Financeiro se não existir
+    # Migrações seguras
     try:
         ws_fin = db.worksheet("Financeiro")
         ensure_financeiro_id(ws_fin)
+    except Exception:
+        pass
+
+    try:
+        ensure_checklist_sheet(db)
     except Exception:
         pass
 
@@ -336,10 +421,11 @@ def get_conn():
 
 @st.cache_data(ttl=120)
 def fetch_data_from_google():
-    """Busca dados brutos do Google Sheets com Cache e LIMPEZA de STRINGS"""
+    """Busca dados do Google Sheets com cache e limpeza."""
     try:
         db = get_conn()
 
+        # Obras
         ws_o = db.worksheet("Obras")
         raw_o = ws_o.get_all_records()
         df_o = pd.DataFrame(raw_o)
@@ -351,6 +437,7 @@ def fetch_data_from_google():
                 if c not in df_o.columns:
                     df_o[c] = None
 
+        # Financeiro
         ws_f = db.worksheet("Financeiro")
         try:
             ensure_financeiro_id(ws_f)
@@ -367,34 +454,51 @@ def fetch_data_from_google():
                 if c not in df_f.columns:
                     df_f[c] = None
 
-        # Conversão de Valores
+        # Checklist
+        ws_c = ensure_checklist_sheet(db)
+        raw_c = ws_c.get_all_records()
+        df_c = pd.DataFrame(raw_c)
+        if df_c.empty:
+            df_c = pd.DataFrame(columns=CHECK_COLS)
+        else:
+            for c in CHECK_COLS:
+                if c not in df_c.columns:
+                    df_c[c] = None
+
+        # Conversões / limpeza
         df_o["Valor Total"] = df_o["Valor Total"].apply(safe_float)
         if "Custo Previsto" in df_o.columns:
             df_o["Custo Previsto"] = df_o["Custo Previsto"].apply(safe_float)
 
-        if "ID" in df_f.columns:
-            df_f["ID"] = pd.to_numeric(df_f["ID"], errors="coerce").fillna(0).astype(int)
-
-        df_f["Valor"] = df_f["Valor"].apply(safe_float)
-        df_f["Data_DT"] = pd.to_datetime(df_f["Data"], errors="coerce")
-
-        # LIMPEZA DE DADOS (STRIP)
-        if "Obra Vinculada" in df_f.columns:
-            df_f["Obra Vinculada"] = df_f["Obra Vinculada"].astype(str).str.strip()
-
-        if "Categoria" in df_f.columns:
-            df_f["Categoria"] = df_f["Categoria"].astype(str).str.strip()
-
-        if "Fornecedor" in df_f.columns:
-            df_f["Fornecedor"] = df_f["Fornecedor"].astype(str).str.strip()
-
         if "Cliente" in df_o.columns:
             df_o["Cliente"] = df_o["Cliente"].astype(str).str.strip()
 
-        return df_o, df_f
+        if "ID" in df_f.columns:
+            df_f["ID"] = pd.to_numeric(df_f["ID"], errors="coerce").fillna(0).astype(int)
+        df_f["Valor"] = df_f["Valor"].apply(safe_float)
+        df_f["Data_DT"] = pd.to_datetime(df_f["Data"], errors="coerce")
+
+        for col in ["Obra Vinculada", "Categoria", "Fornecedor", "Descrição", "Tipo"]:
+            if col in df_f.columns:
+                df_f[col] = df_f[col].astype(str).str.strip()
+
+        if "ID" in df_c.columns:
+            df_c["ID"] = pd.to_numeric(df_c["ID"], errors="coerce").fillna(0).astype(int)
+        if "Obra" in df_c.columns:
+            df_c["Obra"] = df_c["Obra"].astype(str).str.strip()
+        if "Item" in df_c.columns:
+            df_c["Item"] = df_c["Item"].astype(str).str.strip()
+        if "Status" in df_c.columns:
+            df_c["Status"] = df_c["Status"].astype(str).str.strip()
+
+        df_c["Criado Em_DT"] = pd.to_datetime(df_c.get("Criado Em", None), errors="coerce")
+        df_c["Concluído Em_DT"] = pd.to_datetime(df_c.get("Concluído Em", None), errors="coerce")
+
+        return df_o, df_f, df_c
+
     except Exception as e:
         st.error(f"Erro DB: {e}")
-        return pd.DataFrame(), pd.DataFrame()
+        return pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
 
 # ==============================================================================
 # 5. APP PRINCIPAL
@@ -410,9 +514,10 @@ def password_entered():
             del st.session_state["login_error"]
 
         try:
-            df_o, df_f = fetch_data_from_google()
+            df_o, df_f, df_c = fetch_data_from_google()
             st.session_state["data_obras"] = df_o
             st.session_state["data_fin"] = df_f
+            st.session_state["data_chk"] = df_c
         except Exception as e:
             st.error(f"Erro ao sincronizar login: {e}")
     else:
@@ -424,11 +529,11 @@ def logout():
     st.session_state.auth = False
     if "password_input" in st.session_state:
         st.session_state["password_input"] = ""
-    if "data_obras" in st.session_state:
-        del st.session_state["data_obras"]
-    if "data_fin" in st.session_state:
-        del st.session_state["data_fin"]
+    for k in ["data_obras", "data_fin", "data_chk"]:
+        if k in st.session_state:
+            del st.session_state[k]
 
+# --- TELA DE LOGIN ---
 if not st.session_state.auth:
     _, c2, _ = st.columns([1, 1, 1])
     with c2:
@@ -445,7 +550,7 @@ if not st.session_state.auth:
 with st.sidebar:
     st.markdown("""
         <div style='text-align: left; margin-bottom: 20px;'>
-            <h1 style='color: #2D6A4F; font-size: 24px; margin-bottom: 0px;'>GESTOR PRO</h1>
+            <h1 style='color: #2D6A4F; font-size': 24px; margin-bottom: 0px;'>GESTOR PRO</h1>
             <p style='color: gray; font-size: 12px; margin-top: 0px;'>Incorporação & Obras</p>
         </div>
     """, unsafe_allow_html=True)
@@ -478,25 +583,27 @@ with st.sidebar:
 
     st.markdown("""
         <div style='margin-top: 30px; text-align: center;'>
-            <p style='color: #adb5bd; font-size: 10px;'>v1.3.0 • © 2026 Gestor Pro</p>
+            <p style='color: #adb5bd; font-size: 10px;'>v1.4.0 • © 2026 Gestor Pro</p>
         </div>
     """, unsafe_allow_html=True)
 
 # ==============================================================================
 # 7. GESTÃO DE DADOS (CACHE)
 # ==============================================================================
-if "data_obras" not in st.session_state or "data_fin" not in st.session_state:
+if ("data_obras" not in st.session_state) or ("data_fin" not in st.session_state) or ("data_chk" not in st.session_state):
     with st.spinner("Sincronizando base de dados..."):
         try:
-            df_obras, df_fin = fetch_data_from_google()
+            df_obras, df_fin, df_chk = fetch_data_from_google()
             st.session_state["data_obras"] = df_obras
             st.session_state["data_fin"] = df_fin
+            st.session_state["data_chk"] = df_chk
         except Exception as e:
             st.error(f"Falha na conexão: {e}")
             st.stop()
 else:
     df_obras = st.session_state["data_obras"]
     df_fin = st.session_state["data_fin"]
+    df_chk = st.session_state["data_chk"]
 
 lista_obras = sorted(df_obras["Cliente"].unique().tolist()) if not df_obras.empty else []
 
@@ -521,10 +628,9 @@ if sel == "Dashboard":
     with c_btn:
         if st.button("🔄 Atualizar Dados", use_container_width=True):
             st.cache_data.clear()
-            if "data_obras" in st.session_state:
-                del st.session_state["data_obras"]
-            if "data_fin" in st.session_state:
-                del st.session_state["data_fin"]
+            for k in ["data_obras", "data_fin", "data_chk"]:
+                if k in st.session_state:
+                    del st.session_state[k]
             st.rerun()
 
     if escopo == "Visão Geral (Todas as Obras)":
@@ -751,16 +857,13 @@ elif sel == "Financeiro":
 
         st.caption(f"Exibindo **{count_filtrado}** lançamentos | Total Filtrado: **{fmt_moeda(total_filtrado)}**")
 
-        # -----------------------------
-        # TABELA EDITÁVEL + EXCLUSÃO (VISUAL MELHORADO)
-        # -----------------------------
+        # Tabela editável (com exclusão)
         cols_order = ["ID", "Data", "Tipo", "Obra Vinculada", "Categoria", "Fornecedor", "Descrição", "Valor"]
         for c in cols_order:
             if c not in df_view.columns:
                 df_view[c] = ""
 
         df_to_edit = df_view[cols_order].copy()
-
         df_to_edit["ID"] = pd.to_numeric(df_to_edit["ID"], errors="coerce").fillna(0).astype(int)
         df_to_edit["Data"] = pd.to_datetime(df_to_edit["Data"], errors="coerce").dt.date
         df_to_edit["Valor"] = pd.to_numeric(df_to_edit["Valor"], errors="coerce").fillna(0.0)
@@ -782,54 +885,14 @@ elif sel == "Financeiro":
                 "Data": st.column_config.DateColumn("Data", format="DD/MM/YYYY", required=True, width=110),
                 "Tipo": st.column_config.SelectboxColumn("Tipo", options=["Saída (Despesa)", "Entrada"], required=True, width=140),
                 "Obra Vinculada": st.column_config.SelectboxColumn("Obra", options=[""] + lista_obras, required=True, width=220),
-                "Categoria": st.column_config.SelectboxColumn("Categoria", options=[""] + CATS, required=True, width=170),
+                "Categoria": st.column_config.SelectboxColumn("Categoria", options=[""] + CATS, required=True, width=190),
                 "Fornecedor": st.column_config.TextColumn("Fornecedor", width=160),
                 "Descrição": st.column_config.TextColumn("Descrição", width="large", required=True),
                 "Valor": st.column_config.NumberColumn("Valor", format="R$ %.2f", min_value=0, width=120),
             }
         )
 
-        # -----------------------------
-        # RESUMO VISUAL (PRÉ-SALVAMENTO) — só UI
-        # -----------------------------
-        try:
-            total_atual = float(pd.to_numeric(edited_df["Valor"], errors="coerce").fillna(0.0).sum())
-            marcados = int(edited_df["Excluir"].astype(bool).sum())
-            valor_marcado = float(pd.to_numeric(edited_df.loc[edited_df["Excluir"] == True, "Valor"], errors="coerce").fillna(0.0).sum()) if marcados > 0 else 0.0
-            total_pos_excluir = total_atual - valor_marcado
-        except Exception:
-            total_atual, marcados, valor_marcado, total_pos_excluir = 0.0, 0, 0.0, 0.0
-
-        with st.container(border=True):
-            st.markdown("#### 📌 Resumo da tabela (antes de salvar)")
-            m1, m2, m3, m4 = st.columns(4)
-            m1.metric("Total (Filtro)", fmt_moeda(total_atual))
-            m2.metric("Marcados p/ excluir", f"{marcados}")
-            m3.metric("Valor a excluir", fmt_moeda(valor_marcado))
-            m4.metric("Total após excluir", fmt_moeda(total_pos_excluir))
-
-        if marcados > 0:
-            st.warning(f"🗑️ Você marcou **{marcados}** lançamento(s) para exclusão. Ao salvar, eles serão removidos.", icon="⚠️")
-            st.markdown("##### 🗑️ Marcados para exclusão (prévia)")
-
-            cols_preview = ["ID", "Data", "Obra Vinculada", "Categoria", "Fornecedor", "Descrição", "Valor"]
-            df_del_preview = edited_df.loc[edited_df["Excluir"] == True, cols_preview].copy()
-
-            def _style_del(_df):
-                return _df.style.apply(lambda row: ["background-color: #ffe3e3"] * len(row), axis=1)
-
-            st.dataframe(
-                _style_del(df_del_preview),
-                use_container_width=True,
-                hide_index=True,
-                height=200,
-                column_config={"Valor": st.column_config.NumberColumn(format="R$ %.2f")}
-            )
-
-        # -----------------------------
-        # DETECÇÃO DE MUDANÇAS (MESMA FUNCIONALIDADE)
-        # -----------------------------
-        def _norm_df(df):
+        def _norm_fin(df):
             d = df.copy()
             d["Data"] = d["Data"].astype(str)
             d["Valor"] = pd.to_numeric(d["Valor"], errors="coerce").fillna(0.0).astype(float)
@@ -839,9 +902,7 @@ elif sel == "Financeiro":
             d["ID"] = pd.to_numeric(d["ID"], errors="coerce").fillna(0).astype(int)
             return d
 
-        base_cmp = _norm_df(df_to_edit)
-        edit_cmp = _norm_df(edited_df)
-        has_changes = not edit_cmp.equals(base_cmp)
+        has_changes = not _norm_fin(edited_df).equals(_norm_fin(df_to_edit))
 
         st.write("")
         if has_changes:
@@ -856,11 +917,11 @@ elif sel == "Financeiro":
                         if pwd_confirm != st.secrets["password"]:
                             st.toast("Senha incorreta!", icon="⛔")
                         else:
+                            # validações simples
                             erros = []
                             for _, r in edited_df.iterrows():
                                 if bool(r.get("Excluir")):
                                     continue
-
                                 obra = str(r.get("Obra Vinculada", "")).strip()
                                 cat = str(r.get("Categoria", "")).strip()
                                 desc = str(r.get("Descrição", "")).strip()
@@ -877,7 +938,6 @@ elif sel == "Financeiro":
                                     erros.append(f"ID {int(r['ID'])}: Descrição é obrigatória.")
                                 if val <= 0:
                                     erros.append(f"ID {int(r['ID'])}: Valor deve ser > 0.")
-
                                 forn = str(r.get("Fornecedor", "")).strip()
                                 if cat == "Material" and not forn:
                                     erros.append(f"ID {int(r['ID'])}: Fornecedor é obrigatório para 'Material'.")
@@ -891,11 +951,10 @@ elif sel == "Financeiro":
                                     conn = get_conn()
                                     ws_fin = conn.worksheet("Financeiro")
                                     ensure_financeiro_id(ws_fin)
-
                                     headers_fin = ws_fin.row_values(1)
                                     col_id = headers_fin.index("ID") + 1
 
-                                    # 1) EXCLUSÕES (deleta de baixo pra cima)
+                                    # Excluir (de baixo para cima)
                                     rows_del = []
                                     df_del = edited_df[edited_df["Excluir"] == True].copy()
                                     for _, rr in df_del.iterrows():
@@ -907,9 +966,8 @@ elif sel == "Financeiro":
                                     for rr in sorted(rows_del, reverse=True):
                                         ws_fin.delete_rows(rr)
 
-                                    # 2) ATUALIZAÇÕES
+                                    # Atualizar
                                     from gspread.utils import rowcol_to_a1
-
                                     upd_count = 0
                                     df_upd = edited_df[edited_df["Excluir"] == False].copy()
 
@@ -939,11 +997,11 @@ elif sel == "Financeiro":
                                         start = rowcol_to_a1(cell.row, 1)
                                         end = rowcol_to_a1(cell.row, len(headers_fin))
                                         ws_fin.update(f"{start}:{end}", [update_values])
-
                                         upd_count += 1
 
-                                    if "data_fin" in st.session_state:
-                                        del st.session_state["data_fin"]
+                                    for k in ["data_fin"]:
+                                        if k in st.session_state:
+                                            del st.session_state[k]
                                     st.cache_data.clear()
 
                                     st.toast(f"✅ Salvo! {upd_count} atualizações • {len(rows_del)} exclusões", icon="✅")
@@ -961,7 +1019,6 @@ elif sel == "Financeiro":
             dmin = df_view["Data_DT"].min().strftime("%d/%m/%Y")
             dmax = df_view["Data_DT"].max().strftime("%d/%m/%Y")
             per_str = f"De {dmin} até {dmax}"
-
             escopo_pdf = filtro_obra if filtro_obra != "Todas as Obras" else "Visão Geral (Filtro)"
 
             cols_pdf = ["Data", "Categoria", "Descrição", "Valor"]
@@ -1010,26 +1067,17 @@ elif sel == "Obras":
         st.session_state["k_ob_prazo"] = ""
         st.session_state["sucesso_obra"] = False
 
-    if "k_ob_nome" not in st.session_state:
-        st.session_state.k_ob_nome = ""
-    if "k_ob_end" not in st.session_state:
-        st.session_state.k_ob_end = ""
-    if "k_ob_area_c" not in st.session_state:
-        st.session_state.k_ob_area_c = 0.0
-    if "k_ob_area_t" not in st.session_state:
-        st.session_state.k_ob_area_t = 0.0
-    if "k_ob_quartos" not in st.session_state:
-        st.session_state.k_ob_quartos = 0
-    if "k_ob_status" not in st.session_state:
-        st.session_state.k_ob_status = "Projeto"
-    if "k_ob_custo" not in st.session_state:
-        st.session_state.k_ob_custo = 0.0
-    if "k_ob_vgv" not in st.session_state:
-        st.session_state.k_ob_vgv = 0.0
-    if "k_ob_prazo" not in st.session_state:
-        st.session_state.k_ob_prazo = ""
-    if "k_ob_data" not in st.session_state:
-        st.session_state.k_ob_data = date.today()
+    # Session defaults
+    if "k_ob_nome" not in st.session_state: st.session_state.k_ob_nome = ""
+    if "k_ob_end" not in st.session_state: st.session_state.k_ob_end = ""
+    if "k_ob_area_c" not in st.session_state: st.session_state.k_ob_area_c = 0.0
+    if "k_ob_area_t" not in st.session_state: st.session_state.k_ob_area_t = 0.0
+    if "k_ob_quartos" not in st.session_state: st.session_state.k_ob_quartos = 0
+    if "k_ob_status" not in st.session_state: st.session_state.k_ob_status = "Projeto"
+    if "k_ob_custo" not in st.session_state: st.session_state.k_ob_custo = 0.0
+    if "k_ob_vgv" not in st.session_state: st.session_state.k_ob_vgv = 0.0
+    if "k_ob_prazo" not in st.session_state: st.session_state.k_ob_prazo = ""
+    if "k_ob_data" not in st.session_state: st.session_state.k_ob_data = date.today()
 
     with st.expander("➕ Novo Cadastro (Clique para expandir)", expanded=False):
         with st.form("f_obra_completa", clear_on_submit=False):
@@ -1088,23 +1136,16 @@ elif sel == "Obras":
                 st.session_state.k_ob_area_t = area_terr
 
                 erros = []
-                if not nome_obra.strip():
-                    erros.append("O 'Nome do Empreendimento' é obrigatório.")
-                if not endereco.strip():
-                    erros.append("O 'Endereço' é obrigatório.")
-                if not prazo_entrega.strip():
-                    erros.append("O 'Prazo' é obrigatório.")
-                if valor_venda <= 0:
-                    erros.append("O 'Valor de Venda (VGV)' deve ser maior que zero.")
-                if custo_previsto <= 0:
-                    erros.append("O 'Orçamento Previsto' deve ser maior que zero.")
-                if area_const <= 0 and area_terr <= 0:
-                    erros.append("Preencha ao menos a Área Construída ou do Terreno.")
+                if not nome_obra.strip(): erros.append("O 'Nome do Empreendimento' é obrigatório.")
+                if not endereco.strip(): erros.append("O 'Endereço' é obrigatório.")
+                if not prazo_entrega.strip(): erros.append("O 'Prazo' é obrigatório.")
+                if valor_venda <= 0: erros.append("O 'Valor de Venda (VGV)' deve ser maior que zero.")
+                if custo_previsto <= 0: erros.append("O 'Orçamento Previsto' deve ser maior que zero.")
+                if area_const <= 0 and area_terr <= 0: erros.append("Preencha ao menos a Área Construída ou do Terreno.")
 
                 if erros:
                     st.error("⚠️ Não foi possível salvar. Verifique os campos:")
-                    for e in erros:
-                        st.markdown(f"- {e}")
+                    for e in erros: st.markdown(f"- {e}")
                 else:
                     try:
                         conn = get_conn()
@@ -1117,8 +1158,8 @@ elif sel == "Obras":
                             float(area_const), float(area_terr), int(quartos), float(custo_previsto)
                         ])
 
-                        if "data_obras" in st.session_state:
-                            del st.session_state["data_obras"]
+                        for k in ["data_obras", "data_chk"]:
+                            if k in st.session_state: del st.session_state[k]
                         st.cache_data.clear()
 
                         st.session_state["sucesso_obra"] = True
@@ -1126,11 +1167,15 @@ elif sel == "Obras":
                     except Exception as e:
                         st.error(f"Erro no Google Sheets: {e}")
 
+    # ----------------------------
+    # CARTEIRA DE OBRAS (Editor)
+    # ----------------------------
     st.markdown("### 📋 Carteira de Obras")
     if not df_obras.empty:
         cols_order = ["ID", "Cliente", "Status", "Prazo", "Valor Total", "Custo Previsto", "Area Construida", "Area Terreno", "Quartos"]
         valid_cols = [c for c in cols_order if c in df_obras.columns]
         df_to_edit = df_obras[valid_cols].copy().reset_index(drop=True)
+
         num_cols = ["Valor Total", "Custo Previsto", "Area Construida", "Area Terreno", "Quartos", "ID"]
         for c in df_to_edit.columns:
             if c in num_cols:
@@ -1165,7 +1210,7 @@ elif sel == "Obras":
                 with c_alert:
                     st.warning("⚠️ Alterações pendentes. Confirme para salvar.", icon="⚠️")
                 with c_pwd:
-                    pwd_confirm = st.text_input("Senha", type="password", placeholder="Senha ADM", label_visibility="collapsed")
+                    pwd_confirm = st.text_input("Senha", type="password", placeholder="Senha ADM", label_visibility="collapsed", key="pwd_obras_save")
                 with c_btn:
                     if st.button("💾 SALVAR", type="primary", use_container_width=True):
                         if pwd_confirm == st.secrets["password"]:
@@ -1173,54 +1218,69 @@ elif sel == "Obras":
                                 conn = get_conn()
                                 ws = conn.worksheet("Obras")
                                 ws_fin = conn.worksheet("Financeiro")
+                                ws_chk = ensure_checklist_sheet(conn)
 
-                                with st.spinner("Salvando alterações e sincronizando Financeiro..."):
-                                    for index, row in edited_df.iterrows():
+                                with st.spinner("Salvando alterações e sincronizando Financeiro + Checklist..."):
+                                    for _, row in edited_df.iterrows():
                                         id_obra = row["ID"]
                                         found_cell = ws.find(str(id_obra), in_column=1)
+                                        if not found_cell:
+                                            continue
 
-                                        if found_cell:
-                                            original_row = df_obras[df_obras["ID"] == id_obra].iloc[0]
-                                            old_name = str(original_row["Cliente"]).strip()
-                                            new_name = str(row["Cliente"]).strip()
+                                        original_row = df_obras[df_obras["ID"] == id_obra].iloc[0]
+                                        old_name = str(original_row["Cliente"]).strip()
+                                        new_name = str(row["Cliente"]).strip()
 
-                                            if old_name != new_name and old_name != "":
-                                                headers_fin = ws_fin.row_values(1)
-                                                try:
-                                                    col_idx_fin = headers_fin.index("Obra Vinculada") + 1
-                                                except ValueError:
-                                                    col_idx_fin = 6
+                                        # Cascata: Financeiro
+                                        if old_name != new_name and old_name != "":
+                                            headers_fin = ws_fin.row_values(1)
+                                            try:
+                                                col_idx_fin = headers_fin.index("Obra Vinculada") + 1
+                                            except ValueError:
+                                                col_idx_fin = 7
+                                            cells_to_update = ws_fin.findall(old_name, in_column=col_idx_fin)
+                                            for cell in cells_to_update:
+                                                cell.value = new_name
+                                            if cells_to_update:
+                                                ws_fin.update_cells(cells_to_update)
+                                                st.toast(f"♻️ Financeiro: {len(cells_to_update)} lançamentos atualizados para '{new_name}'")
 
-                                                cells_to_update = ws_fin.findall(old_name, in_column=col_idx_fin)
-                                                for cell in cells_to_update:
+                                        # Cascata: Checklist
+                                        if old_name != new_name and old_name != "":
+                                            headers_chk = ws_chk.row_values(1)
+                                            try:
+                                                col_idx_chk = headers_chk.index("Obra") + 1
+                                                cells_chk = ws_chk.findall(old_name, in_column=col_idx_chk)
+                                                for cell in cells_chk:
                                                     cell.value = new_name
-                                                if cells_to_update:
-                                                    ws_fin.update_cells(cells_to_update)
-                                                    st.toast(f"♻️ Atualizados {len(cells_to_update)} lançamentos financeiros para '{new_name}'")
+                                                if cells_chk:
+                                                    ws_chk.update_cells(cells_chk)
+                                                    st.toast(f"✅ Checklist: {len(cells_chk)} itens vinculados atualizados para '{new_name}'")
+                                            except Exception:
+                                                pass
 
-                                            update_values = []
-                                            for col in OBRAS_COLS:
-                                                if col in row:
-                                                    val = row[col]
-                                                else:
-                                                    val = original_row[col]
+                                        # Atualiza Obras
+                                        update_values = []
+                                        for col in OBRAS_COLS:
+                                            if col in row:
+                                                val = row[col]
+                                            else:
+                                                val = original_row[col]
+                                            if isinstance(val, (pd.Timestamp, date, datetime)):
+                                                val = val.strftime("%Y-%m-%d")
+                                            elif pd.isna(val):
+                                                val = ""
+                                            update_values.append(val)
 
-                                                if isinstance(val, (pd.Timestamp, date, datetime)):
-                                                    val = val.strftime("%Y-%m-%d")
-                                                elif pd.isna(val):
-                                                    val = ""
-                                                update_values.append(val)
+                                        ws.update(f"A{found_cell.row}:K{found_cell.row}", [update_values])
 
-                                            ws.update(f"A{found_cell.row}:K{found_cell.row}", [update_values])
-
-                                    if "data_obras" in st.session_state:
-                                        del st.session_state["data_obras"]
-                                    if "data_fin" in st.session_state:
-                                        del st.session_state["data_fin"]
+                                    for k in ["data_obras", "data_fin", "data_chk"]:
+                                        if k in st.session_state: del st.session_state[k]
                                     st.cache_data.clear()
 
                                     st.session_state["sucesso_obra"] = True
                                     st.rerun()
+
                             except Exception as e:
                                 st.error(f"Erro ao salvar: {e}")
                         else:
@@ -1229,3 +1289,311 @@ elif sel == "Obras":
             st.caption("💡 Edite diretamente na tabela acima. O botão de salvar aparecerá automaticamente.")
     else:
         st.info("Nenhuma obra cadastrada.")
+
+    # ==============================================================================
+    # ✅ CHECKLIST POR OBRA (NOVO)
+    # ==============================================================================
+    st.markdown("---")
+    st.subheader("✅ Checklist por Obra")
+
+    if not lista_obras:
+        st.info("Cadastre uma obra para usar o checklist.")
+    else:
+        colA, colB = st.columns([2, 1])
+        with colA:
+            obra_chk = st.selectbox("Selecione a Obra", options=lista_obras, key="chk_obra_sel")
+        with colB:
+            if st.button("🔄 Atualizar Checklist", use_container_width=True):
+                st.cache_data.clear()
+                if "data_chk" in st.session_state:
+                    del st.session_state["data_chk"]
+                st.rerun()
+
+        df_chk_all = df_chk.copy() if df_chk is not None else pd.DataFrame(columns=CHECK_COLS)
+        for c in CHECK_COLS:
+            if c not in df_chk_all.columns:
+                df_chk_all[c] = ""
+
+        df_chk_obra = df_chk_all[df_chk_all["Obra"].astype(str).str.strip() == str(obra_chk).strip()].copy()
+        if "ID" in df_chk_obra.columns:
+            df_chk_obra["ID"] = pd.to_numeric(df_chk_obra["ID"], errors="coerce").fillna(0).astype(int)
+
+        total_itens = len(df_chk_obra)
+        concluidos = int((df_chk_obra["Status"].astype(str).str.strip() == "Concluído").sum()) if total_itens > 0 else 0
+        progresso = (concluidos / total_itens) if total_itens > 0 else 0.0
+
+        m1, m2, m3 = st.columns(3)
+        m1.metric("Itens", total_itens)
+        m2.metric("Concluídos", concluidos)
+        m3.metric("Progresso", f"{progresso*100:.0f}%")
+        st.progress(progresso)
+
+        with st.expander("➕ Adicionar Item ao Checklist", expanded=True):
+            with st.form("form_add_chk", clear_on_submit=True):
+                c1, c2 = st.columns([3, 1])
+                with c1:
+                    novo_item = st.text_input("Item *", placeholder="Ex.: Cartório: ITBI pago")
+                with c2:
+                    novo_status = st.selectbox("Status", CHECK_STATUS, index=0)
+                obs = st.text_input("Observação", placeholder="Opcional")
+                add_submit = st.form_submit_button("Adicionar", use_container_width=True)
+
+                if add_submit:
+                    erros = []
+                    if not str(novo_item).strip():
+                        erros.append("O campo Item é obrigatório.")
+
+                    if erros:
+                        st.error("⚠️ Verifique:")
+                        for e in erros:
+                            st.caption(f"- {e}")
+                    else:
+                        try:
+                            conn = get_conn()
+                            ws_chk = ensure_checklist_sheet(conn)
+                            headers = ws_chk.row_values(1)
+                            col_id = headers.index("ID") + 1
+
+                            # novo ID
+                            if df_chk_all is not None and not df_chk_all.empty and "ID" in df_chk_all.columns:
+                                mx = int(pd.to_numeric(df_chk_all["ID"], errors="coerce").fillna(0).max())
+                                new_id = mx + 1
+                            else:
+                                new_id = 1
+
+                            criado_em = date.today().strftime("%Y-%m-%d")
+                            concluido_em = date.today().strftime("%Y-%m-%d") if novo_status == "Concluído" else ""
+
+                            row_dict = {
+                                "ID": new_id,
+                                "Obra": str(obra_chk).strip(),
+                                "Item": str(novo_item).strip(),
+                                "Status": str(novo_status).strip(),
+                                "Criado Em": criado_em,
+                                "Concluído Em": concluido_em,
+                                "Observação": str(obs).strip(),
+                            }
+                            row_to_append = [row_dict.get(h, "") for h in headers]
+                           
+
+                            ws_chk.append_row(row_to_append)
+
+                            if "data_chk" in st.session_state:
+                                del st.session_state["data_chk"]
+                            st.cache_data.clear()
+
+                            st.toast("✅ Item adicionado!", icon="✅")
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"Erro ao adicionar checklist: {e}")
+
+            st.write("")
+            if st.button("✨ Adicionar Checklist Padrão (somente itens que faltam)", use_container_width=True):
+                try:
+                    existentes = set(df_chk_obra["Item"].astype(str).str.strip().tolist()) if not df_chk_obra.empty else set()
+                    novos = [x for x in CHECKLIST_PADRAO if x.strip() not in existentes]
+                    if not novos:
+                        st.info("Checklist padrão já está completo para esta obra.")
+                    else:
+                        conn = get_conn()
+                        ws_chk = ensure_checklist_sheet(conn)
+                        headers = ws_chk.row_values(1)
+
+                        if df_chk_all is not None and not df_chk_all.empty and "ID" in df_chk_all.columns:
+                            mx = int(pd.to_numeric(df_chk_all["ID"], errors="coerce").fillna(0).max())
+                        else:
+                            mx = 0
+
+                        criado_em = date.today().strftime("%Y-%m-%d")
+                        rows = []
+                        for i, item in enumerate(novos, start=1):
+                            rid = mx + i
+                            row_dict = {
+                                "ID": rid,
+                                "Obra": str(obra_chk).strip(),
+                                "Item": item.strip(),
+                                "Status": "Pendente",
+                                "Criado Em": criado_em,
+                                "Concluído Em": "",
+                                "Observação": "",
+                            }
+                            rows.append([row_dict.get(h, "") for h in headers])
+
+                        ws_chk.append_rows(rows)
+
+                        if "data_chk" in st.session_state:
+                            del st.session_state["data_chk"]
+                        st.cache_data.clear()
+
+                        st.toast(f"✅ {len(novos)} itens padrão adicionados!", icon="✅")
+                        st.rerun()
+                except Exception as e:
+                    st.error(f"Erro ao inserir checklist padrão: {e}")
+
+        st.markdown("### 🗂️ Itens do Checklist (Editar / Concluir / Excluir)")
+
+        # prepara tabela editável
+        if df_chk_obra.empty:
+            st.info("Nenhum item ainda. Adicione acima.")
+        else:
+            df_edit = df_chk_obra.copy()
+
+            # garantir colunas
+            for c in CHECK_COLS:
+                if c not in df_edit.columns:
+                    df_edit[c] = ""
+
+            # tipos
+            df_edit["ID"] = pd.to_numeric(df_edit["ID"], errors="coerce").fillna(0).astype(int)
+            df_edit["Criado Em"] = pd.to_datetime(df_edit["Criado Em"], errors="coerce").dt.date
+            df_edit["Concluído Em"] = pd.to_datetime(df_edit["Concluído Em"], errors="coerce").dt.date
+
+            df_edit.insert(1, "Excluir", False)
+
+            st.info("🧾 Para excluir: marque **🗑️ Excluir?** e clique **💾 SALVAR** (com senha).")
+
+            chk_editor = st.data_editor(
+                df_edit[["ID", "Excluir", "Item", "Status", "Observação", "Criado Em", "Concluído Em"]].copy(),
+                use_container_width=True,
+                hide_index=True,
+                num_rows="fixed",
+                height=360,
+                disabled=["ID", "Criado Em", "Concluído Em"],
+                column_config={
+                    "ID": st.column_config.NumberColumn("#", width=60),
+                    "Excluir": st.column_config.CheckboxColumn("🗑️ Excluir?", width=95),
+                    "Item": st.column_config.TextColumn("Item", width="large", required=True),
+                    "Status": st.column_config.SelectboxColumn("Status", options=CHECK_STATUS, required=True, width=140),
+                    "Observação": st.column_config.TextColumn("Observação", width="large"),
+                    "Criado Em": st.column_config.DateColumn("Criado Em", format="DD/MM/YYYY", width=120),
+                    "Concluído Em": st.column_config.DateColumn("Concluído Em", format="DD/MM/YYYY", width=130),
+                }
+            )
+
+            def _norm_chk(df):
+                d = df.copy()
+                d["ID"] = pd.to_numeric(d["ID"], errors="coerce").fillna(0).astype(int)
+                d["Excluir"] = d["Excluir"].astype(bool)
+                d["Item"] = d["Item"].astype(str).fillna("").str.strip()
+                d["Status"] = d["Status"].astype(str).fillna("").str.strip()
+                d["Observação"] = d["Observação"].astype(str).fillna("").str.strip()
+                # datas não mudam (disabled), mas normaliza para comparar
+                if "Criado Em" in d.columns:
+                    d["Criado Em"] = d["Criado Em"].astype(str)
+                if "Concluído Em" in d.columns:
+                    d["Concluído Em"] = d["Concluído Em"].astype(str)
+                return d
+
+            base_cmp = _norm_chk(df_edit[["ID", "Excluir", "Item", "Status", "Observação", "Criado Em", "Concluído Em"]].copy())
+            edit_cmp = _norm_chk(chk_editor.copy())
+
+            has_chk_changes = not edit_cmp.equals(base_cmp)
+
+            if has_chk_changes:
+                with st.container(border=True):
+                    c1, c2, c3 = st.columns([2, 1.5, 1])
+                    with c1:
+                        st.warning("⚠️ Alterações pendentes no checklist. Confirme para salvar.", icon="⚠️")
+                    with c2:
+                        pwd_chk = st.text_input("Senha", type="password", placeholder="Senha ADM", label_visibility="collapsed", key="pwd_chk_save")
+                    with c3:
+                        if st.button("💾 SALVAR CHECKLIST", type="primary", use_container_width=True):
+                            if pwd_chk != st.secrets["password"]:
+                                st.toast("Senha incorreta!", icon="⛔")
+                            else:
+                                # validações
+                                erros = []
+                                for _, r in chk_editor.iterrows():
+                                    if bool(r.get("Excluir")):
+                                        continue
+                                    if not str(r.get("Item", "")).strip():
+                                        erros.append(f"ID {int(r['ID'])}: Item obrigatório.")
+                                    if str(r.get("Status", "")).strip() not in CHECK_STATUS:
+                                        erros.append(f"ID {int(r['ID'])}: Status inválido.")
+                                if erros:
+                                    st.error("⚠️ Corrija antes de salvar:")
+                                    for e in erros:
+                                        st.caption(f"- {e}")
+                                else:
+                                    try:
+                                        conn = get_conn()
+                                        ws_chk = ensure_checklist_sheet(conn)
+                                        headers = ws_chk.row_values(1)
+                                        col_id = headers.index("ID") + 1
+
+                                        # Excluir (de baixo pra cima)
+                                        rows_del = []
+                                        df_del = chk_editor[chk_editor["Excluir"] == True].copy()
+                                        for _, rr in df_del.iterrows():
+                                            idv = int(rr["ID"])
+                                            cell = ws_chk.find(str(idv), in_column=col_id)
+                                            if cell:
+                                                rows_del.append(cell.row)
+                                        for rr in sorted(rows_del, reverse=True):
+                                            ws_chk.delete_rows(rr)
+
+                                        # Atualizar
+                                        from gspread.utils import rowcol_to_a1
+                                        upd_count = 0
+
+                                        for _, rr in chk_editor[chk_editor["Excluir"] == False].iterrows():
+                                            idv = int(rr["ID"])
+                                            cell = ws_chk.find(str(idv), in_column=col_id)
+                                            if not cell:
+                                                continue
+
+                                            # pega estado original (pra auto data de conclusão)
+                                            orig = df_chk_obra[df_chk_obra["ID"] == idv]
+                                            old_status = str(orig["Status"].iloc[0]).strip() if not orig.empty else ""
+                                            old_done = str(orig.get("Concluído Em", "").iloc[0]).strip() if (not orig.empty and "Concluído Em" in orig.columns) else ""
+
+                                            new_status = str(rr.get("Status", "")).strip()
+
+                                            # decide concluído em
+                                            if new_status == "Concluído":
+                                                if not old_done or old_done in ["NaT", "None", "nan"]:
+                                                    done_date = date.today().strftime("%Y-%m-%d")
+                                                else:
+                                                    # mantém data existente
+                                                    try:
+                                                        done_date = pd.to_datetime(old_done, errors="coerce").strftime("%Y-%m-%d")
+                                                    except Exception:
+                                                        done_date = date.today().strftime("%Y-%m-%d")
+                                            else:
+                                                done_date = ""
+
+                                            # criado em (mantém)
+                                            created_val = ""
+                                            try:
+                                                created_val = pd.to_datetime(orig["Criado Em"].iloc[0], errors="coerce").strftime("%Y-%m-%d") if (not orig.empty) else date.today().strftime("%Y-%m-%d")
+                                            except Exception:
+                                                created_val = date.today().strftime("%Y-%m-%d")
+
+                                            row_dict = {
+                                                "ID": idv,
+                                                "Obra": str(obra_chk).strip(),
+                                                "Item": str(rr.get("Item", "")).strip(),
+                                                "Status": new_status,
+                                                "Criado Em": created_val,
+                                                "Concluído Em": done_date,
+                                                "Observação": str(rr.get("Observação", "")).strip(),
+                                            }
+
+                                            update_values = [row_dict.get(h, "") for h in headers]
+
+                                            start = rowcol_to_a1(cell.row, 1)
+                                            end = rowcol_to_a1(cell.row, len(headers))
+                                            ws_chk.update(f"{start}:{end}", [update_values])
+                                            upd_count += 1
+
+                                        if "data_chk" in st.session_state:
+                                            del st.session_state["data_chk"]
+                                        st.cache_data.clear()
+
+                                        st.toast(f"✅ Checklist salvo! {upd_count} atualizações • {len(rows_del)} exclusões", icon="✅")
+                                        st.rerun()
+
+                                    except Exception as e:
+                                        st.error(f"Erro ao salvar checklist: {e}")
+            else:
+                st.caption("💡 Edite os itens acima. Marque 🗑️ para excluir. O botão de salvar aparece automaticamente.")
