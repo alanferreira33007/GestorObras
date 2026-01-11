@@ -1,3 +1,5 @@
+
+
 import streamlit as st
 import pandas as pd
 import gspread
@@ -8,7 +10,6 @@ from streamlit_option_menu import option_menu
 import io
 import random
 import re
-import plotly.express as px
 
 # ==============================================================================
 # 1. CONFIGURAÇÃO VISUAL (UI)
@@ -611,36 +612,13 @@ elif sel == "Financeiro":
                 opcoes_filtro_cat = ["Todas as Categorias"] + CATS
                 filtro_cat = st.selectbox("Filtrar por Categoria", options=opcoes_filtro_cat)
 
-        # ... (dentro de if sel == "Financeiro":)
-
         df_view = df_fin.copy()
-
-        # --- CORREÇÃO ROBUSTA (NORMALIZAÇÃO) ---
         
-        # 1. Cria colunas auxiliares de comparação (Tudo Maiúsculo + Sem Espaços)
-        # Isso garante que a comparação ignore diferenças de caixa alta/baixa e espaços
-        if "Obra Vinculada" in df_view.columns:
-            df_view["_temp_obra"] = df_view["Obra Vinculada"].astype(str).str.strip().str.upper()
-        else:
-            df_view["_temp_obra"] = "" # Prevenção de erro se coluna não existir
+        if filtro_obra != "Todas as Obras":
+            df_view = df_view[df_view["Obra Vinculada"] == filtro_obra]
             
-        if "Categoria" in df_view.columns:
-            df_view["_temp_categoria"] = df_view["Categoria"].astype(str).str.strip().str.upper()
-        else:
-            df_view["_temp_categoria"] = ""
-
-        # 2. Aplica o filtro usando os valores normalizados
-        if filtro_obra and filtro_obra != "Todas as Obras":
-            # Normaliza também o valor que veio do SelectBox
-            filtro_obra_clean = str(filtro_obra).strip().upper()
-            df_view = df_view[df_view["_temp_obra"] == filtro_obra_clean]
-            
-        if filtro_cat and filtro_cat != "Todas as Categorias":
-            # Normaliza também o valor que veio do SelectBox
-            filtro_cat_clean = str(filtro_cat).strip().upper()
-            df_view = df_view[df_view["_temp_categoria"] == filtro_cat_clean]
-
-        # --- FIM DA CORREÇÃO ---
+        if filtro_cat != "Todas as Categorias":
+            df_view = df_view[df_view["Categoria"] == filtro_cat]
 
         total_filtrado = df_view["Valor"].sum()
         count_filtrado = len(df_view)
@@ -755,8 +733,10 @@ elif sel == "Obras":
             submitted = st.form_submit_button("✅ SALVAR PROJETO", use_container_width=True)
 
             if submitted:
-                # REMOVIDO: Atribuições manuais ao session_state que causavam conflito com os widgets
-                # O Streamlit já atualiza essas chaves automaticamente.
+                st.session_state.k_ob_custo = custo_previsto
+                st.session_state.k_ob_vgv = valor_venda
+                st.session_state.k_ob_area_c = area_const
+                st.session_state.k_ob_area_t = area_terr
                 
                 erros = []
                 if not nome_obra.strip(): erros.append("O 'Nome do Empreendimento' é obrigatório.")
