@@ -611,13 +611,32 @@ elif sel == "Financeiro":
                 opcoes_filtro_cat = ["Todas as Categorias"] + CATS
                 filtro_cat = st.selectbox("Filtrar por Categoria", options=opcoes_filtro_cat)
 
+        # ... (dentro de if sel == "Financeiro":)
+
         df_view = df_fin.copy()
         
-        if filtro_obra != "Todas as Obras":
-            df_view = df_view[df_view["Obra Vinculada"] == filtro_obra]
+        # --- INÍCIO DA CORREÇÃO ---
+        # Normalização: Converte colunas para string e remove espaços vazios (strip)
+        # Isso garante que "Obra X " seja igual a "Obra X"
+        if "Obra Vinculada" in df_view.columns:
+            df_view["Obra Vinculada"] = df_view["Obra Vinculada"].astype(str).str.strip()
             
-        if filtro_cat != "Todas as Categorias":
-            df_view = df_view[df_view["Categoria"] == filtro_cat]
+        if "Categoria" in df_view.columns:
+            df_view["Categoria"] = df_view["Categoria"].astype(str).str.strip()
+            
+        # Aplicação dos filtros
+        if filtro_obra and filtro_obra != "Todas as Obras":
+            # Também aplicamos .strip() na variável do filtro por segurança
+            df_view = df_view[df_view["Obra Vinculada"] == filtro_obra.strip()]
+            
+        if filtro_cat and filtro_cat != "Todas as Categorias":
+            df_view = df_view[df_view["Categoria"] == filtro_cat.strip()]
+        # --- FIM DA CORREÇÃO ---
+
+        total_filtrado = df_view["Valor"].sum()
+        count_filtrado = len(df_view)
+        
+        # ... (restante do código)
 
         total_filtrado = df_view["Valor"].sum()
         count_filtrado = len(df_view)
