@@ -92,13 +92,9 @@ def ensure_financeiro_id(ws_fin):
     if "ID" in headers:
         return
 
-    # Quantidade atual de linhas (inclui cabeçalho)
     n_rows = len(ws_fin.get_all_values())
-
-    # Insere coluna A com header "ID"
     ws_fin.insert_cols([["ID"]], 1)
 
-    # Preenche IDs para registros existentes (linhas 2..n_rows)
     if n_rows > 1:
         ids = [[i] for i in range(1, n_rows)]
         ws_fin.update(f"A2:A{n_rows}", ids)
@@ -160,7 +156,7 @@ def gerar_pdf_empresarial(escopo, periodo, vgv, custos, lucro, roi, df_cat, df_l
     style_header_sub = ParagraphStyle('HeadSub', parent=styles['Normal'], fontSize=9, leading=11, textColor=colors.whitesmoke)
     style_h2 = ParagraphStyle('SecTitle', parent=styles['Heading2'], fontSize=11, textColor=colors.HexColor("#1B4332"), spaceBefore=15, spaceAfter=8, fontName='Helvetica-Bold')
 
-    if "Visão Geral" in escopo:
+    if "Visão Geral" in str(escopo):
         titulo_principal = "RELATÓRIO DE PORTFÓLIO (CONSOLIDADO)"
     else:
         titulo_principal = f"RELATÓRIO INDIVIDUAL: {str(escopo).upper()}"
@@ -202,7 +198,10 @@ def gerar_pdf_empresarial(escopo, periodo, vgv, custos, lucro, roi, df_cat, df_l
         story.append(Paragraph("DISTRIBUIÇÃO POR CATEGORIA", style_h2))
         df_c = df_cat.copy()
         df_c["Valor"] = df_c["Valor"].apply(fmt_moeda)
-        df_c["%"] = (df_cat["Valor"] / custos * 100).apply(lambda x: f"{x:.1f}%") if custos > 0 else "0,0%"
+        if custos > 0:
+            df_c["%"] = (df_cat["Valor"] / custos * 100).apply(lambda x: f"{x:.1f}%")
+        else:
+            df_c["%"] = "0,0%"
         cat_data = [["CATEGORIA", "VALOR", "%"]] + df_c[["Categoria", "Valor", "%"]].values.tolist()
         t_cat = Table(cat_data, colWidths=[10*cm, 4*cm, 3*cm], hAlign='LEFT')
         t_cat.setStyle(TableStyle([
@@ -222,13 +221,11 @@ def gerar_pdf_empresarial(escopo, periodo, vgv, custos, lucro, roi, df_cat, df_l
 
     if df_lanc is not None and not df_lanc.empty:
         df_l = df_lanc.copy()
-        # garante colunas mínimas
         for c in ["Data", "Categoria", "Descrição", "Valor"]:
             if c not in df_l.columns:
                 df_l[c] = ""
 
         df_l["Valor"] = df_l["Valor"].apply(fmt_moeda)
-
         cols_sel = ["Data", "Categoria", "Descrição", "Valor"]
         data_lanc = [cols_sel] + df_l[cols_sel].values.tolist()
         data_lanc.append(["", "", "SUBTOTAL (Página):", fmt_moeda(custos)])
@@ -406,7 +403,6 @@ def password_entered():
         if "login_error" in st.session_state:
             del st.session_state["login_error"]
 
-        # Carregamento antecipado de dados
         try:
             df_o, df_f = fetch_data_from_google()
             st.session_state["data_obras"] = df_o
@@ -497,7 +493,6 @@ else:
     df_obras = st.session_state["data_obras"]
     df_fin = st.session_state["data_fin"]
 
-# Cria lista de obras BASEADA nos dados limpos
 lista_obras = sorted(df_obras["Cliente"].unique().tolist()) if not df_obras.empty else []
 
 # ==============================================================================
@@ -697,14 +692,12 @@ elif sel == "Financeiro":
                         ws_fin = conn.worksheet("Financeiro")
                         ensure_financeiro_id(ws_fin)
 
-                        # calcula novo ID
                         if not df_fin.empty and "ID" in df_fin.columns:
                             ids_exist = pd.to_numeric(df_fin["ID"], errors="coerce").fillna(0)
                             new_id = int(ids_exist.max()) + 1
                         else:
                             new_id = 1
 
-                        # Salva (com strip pra evitar filtros quebrando)
                         ws_fin.append_row([
                             new_id,
                             dt.strftime("%Y-%m-%d"),
@@ -731,7 +724,6 @@ elif sel == "Financeiro":
     if not df_fin.empty:
         df_view = df_fin.copy()
 
-        # Filtros
         with st.expander("Filtros de Busca", expanded=True):
             c_filter1, c_filter2 = st.columns(2)
 
@@ -755,7 +747,7 @@ elif sel == "Financeiro":
         st.caption(f"Exibindo **{count_filtrado}** lançamentos | Total Filtrado: **{fmt_moeda(total_filtrado)}**")
 
         # -----------------------------
-        # TABELA EDITÁVEL + EXCLUSÃO
+        # TABELA EDITÁVEL + EXCLUSÃO (VISUAL MELHORADO)
         # -----------------------------
         cols_order = ["ID", "Data", "Tipo", "Obra Vinculada", "Categoria", "Fornecedor", "Descrição", "Valor"]
         for c in cols_order:
@@ -764,12 +756,14 @@ elif sel == "Financeiro":
 
         df_to_edit = df_view[cols_order].copy()
 
-        # Normalizações para o editor
         df_to_edit["ID"] = pd.to_numeric(df_to_edit["ID"], errors="coerce").fillna(0).astype(int)
         df_to_edit["Data"] = pd.to_datetime(df_to_edit["Data"], errors="coerce").dt.date
         df_to_edit["Valor"] = pd.to_numeric(df_to_edit["Valor"], errors="coerce").fillna(0.0)
 
-        df_to_edit["Excluir"] = False  # checkbox de exclusão
+        # ✅ Excluir bem visível (logo após ID)
+        df_to_edit.insert(1, "Excluir", False)
+
+        st.info("🧾 **Como excluir:** marque **🗑️ Excluir?** na linha desejada e depois clique em **💾 SALVAR** (com senha).")
 
         edited_df = st.data_editor(
             df_to_edit,
@@ -777,20 +771,60 @@ elif sel == "Financeiro":
             hide_index=True,
             num_rows="fixed",
             disabled=["ID"],
-            height=320,
+            height=360,
             column_config={
-                "ID": st.column_config.NumberColumn("#", width=60),
-                "Data": st.column_config.DateColumn("Data", format="DD/MM/YYYY", required=True),
-                "Tipo": st.column_config.SelectboxColumn("Tipo", options=["Saída (Despesa)", "Entrada"], required=True),
-                "Obra Vinculada": st.column_config.SelectboxColumn("Obra", options=[""] + lista_obras, required=True),
-                "Categoria": st.column_config.SelectboxColumn("Categoria", options=[""] + CATS, required=True),
-                "Fornecedor": st.column_config.TextColumn("Fornecedor", width="medium"),
+                "ID": st.column_config.NumberColumn("#", width=55),
+                "Excluir": st.column_config.CheckboxColumn("🗑️ Excluir?", help="Marque para excluir e clique em SALVAR", width=90),
+                "Data": st.column_config.DateColumn("Data", format="DD/MM/YYYY", required=True, width=110),
+                "Tipo": st.column_config.SelectboxColumn("Tipo", options=["Saída (Despesa)", "Entrada"], required=True, width=140),
+                "Obra Vinculada": st.column_config.SelectboxColumn("Obra", options=[""] + lista_obras, required=True, width=220),
+                "Categoria": st.column_config.SelectboxColumn("Categoria", options=[""] + CATS, required=True, width=150),
+                "Fornecedor": st.column_config.TextColumn("Fornecedor", width=160),
                 "Descrição": st.column_config.TextColumn("Descrição", width="large", required=True),
-                "Valor": st.column_config.NumberColumn("Valor", format="R$ %.2f", min_value=0),
-                "Excluir": st.column_config.CheckboxColumn("🗑️ Excluir?", help="Marque para excluir e clique em SALVAR")
+                "Valor": st.column_config.NumberColumn("Valor", format="R$ %.2f", min_value=0, width=120),
             }
         )
 
+        # -----------------------------
+        # RESUMO VISUAL (PRÉ-SALVAMENTO) — só UI
+        # -----------------------------
+        try:
+            total_atual = float(pd.to_numeric(edited_df["Valor"], errors="coerce").fillna(0.0).sum())
+            marcados = int(edited_df["Excluir"].astype(bool).sum())
+            valor_marcado = float(pd.to_numeric(edited_df.loc[edited_df["Excluir"] == True, "Valor"], errors="coerce").fillna(0.0).sum()) if marcados > 0 else 0.0
+            total_pos_excluir = total_atual - valor_marcado
+        except Exception:
+            total_atual, marcados, valor_marcado, total_pos_excluir = 0.0, 0, 0.0, 0.0
+
+        with st.container(border=True):
+            st.markdown("#### 📌 Resumo da tabela (antes de salvar)")
+            m1, m2, m3, m4 = st.columns(4)
+            m1.metric("Total (Filtro)", fmt_moeda(total_atual))
+            m2.metric("Marcados p/ excluir", f"{marcados}")
+            m3.metric("Valor a excluir", fmt_moeda(valor_marcado))
+            m4.metric("Total após excluir", fmt_moeda(total_pos_excluir))
+
+        if marcados > 0:
+            st.warning(f"🗑️ Você marcou **{marcados}** lançamento(s) para exclusão. Ao salvar, eles serão removidos.", icon="⚠️")
+            st.markdown("##### 🗑️ Marcados para exclusão (prévia)")
+
+            cols_preview = ["ID", "Data", "Obra Vinculada", "Categoria", "Fornecedor", "Descrição", "Valor"]
+            df_del_preview = edited_df.loc[edited_df["Excluir"] == True, cols_preview].copy()
+
+            def _style_del(_df):
+                return _df.style.apply(lambda row: ["background-color: #ffe3e3"] * len(row), axis=1)
+
+            st.dataframe(
+                _style_del(df_del_preview),
+                use_container_width=True,
+                hide_index=True,
+                height=200,
+                column_config={"Valor": st.column_config.NumberColumn(format="R$ %.2f")}
+            )
+
+        # -----------------------------
+        # DETECÇÃO DE MUDANÇAS (MESMA FUNCIONALIDADE)
+        # -----------------------------
         def _norm_df(df):
             d = df.copy()
             d["Data"] = d["Data"].astype(str)
@@ -818,7 +852,7 @@ elif sel == "Financeiro":
                         if pwd_confirm != st.secrets["password"]:
                             st.toast("Senha incorreta!", icon="⛔")
                         else:
-                            # Validação
+                            # Validação (mesma regra)
                             erros = []
                             for _, r in edited_df.iterrows():
                                 if bool(r.get("Excluir")):
@@ -905,7 +939,6 @@ elif sel == "Financeiro":
 
                                         upd_count += 1
 
-                                    # Limpa cache/sessão
                                     if "data_fin" in st.session_state:
                                         del st.session_state["data_fin"]
                                     st.cache_data.clear()
@@ -921,7 +954,7 @@ elif sel == "Financeiro":
         st.write("")
         st.markdown("---")
 
-        # PDF do filtro
+        # PDF do filtro (mesma funcionalidade)
         if not df_view.empty:
             dmin = df_view["Data_DT"].min().strftime("%d/%m/%Y")
             dmax = df_view["Data_DT"].max().strftime("%d/%m/%Y")
@@ -929,7 +962,6 @@ elif sel == "Financeiro":
 
             escopo_pdf = filtro_obra if filtro_obra != "Todas as Obras" else "Visão Geral (Filtro)"
 
-            # tabela compatível com o PDF (sem Excluir e só colunas mínimas)
             cols_pdf = ["Data", "Categoria", "Descrição", "Valor"]
             df_pdf = edited_df[edited_df["Excluir"] == False].copy()
             for c in cols_pdf:
@@ -1150,7 +1182,6 @@ elif sel == "Obras":
                                             old_name = str(original_row["Cliente"]).strip()
                                             new_name = str(row["Cliente"]).strip()
 
-                                            # CASCATA: atualiza nome da obra no Financeiro
                                             if old_name != new_name and old_name != "":
                                                 headers_fin = ws_fin.row_values(1)
                                                 try:
@@ -1165,7 +1196,6 @@ elif sel == "Obras":
                                                     ws_fin.update_cells(cells_to_update)
                                                     st.toast(f"♻️ Atualizados {len(cells_to_update)} lançamentos financeiros para '{new_name}'")
 
-                                            # Atualiza Obras
                                             update_values = []
                                             for col in OBRAS_COLS:
                                                 if col in row:
