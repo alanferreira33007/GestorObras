@@ -302,10 +302,18 @@ OBRAS_COLS = [
     "Quartos", "Custo Previsto"
 ]
 
-# ✅ Financeiro agora tem ID
 FIN_COLS = ["ID", "Data", "Tipo", "Categoria", "Descrição", "Valor", "Obra Vinculada", "Fornecedor"]
 
-CATS = ["Material", "Mão de Obra", "Serviços", "Administrativo", "Impostos", "Outros"]
+# ✅ NOVA CATEGORIA ADICIONADA AQUI
+CATS = [
+    "Material",
+    "Mão de Obra",
+    "Serviços",
+    "Administrativo",
+    "Impostos",
+    "Emolumentos Cartorários",
+    "Outros"
+]
 
 @st.cache_resource
 def get_conn():
@@ -344,7 +352,6 @@ def fetch_data_from_google():
                     df_o[c] = None
 
         ws_f = db.worksheet("Financeiro")
-        # garante migração também aqui (caso cache do resource não rode ainda)
         try:
             ensure_financeiro_id(ws_f)
         except Exception:
@@ -395,7 +402,6 @@ def fetch_data_from_google():
 if "auth" not in st.session_state:
     st.session_state.auth = False
 
-# --- CALLBACKS DE LOGIN ---
 def password_entered():
     """Valida senha e carrega dados imediatamente para evitar delay"""
     if st.session_state["password_input"] == st.secrets["password"]:
@@ -423,7 +429,6 @@ def logout():
     if "data_fin" in st.session_state:
         del st.session_state["data_fin"]
 
-# --- TELA DE LOGIN ---
 if not st.session_state.auth:
     _, c2, _ = st.columns([1, 1, 1])
     with c2:
@@ -435,7 +440,7 @@ if not st.session_state.auth:
     st.stop()
 
 # ==============================================================================
-# 6. RENDERIZAÇÃO DA BARRA LATERAL (IMEDIATA)
+# 6. BARRA LATERAL
 # ==============================================================================
 with st.sidebar:
     st.markdown("""
@@ -760,7 +765,6 @@ elif sel == "Financeiro":
         df_to_edit["Data"] = pd.to_datetime(df_to_edit["Data"], errors="coerce").dt.date
         df_to_edit["Valor"] = pd.to_numeric(df_to_edit["Valor"], errors="coerce").fillna(0.0)
 
-        # ✅ Excluir bem visível (logo após ID)
         df_to_edit.insert(1, "Excluir", False)
 
         st.info("🧾 **Como excluir:** marque **🗑️ Excluir?** na linha desejada e depois clique em **💾 SALVAR** (com senha).")
@@ -778,7 +782,7 @@ elif sel == "Financeiro":
                 "Data": st.column_config.DateColumn("Data", format="DD/MM/YYYY", required=True, width=110),
                 "Tipo": st.column_config.SelectboxColumn("Tipo", options=["Saída (Despesa)", "Entrada"], required=True, width=140),
                 "Obra Vinculada": st.column_config.SelectboxColumn("Obra", options=[""] + lista_obras, required=True, width=220),
-                "Categoria": st.column_config.SelectboxColumn("Categoria", options=[""] + CATS, required=True, width=150),
+                "Categoria": st.column_config.SelectboxColumn("Categoria", options=[""] + CATS, required=True, width=170),
                 "Fornecedor": st.column_config.TextColumn("Fornecedor", width=160),
                 "Descrição": st.column_config.TextColumn("Descrição", width="large", required=True),
                 "Valor": st.column_config.NumberColumn("Valor", format="R$ %.2f", min_value=0, width=120),
@@ -852,7 +856,6 @@ elif sel == "Financeiro":
                         if pwd_confirm != st.secrets["password"]:
                             st.toast("Senha incorreta!", icon="⛔")
                         else:
-                            # Validação (mesma regra)
                             erros = []
                             for _, r in edited_df.iterrows():
                                 if bool(r.get("Excluir")):
@@ -954,7 +957,6 @@ elif sel == "Financeiro":
         st.write("")
         st.markdown("---")
 
-        # PDF do filtro (mesma funcionalidade)
         if not df_view.empty:
             dmin = df_view["Data_DT"].min().strftime("%d/%m/%Y")
             dmax = df_view["Data_DT"].max().strftime("%d/%m/%Y")
