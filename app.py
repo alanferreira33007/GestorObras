@@ -1,4 +1,3 @@
-
 import streamlit as st
 import pandas as pd
 import gspread
@@ -285,8 +284,14 @@ def gerar_pdf_empresarial(escopo, periodo, vgv, custos, lucro, roi, df_cat, df_l
     story.append(Spacer(1, 25))
 
     msg_total = "TOTAL ACUMULADO GASTO (ATÉ EMISSÃO)"
-    total_lbl = Paragraph(f"<b>{msg_total}</b>", ParagraphStyle('TLabel', parent=styles['Normal'], textColor=colors.black, fontSize=10, alignment=TA_RIGHT))
-    total_val = Paragraph(f"<b>{fmt_moeda(custos)}</b>", ParagraphStyle('TVal', parent=styles['Normal'], textColor=colors.white, fontSize=14, alignment=TA_RIGHT))
+    total_lbl = Paragraph(
+        f"<b>{msg_total}</b>",
+        ParagraphStyle('TLabel', parent=styles['Normal'], textColor=colors.black, fontSize=10, alignment=TA_RIGHT)
+    )
+    total_val = Paragraph(
+        f"<b>{fmt_moeda(custos)}</b>",
+        ParagraphStyle('TVal', parent=styles['Normal'], textColor=colors.white, fontSize=14, alignment=TA_RIGHT)
+    )
 
     data_total = [[total_lbl, total_val]]
     t_total = Table(data_total, colWidths=[12*cm, 5*cm])
@@ -1150,32 +1155,65 @@ elif sel == "Obras":
             st.markdown("#### 2. Características Físicas (Produto)")
             c4, c5, c6, c7 = st.columns(4)
             with c4:
-                area_const = st.number_input("Área Construída (m²)", min_value=0.0, format="%.2f",
-                                             value=st.session_state.k_ob_area_c, key="k_ob_area_c")
+                area_const = st.number_input(
+                    "Área Construída (m²)",
+                    min_value=0.0,
+                    format="%.2f",
+                    value=st.session_state.k_ob_area_c,
+                    key="k_ob_area_c"
+                )
             with c5:
-                area_terr = st.number_input("Área Terreno (m²)", min_value=0.0, format="%.2f",
-                                            value=st.session_state.k_ob_area_t, key="k_ob_area_t")
+                area_terr = st.number_input(
+                    "Área Terreno (m²)",
+                    min_value=0.0,
+                    format="%.2f",
+                    value=st.session_state.k_ob_area_t,
+                    key="k_ob_area_t"
+                )
             with c6:
-                quartos = st.number_input("Qtd. Quartos", min_value=0, step=1,
-                                          value=st.session_state.k_ob_quartos, key="k_ob_quartos")
+                quartos = st.number_input(
+                    "Qtd. Quartos",
+                    min_value=0,
+                    step=1,
+                    value=st.session_state.k_ob_quartos,
+                    key="k_ob_quartos"
+                )
             with c7:
-                status = st.selectbox("Fase Atual",
-                                      ["Projeto", "Fundação", "Alvenaria", "Acabamento", "Concluída", "Vendida"],
-                                      key="k_ob_status")
+                status = st.selectbox(
+                    "Fase Atual",
+                    ["Projeto", "Fundação", "Alvenaria", "Acabamento", "Concluída", "Vendida"],
+                    key="k_ob_status"
+                )
 
             st.markdown("#### 3. Viabilidade Financeira e Prazos")
             c8, c9, c10, c11 = st.columns(4)
             with c8:
-                custo_previsto = st.number_input("Orçamento (Custo) *", min_value=0.0, format="%.2f", step=1000.0,
-                                                 value=st.session_state.k_ob_custo, key="k_ob_custo_input")
+                custo_previsto = st.number_input(
+                    "Orçamento (Custo) *",
+                    min_value=0.0,
+                    format="%.2f",
+                    step=1000.0,
+                    value=st.session_state.k_ob_custo,
+                    key="k_ob_custo_input"
+                )
             with c9:
-                valor_venda = st.number_input("VGV (Venda) *", min_value=0.0, format="%.2f", step=1000.0,
-                                              value=st.session_state.k_ob_vgv, key="k_ob_vgv_input")
+                valor_venda = st.number_input(
+                    "VGV (Venda) *",
+                    min_value=0.0,
+                    format="%.2f",
+                    step=1000.0,
+                    value=st.session_state.k_ob_vgv,
+                    key="k_ob_vgv_input"
+                )
             with c10:
                 data_inicio = st.date_input("Início da Obra", value=st.session_state.k_ob_data, key="k_ob_data")
             with c11:
-                prazo_entrega = st.text_input("Prazo / Entrega *", placeholder="Ex: dez/2025",
-                                              value=st.session_state.k_ob_prazo, key="k_ob_prazo")
+                prazo_entrega = st.text_input(
+                    "Prazo / Entrega *",
+                    placeholder="Ex: dez/2025",
+                    value=st.session_state.k_ob_prazo,
+                    key="k_ob_prazo"
+                )
 
             if valor_venda > 0 and custo_previsto > 0:
                 margem_proj = ((valor_venda - custo_previsto) / custo_previsto) * 100
@@ -1187,10 +1225,13 @@ elif sel == "Obras":
             submitted = st.form_submit_button("✅ SALVAR PROJETO", use_container_width=True)
 
             if submitted:
+                # OK atualizar essas chaves (não são keys de widgets)
                 st.session_state.k_ob_custo = custo_previsto
                 st.session_state.k_ob_vgv = valor_venda
-                st.session_state.k_ob_area_c = area_const
-                st.session_state.k_ob_area_t = area_terr
+
+                # CORREÇÃO DO ERRO:
+                # NÃO escrever em st.session_state.k_ob_area_c / k_ob_area_t aqui,
+                # pois são keys de widgets (k_ob_area_c, k_ob_area_t) já instanciados neste ciclo.
 
                 erros = []
                 if not nome_obra.strip():
