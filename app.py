@@ -6,8 +6,89 @@ import json
 from datetime import date, datetime, timedelta
 from streamlit_option_menu import option_menu
 import io
-import random
-import re
+import hmac
+import logging
+from typing import Union, Optional, List, Dict, Any
+from gspread.utils import rowcol_to_a1  # Melhoria 2: Import no topo
+
+# Melhoria 2: Imports do ReportLab no topo (lazy loading mantido para performance)
+# Serão importados apenas quando necessário na função gerar_pdf_empresarial
+
+# ==============================================================================
+# CONFIGURAÇÃO DE LOGGING (Melhoria 1)
+# ==============================================================================
+logging.basicConfig(level=logging.WARNING)
+logger = logging.getLogger(__name__)
+
+# ==============================================================================
+# CONSTANTES CENTRALIZADAS (Melhoria 4)
+# ==============================================================================
+# Cores do tema
+COR_PRIMARIA = "#2D6A4F"
+COR_PRIMARIA_ESCURA = "#1B4332"
+COR_SUCESSO = "#40916C"
+COR_FUNDO = "#F8F9FA"
+COR_FUNDO_ESCURO = "#1A1C1E"
+COR_CINZA_CLARO = "#e9ecef"
+COR_CINZA_MEDIO = "#adb5bd"
+
+# Status de obras (Melhoria 4: Centralizado)
+STATUS_OBRA = ["Projeto", "Fundação", "Alvenaria", "Acabamento", "Concluída", "Vendida"]
+
+# Colunas das tabelas
+OBRAS_COLS = [
+    "ID", "Cliente", "Endereço", "Status", "Valor Total",
+    "Data Início", "Prazo", "Area Construida", "Area Terreno",
+    "Quartos", "Custo Previsto"
+]
+
+FIN_COLS = ["ID", "Data", "Tipo", "Categoria", "Descrição", "Valor", "Obra Vinculada", "Fornecedor", "Forma Pagamento"]
+
+CATS = [
+    "Material",
+    "Mão de Obra",
+    "Serviços",
+    "Administrativo",
+    "Impostos",
+    "Emolumentos Cartorários",
+    "Outros"
+]
+
+PAGAMENTOS = [
+    "PIX",
+    "Cartão de Crédito",
+    "Cartão de Débito",
+    "Dinheiro",
+    "Transferência",
+    "Boleto",
+    "Cheque",
+    "Outro"
+]
+
+# Defaults para formulários (Melhoria 6)
+DEFAULTS_FIN = {
+    "data": date.today(),
+    "tipo": "Saída (Despesa)",
+    "cat": "",
+    "obra": "",
+    "pag": "",
+    "valor": 0.0,
+    "desc": "",
+    "forn": ""
+}
+
+DEFAULTS_OBRA = {
+    "nome": "",
+    "end": "",
+    "area_c": 0.0,
+    "area_t": 0.0,
+    "quartos": 0,
+    "status": "Projeto",
+    "custo": 0.0,
+    "vgv": 0.0,
+    "prazo": "",
+    "data": date.today()
+}
 
 # ==============================================================================
 # 1. CONFIGURAÇÃO VISUAL (UI)
@@ -19,16 +100,16 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# CSS OTIMIZADO
-st.markdown("""
+# CSS OTIMIZADO (usando constantes)
+st.markdown(f"""
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap');
-    html, body, [class*="css"] { font-family: 'Inter', sans-serif; }
-    
-    [data-testid="stMetricValue"] { font-size: 1.8rem !important; font-weight: 700; color: #1a1a1a; }
-    
-    div.stButton > button {
-        background-color: #2D6A4F;
+    html, body, [class*="css"] {{ font-family: 'Inter', sans-serif; }}
+
+    [data-testid="stMetricValue"] {{ font-size: 1.8rem !important; font-weight: 700; color: #1a1a1a; }}
+
+    div.stButton > button {{
+        background-color: {COR_PRIMARIA};
         color: white;
         border: none;
         border-radius: 6px;
@@ -36,43 +117,89 @@ st.markdown("""
         font-weight: 600;
         box-shadow: 0 2px 4px rgba(0,0,0,0.1);
         transition: all 0.2s;
-    }
-    div.stButton > button:hover {
-        background-color: #1B4332;
+    }}
+    div.stButton > button:hover {{
+        background-color: {COR_PRIMARIA_ESCURA};
         transform: translateY(-1px);
         box-shadow: 0 4px 8px rgba(0,0,0,0.2);
-    }
-    
-    button:disabled {
-        background-color: #e9ecef !important;
-        color: #adb5bd !important;
+    }}
+
+    button:disabled {{
+        background-color: {COR_CINZA_CLARO} !important;
+        color: {COR_CINZA_MEDIO} !important;
         cursor: not-allowed;
-    }
-    
-    [data-testid="stSidebar"] { 
-        background-color: #f8f9fa; 
-        border-right: 1px solid #e9ecef; 
-    }
-    
-    [data-testid="stSidebarUserContent"] {
+    }}
+
+    [data-testid="stSidebar"] {{
+        background-color: {COR_FUNDO};
+        border-right: 1px solid {COR_CINZA_CLARO};
+    }}
+
+    [data-testid="stSidebarUserContent"] {{
         padding-top: 2rem;
-    }
+    }}
 </style>
 """, unsafe_allow_html=True)
 
 # ==============================================================================
-# 2. FUNÇÕES HELPERS
+# 2. FUNÇÕES HELPERS (Melhorias 3, 5, 6)
 # ==============================================================================
-def fmt_moeda(valor):
+
+def check_password(input_pwd: str, stored_pwd: str) -> bool:
+    """
+    Compara senhas de forma segura contra timing attacks (Melhoria 1).
+
+    Args:
+        input_pwd: Senha fornecida pelo usuário
+        stored_pwd: Senha armazenada nos secrets
+
+    Returns:
+        True se as senhas coincidirem, False caso contrário
+    """
+    return hmac.compare_digest(input_pwd, stored_pwd)
+
+
+def reset_form_state(prefix: str, defaults: Dict[str, Any]) -> None:
+    """
+    Reseta o estado do formulário para valores padrão (Melhoria 6).
+
+    Args:
+        prefix: Prefixo das chaves no session_state (ex: "k_fin", "k_ob")
+        defaults: Dicionário com valores padrão
+    """
+    for key, value in defaults.items():
+        st.session_state[f"{prefix}_{key}"] = value
+
+
+def fmt_moeda(valor: Union[float, int, str, None]) -> str:
+    """
+    Formata valor numérico para moeda brasileira (R$) (Melhoria 5).
+
+    Args:
+        valor: Valor a ser formatado
+
+    Returns:
+        String formatada como moeda brasileira
+    """
     if pd.isna(valor) or valor == "":
         return "R$ 0,00"
     try:
         val = float(valor)
         return f"R$ {val:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
-    except:
+    except (ValueError, TypeError):  # Melhoria 3: Exceções específicas
         return f"R$ {valor}"
 
-def safe_float(x) -> float:
+
+def safe_float(x: Union[int, float, str, None]) -> float:
+    """
+    Converte valor para float de forma segura (Melhoria 5).
+
+    Args:
+        x: Valor a ser convertido
+
+    Returns:
+        Valor como float, ou 0.0 se conversão falhar
+    """
     if isinstance(x, (int, float)):
         return float(x)
     if x is None:
@@ -80,13 +207,17 @@ def safe_float(x) -> float:
     s = str(x).strip().replace("R$", "").replace(" ", "").replace(".", "").replace(",", ".")
     try:
         return float(s)
-    except:
+    except (ValueError, TypeError, AttributeError):  # Melhoria 3: Exceções específicas
         return 0.0
 
-def ensure_financeiro_id(ws_fin):
+
+def ensure_financeiro_id(ws_fin) -> None:
     """
     Garante que a aba Financeiro tenha a coluna ID (primeira coluna).
     Se não tiver, cria e preenche IDs sequenciais para as linhas existentes.
+
+    Args:
+        ws_fin: Worksheet do gspread para aba Financeiro
     """
     headers = ws_fin.row_values(1)
     if "ID" in headers:
@@ -99,11 +230,14 @@ def ensure_financeiro_id(ws_fin):
         ids = [[i] for i in range(1, n_rows)]
         ws_fin.update(f"A2:A{n_rows}", ids)
 
-def ensure_financeiro_schema(ws_fin, required_cols):
+
+def ensure_financeiro_schema(ws_fin, required_cols: List[str]) -> None:
     """
-    Migração segura: garante ID e garante colunas novas (ex.: Forma Pagamento) sem quebrar base antiga.
-    - ID: sempre garante como 1ª coluna
-    - colunas ausentes: adiciona no final e preenche vazio nas linhas existentes
+    Migração segura: garante ID e colunas novas sem quebrar base antiga (Melhoria 5).
+
+    Args:
+        ws_fin: Worksheet do gspread para aba Financeiro
+        required_cols: Lista de colunas obrigatórias
     """
     ensure_financeiro_id(ws_fin)
     headers = ws_fin.row_values(1)
@@ -120,15 +254,62 @@ def ensure_financeiro_schema(ws_fin, required_cols):
         ws_fin.update_cell(1, new_col, col_name)
 
         if n_rows > 1:
-            from gspread.utils import rowcol_to_a1
             start = rowcol_to_a1(2, new_col)
             end = rowcol_to_a1(n_rows, new_col)
             ws_fin.update(f"{start}:{end}", [[""]]*(n_rows-1))
 
+
+def init_session_state_defaults(prefix: str, defaults: Dict[str, Any]) -> None:
+    """
+    Inicializa valores padrão no session_state se não existirem (Melhoria 6).
+
+    Args:
+        prefix: Prefixo das chaves (ex: "k_fin")
+        defaults: Dicionário com valores padrão
+    """
+    for key, value in defaults.items():
+        state_key = f"{prefix}_{key}"
+        if state_key not in st.session_state:
+            st.session_state[state_key] = value
+
+
+def clear_data_cache() -> None:
+    """Limpa cache de dados do session_state e do Streamlit (Melhoria 6)."""
+    for key in ["data_obras", "data_fin"]:
+        if key in st.session_state:
+            del st.session_state[key]
+    st.cache_data.clear()
+
+
 # ==============================================================================
-# 3. MOTOR PDF (ENTERPRISE V5)
+# 3. MOTOR PDF (ENTERPRISE V5) - Usando constantes de cores
 # ==============================================================================
-def gerar_pdf_empresarial(escopo, periodo, vgv, custos, lucro, roi, df_cat, df_lanc):
+def gerar_pdf_empresarial(
+    escopo: str,
+    periodo: str,
+    vgv: float,
+    custos: float,
+    lucro: float,
+    roi: float,
+    df_cat: Optional[pd.DataFrame],
+    df_lanc: Optional[pd.DataFrame]
+) -> bytes:
+    """
+    Gera relatório PDF empresarial (Melhoria 5: Type hints).
+
+    Args:
+        escopo: Nome da obra ou "Visão Geral"
+        periodo: String descrevendo o período
+        vgv: Valor Geral de Vendas
+        custos: Total de custos
+        lucro: Lucro calculado
+        roi: Retorno sobre investimento (%)
+        df_cat: DataFrame com categorias agregadas
+        df_lanc: DataFrame com lançamentos
+
+    Returns:
+        Bytes do PDF gerado
+    """
     from reportlab.lib.pagesizes import A4
     from reportlab.lib import colors
     from reportlab.lib.enums import TA_RIGHT
@@ -180,7 +361,7 @@ def gerar_pdf_empresarial(escopo, periodo, vgv, custos, lucro, roi, df_cat, df_l
     styles = getSampleStyleSheet()
     style_header_title = ParagraphStyle('HeadTitle', parent=styles['Normal'], fontSize=14, leading=16, textColor=colors.white, fontName='Helvetica-Bold')
     style_header_sub = ParagraphStyle('HeadSub', parent=styles['Normal'], fontSize=9, leading=11, textColor=colors.whitesmoke)
-    style_h2 = ParagraphStyle('SecTitle', parent=styles['Heading2'], fontSize=11, textColor=colors.HexColor("#1B4332"), spaceBefore=15, spaceAfter=8, fontName='Helvetica-Bold')
+    style_h2 = ParagraphStyle('SecTitle', parent=styles['Heading2'], fontSize=11, textColor=colors.HexColor(COR_PRIMARIA_ESCURA), spaceBefore=15, spaceAfter=8, fontName='Helvetica-Bold')
 
     if "Visão Geral" in str(escopo):
         titulo_principal = "RELATÓRIO DE PORTFÓLIO (CONSOLIDADO)"
@@ -190,7 +371,7 @@ def gerar_pdf_empresarial(escopo, periodo, vgv, custos, lucro, roi, df_cat, df_l
     header_content = [[Paragraph(titulo_principal, style_header_title), Paragraph(f"PERÍODO:<br/>{periodo}", style_header_sub)]]
     t_header = Table(header_content, colWidths=[12*cm, 5*cm])
     t_header.setStyle(TableStyle([
-        ('BACKGROUND', (0,0), (-1,-1), colors.HexColor("#2D6A4F")),
+        ('BACKGROUND', (0,0), (-1,-1), colors.HexColor(COR_PRIMARIA)),
         ('PADDING', (0,0), (-1,-1), 15),
         ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
         ('ALIGN', (1,0), (1,0), 'RIGHT'),
@@ -213,7 +394,7 @@ def gerar_pdf_empresarial(escopo, periodo, vgv, custos, lucro, roi, df_cat, df_l
         ('ALIGN', (0,0), (-1,-1), 'CENTER'),
         ('FONTSIZE', (0,1), (-1,1), 10),
         ('TEXTCOLOR', (0,1), (-1,1), colors.black),
-        ('BACKGROUND', (0,0), (-1,1), colors.HexColor("#F8F9FA")),
+        ('BACKGROUND', (0,0), (-1,1), colors.HexColor(COR_FUNDO)),
         ('BOX', (0,0), (-1,-1), 0.5, colors.lightgrey),
         ('PADDING', (0,0), (-1,-1), 8),
     ]))
@@ -234,7 +415,7 @@ def gerar_pdf_empresarial(escopo, periodo, vgv, custos, lucro, roi, df_cat, df_l
             ('FONTNAME', (0,0), (-1,0), 'Helvetica-Bold'),
             ('FONTSIZE', (0,0), (-1,0), 8),
             ('TEXTCOLOR', (0,0), (-1,0), colors.white),
-            ('BACKGROUND', (0,0), (-1,0), colors.HexColor("#40916C")),
+            ('BACKGROUND', (0,0), (-1,0), colors.HexColor(COR_SUCESSO)),
             ('ALIGN', (1,0), (-1,-1), 'RIGHT'),
             ('GRID', (0,0), (-1,-1), 0.25, colors.lightgrey),
             ('ROWBACKGROUNDS', (0,1), (-1,-1), [colors.white, colors.whitesmoke]),
@@ -261,7 +442,7 @@ def gerar_pdf_empresarial(escopo, periodo, vgv, custos, lucro, roi, df_cat, df_l
             ('FONTNAME', (0,0), (-1,0), 'Helvetica-Bold'),
             ('FONTSIZE', (0,0), (-1,0), 8),
             ('TEXTCOLOR', (0,0), (-1,0), colors.white),
-            ('BACKGROUND', (0,0), (-1,0), colors.HexColor("#2D6A4F")),
+            ('BACKGROUND', (0,0), (-1,0), colors.HexColor(COR_PRIMARIA)),
             ('FONTSIZE', (0,1), (-1,-1), 8),
             ('ALIGN', (-1,0), (-1,-1), 'RIGHT'),
             ('GRID', (0,0), (-1,-2), 0.25, colors.lightgrey),
@@ -270,7 +451,7 @@ def gerar_pdf_empresarial(escopo, periodo, vgv, custos, lucro, roi, df_cat, df_l
         ]
         estilo_total_linha = [
             ('FONTNAME', (0,-1), (-1,-1), 'Helvetica-Bold'),
-            ('BACKGROUND', (0,-1), (-1,-1), colors.HexColor("#e9ecef")),
+            ('BACKGROUND', (0,-1), (-1,-1), colors.HexColor(COR_CINZA_CLARO)),
             ('TEXTCOLOR', (2,-1), (2,-1), colors.black),
             ('TEXTCOLOR', (-1,-1), (-1,-1), colors.black),
             ('ALIGN', (2,-1), (2,-1), 'RIGHT'),
@@ -296,9 +477,9 @@ def gerar_pdf_empresarial(escopo, periodo, vgv, custos, lucro, roi, df_cat, df_l
     data_total = [[total_lbl, total_val]]
     t_total = Table(data_total, colWidths=[12*cm, 5*cm])
     t_total.setStyle(TableStyle([
-        ('BACKGROUND', (1,0), (1,0), colors.HexColor("#1A1C1E")),
+        ('BACKGROUND', (1,0), (1,0), colors.HexColor(COR_FUNDO_ESCURO)),
         ('BACKGROUND', (0,0), (0,0), colors.white),
-        ('LINEBELOW', (0,0), (1,0), 2, colors.HexColor("#1A1C1E")),
+        ('LINEBELOW', (0,0), (1,0), 2, colors.HexColor(COR_FUNDO_ESCURO)),
         ('TOPPADDING', (0,0), (-1,-1), 12),
         ('BOTTOMPADDING', (0,0), (-1,-1), 12),
         ('RIGHTPADDING', (0,0), (-1,-1), 10),
@@ -325,40 +506,13 @@ def gerar_pdf_empresarial(escopo, periodo, vgv, custos, lucro, roi, df_cat, df_l
     doc.build(story, canvasmaker=EnterpriseCanvas)
     return buffer.getvalue()
 
+
 # ==============================================================================
-# 4. DADOS E CONEXÃO
+# 4. DADOS E CONEXÃO (Melhoria 1, 2, 3)
 # ==============================================================================
-OBRAS_COLS = [
-    "ID", "Cliente", "Endereço", "Status", "Valor Total",
-    "Data Início", "Prazo", "Area Construida", "Area Terreno",
-    "Quartos", "Custo Previsto"
-]
-
-FIN_COLS = ["ID", "Data", "Tipo", "Categoria", "Descrição", "Valor", "Obra Vinculada", "Fornecedor", "Forma Pagamento"]
-
-CATS = [
-    "Material",
-    "Mão de Obra",
-    "Serviços",
-    "Administrativo",
-    "Impostos",
-    "Emolumentos Cartorários",
-    "Outros"
-]
-
-PAGAMENTOS = [
-    "PIX",
-    "Cartão de Crédito",
-    "Cartão de Débito",
-    "Dinheiro",
-    "Transferência",
-    "Boleto",
-    "Cheque",
-    "Outro"
-]
-
 @st.cache_resource
 def get_conn():
+    """Obtém conexão com Google Sheets (com cache)."""
     creds = json.loads(st.secrets["gcp_service_account"]["json_content"], strict=False)
     db = gspread.authorize(
         ServiceAccountCredentials.from_json_keyfile_dict(
@@ -367,17 +521,28 @@ def get_conn():
         )
     ).open("GestorObras_DB")
 
-    try:
-        ws_fin = db.worksheet("Financeiro")
-        ensure_financeiro_schema(ws_fin, FIN_COLS)
-    except Exception:
-        pass
+    # Melhoria 2: Verificação de schema com flag de controle
+    if "schema_verified" not in st.session_state:
+        try:
+            ws_fin = db.worksheet("Financeiro")
+            ensure_financeiro_schema(ws_fin, FIN_COLS)
+            st.session_state["schema_verified"] = True
+        except gspread.exceptions.GSpreadException as e:  # Melhoria 3: Exceção específica
+            logger.warning(f"Falha ao garantir schema na conexão: {e}")
+        except Exception as e:
+            logger.warning(f"Erro inesperado ao garantir schema: {e}")
 
     return db
 
+
 @st.cache_data(ttl=120)
-def fetch_data_from_google():
-    """Busca dados brutos do Google Sheets com Cache e LIMPEZA de STRINGS"""
+def fetch_data_from_google() -> tuple[pd.DataFrame, pd.DataFrame]:
+    """
+    Busca dados brutos do Google Sheets com Cache e LIMPEZA de STRINGS (Melhoria 5).
+
+    Returns:
+        Tupla com (DataFrame de obras, DataFrame financeiro)
+    """
     try:
         db = get_conn()
 
@@ -393,10 +558,14 @@ def fetch_data_from_google():
                     df_o[c] = None
 
         ws_f = db.worksheet("Financeiro")
-        try:
-            ensure_financeiro_schema(ws_f, FIN_COLS)
-        except Exception:
-            pass
+
+        # Melhoria 2: Verificação com flag para evitar chamadas repetidas
+        if not st.session_state.get("schema_verified"):
+            try:
+                ensure_financeiro_schema(ws_f, FIN_COLS)
+                st.session_state["schema_verified"] = True
+            except gspread.exceptions.GSpreadException as e:
+                logger.warning(f"Falha ao garantir schema: {e}")
 
         raw_f = ws_f.get_all_records()
         df_f = pd.DataFrame(raw_f)
@@ -418,35 +587,38 @@ def fetch_data_from_google():
         df_f["Valor"] = df_f["Valor"].apply(safe_float)
         df_f["Data_DT"] = pd.to_datetime(df_f["Data"], errors="coerce")
 
-        if "Obra Vinculada" in df_f.columns:
-            df_f["Obra Vinculada"] = df_f["Obra Vinculada"].astype(str).str.strip()
-
-        if "Categoria" in df_f.columns:
-            df_f["Categoria"] = df_f["Categoria"].astype(str).str.strip()
-
-        if "Fornecedor" in df_f.columns:
-            df_f["Fornecedor"] = df_f["Fornecedor"].astype(str).str.strip()
-
-        if "Forma Pagamento" in df_f.columns:
-            df_f["Forma Pagamento"] = df_f["Forma Pagamento"].astype(str).str.strip()
+        # Limpeza de strings
+        str_cols_fin = ["Obra Vinculada", "Categoria", "Fornecedor", "Forma Pagamento"]
+        for col in str_cols_fin:
+            if col in df_f.columns:
+                df_f[col] = df_f[col].astype(str).str.strip()
 
         if "Cliente" in df_o.columns:
             df_o["Cliente"] = df_o["Cliente"].astype(str).str.strip()
 
         return df_o, df_f
+
+    except gspread.exceptions.GSpreadException as e:  # Melhoria 3
+        st.error(f"Erro de conexão com Google Sheets: {e}")
+        logger.error(f"GSpread error: {e}")
+        return pd.DataFrame(), pd.DataFrame()
     except Exception as e:
         st.error(f"Erro DB: {e}")
+        logger.error(f"Database error: {e}")
         return pd.DataFrame(), pd.DataFrame()
 
+
 # ==============================================================================
-# 5. APP PRINCIPAL
+# 5. APP PRINCIPAL (Melhoria 1: Senha segura)
 # ==============================================================================
 if "auth" not in st.session_state:
     st.session_state.auth = False
 
-def password_entered():
-    """Valida senha e carrega dados imediatamente para evitar delay"""
-    if st.session_state["password_input"] == st.secrets["password"]:
+
+def password_entered() -> None:
+    """Valida senha de forma segura e carrega dados (Melhoria 1)."""
+    # Melhoria 1: Comparação segura de senha
+    if check_password(st.session_state["password_input"], st.secrets["password"]):
         st.session_state.auth = True
         if "login_error" in st.session_state:
             del st.session_state["login_error"]
@@ -456,38 +628,42 @@ def password_entered():
             st.session_state["data_obras"] = df_o
             st.session_state["data_fin"] = df_f
         except Exception as e:
+            logger.error(f"Erro ao sincronizar login: {e}")
             st.error(f"Erro ao sincronizar login: {e}")
     else:
         st.session_state.auth = False
         st.session_state.login_error = "Senha incorreta"
 
-def logout():
-    """Logout e limpeza"""
+
+def logout() -> None:
+    """Logout e limpeza de sessão."""
     st.session_state.auth = False
     if "password_input" in st.session_state:
         st.session_state["password_input"] = ""
-    if "data_obras" in st.session_state:
-        del st.session_state["data_obras"]
-    if "data_fin" in st.session_state:
-        del st.session_state["data_fin"]
+    clear_data_cache()
+    # Limpar flag de schema para re-verificar no próximo login
+    if "schema_verified" in st.session_state:
+        del st.session_state["schema_verified"]
+
 
 if not st.session_state.auth:
     _, c2, _ = st.columns([1, 1, 1])
     with c2:
-        st.markdown("<br><h2 style='text-align:center; color:#2D6A4F'>GESTOR PRO</h2>", unsafe_allow_html=True)
+        st.markdown(f"<br><h2 style='text-align:center; color:{COR_PRIMARIA}'>GESTOR PRO</h2>", unsafe_allow_html=True)
         if st.session_state.get("login_error"):
             st.error(st.session_state["login_error"])
         st.text_input("Senha", type="password", key="password_input", on_change=password_entered)
         st.button("ENTRAR", use_container_width=True, on_click=password_entered)
     st.stop()
 
+
 # ==============================================================================
-# 6. BARRA LATERAL
+# 6. BARRA LATERAL (usando constantes)
 # ==============================================================================
 with st.sidebar:
-    st.markdown("""
+    st.markdown(f"""
         <div style='text-align: left; margin-bottom: 20px;'>
-            <h1 style='color: #2D6A4F; font-size: 24px; margin-bottom: 0px;'>GESTOR PRO</h1>
+            <h1 style='color: {COR_PRIMARIA}; font-size: 24px; margin-bottom: 0px;'>GESTOR PRO</h1>
             <p style='color: gray; font-size: 12px; margin-top: 0px;'>Incorporação & Obras</p>
         </div>
     """, unsafe_allow_html=True)
@@ -499,9 +675,9 @@ with st.sidebar:
         default_index=0,
         styles={
             "container": {"padding": "0!important", "background-color": "transparent"},
-            "icon": {"color": "#2D6A4F", "font-size": "16px"},
+            "icon": {"color": COR_PRIMARIA, "font-size": "16px"},
             "nav-link": {"font-size": "14px", "text-align": "left", "margin": "5px", "--hover-color": "#eee"},
-            "nav-link-selected": {"background-color": "#2D6A4F", "color": "white"},
+            "nav-link-selected": {"background-color": COR_PRIMARIA, "color": "white"},
         }
     )
 
@@ -518,11 +694,12 @@ with st.sidebar:
     st.write("")
     st.button("🚪 Sair do Sistema", on_click=logout, use_container_width=True)
 
-    st.markdown("""
+    st.markdown(f"""
         <div style='margin-top: 30px; text-align: center;'>
-            <p style='color: #adb5bd; font-size: 10px;'>v1.4.1 • © 2026 Gestor Pro</p>
+            <p style='color: {COR_CINZA_MEDIO}; font-size: 10px;'>v1.5.0 • © 2026 Gestor Pro</p>
         </div>
     """, unsafe_allow_html=True)
+
 
 # ==============================================================================
 # 7. GESTÃO DE DADOS (CACHE)
@@ -534,6 +711,7 @@ if "data_obras" not in st.session_state or "data_fin" not in st.session_state:
             st.session_state["data_obras"] = df_obras
             st.session_state["data_fin"] = df_fin
         except Exception as e:
+            logger.error(f"Falha na conexão: {e}")
             st.error(f"Falha na conexão: {e}")
             st.stop()
 else:
@@ -542,11 +720,12 @@ else:
 
 lista_obras = sorted(df_obras["Cliente"].unique().tolist()) if not df_obras.empty else []
 
+
 # ==============================================================================
 # 8. CONTEÚDO DAS PÁGINAS
 # ==============================================================================
 
-# --- DASHBOARD (ATUALIZADO) ---
+# --- DASHBOARD ---
 if sel == "Dashboard":
     import plotly.express as px
 
@@ -562,11 +741,7 @@ if sel == "Dashboard":
             st.stop()
     with c_btn:
         if st.button("🔄 Atualizar Dados", use_container_width=True):
-            st.cache_data.clear()
-            if "data_obras" in st.session_state:
-                del st.session_state["data_obras"]
-            if "data_fin" in st.session_state:
-                del st.session_state["data_fin"]
+            clear_data_cache()  # Melhoria 6: Usando função helper
             st.rerun()
 
     # Base: só saídas/despesas
@@ -614,7 +789,7 @@ if sel == "Dashboard":
             k4.metric("ROI (Vendidas)", "—")
             st.caption("ℹ️ Lucro/ROI só aparecem para obras com **Status = 'Vendida'**.")
 
-        # métricas “clássicas” (para PDF) — mantidas como antes
+        # métricas para PDF
         vgv = vgv_total
         custos = custos_total
         lucro = vgv - custos
@@ -648,7 +823,7 @@ if sel == "Dashboard":
             st.caption("ℹ️ Para obras **não vendidas**, Lucro e ROI ficam ocultos e só aparecem quando **Status = 'Vendida'**.")
 
     # -------------------------
-    # Gráficos (sem tabela)
+    # Gráficos
     # -------------------------
     g1, g2 = st.columns([2, 1])
 
@@ -657,7 +832,7 @@ if sel == "Dashboard":
         if not df_show.empty:
             df_ev = df_show.sort_values("Data_DT")
             df_ev["Acumulado"] = df_ev["Valor"].cumsum()
-            fig = px.area(df_ev, x="Data_DT", y="Acumulado", color_discrete_sequence=["#2D6A4F"])
+            fig = px.area(df_ev, x="Data_DT", y="Acumulado", color_discrete_sequence=[COR_PRIMARIA])
             fig.update_layout(plot_bgcolor="white", margin=dict(t=10, l=10, r=10, b=10), height=300)
             st.plotly_chart(fig, use_container_width=True)
         else:
@@ -681,7 +856,7 @@ if sel == "Dashboard":
             st.info("Sem dados")
 
     # -------------------------
-    # PDF (mantido, mas sem mostrar tabela na tela)
+    # PDF
     # -------------------------
     st.markdown("---")
 
@@ -715,38 +890,19 @@ if sel == "Dashboard":
     else:
         st.info("Sem lançamentos no escopo para gerar relatório.")
 
+
 # --- FINANCEIRO ---
 elif sel == "Financeiro":
     st.title("Financeiro")
 
+    # Melhoria 6: Usando função helper para reset
     if st.session_state.get("sucesso_fin"):
         st.success("✅ Lançamento realizado com sucesso!", icon="✅")
-        st.session_state["k_fin_data"] = date.today()
-        st.session_state["k_fin_tipo"] = "Saída (Despesa)"
-        st.session_state["k_fin_cat"] = ""
-        st.session_state["k_fin_obra"] = ""
-        st.session_state["k_fin_pag"] = ""
-        st.session_state["k_fin_valor"] = 0.0
-        st.session_state["k_fin_desc"] = ""
-        st.session_state["k_fin_forn"] = ""
+        reset_form_state("k_fin", DEFAULTS_FIN)
         st.session_state["sucesso_fin"] = False
 
-    if "k_fin_data" not in st.session_state:
-        st.session_state.k_fin_data = date.today()
-    if "k_fin_tipo" not in st.session_state:
-        st.session_state.k_fin_tipo = "Saída (Despesa)"
-    if "k_fin_cat" not in st.session_state:
-        st.session_state.k_fin_cat = ""
-    if "k_fin_obra" not in st.session_state:
-        st.session_state.k_fin_obra = ""
-    if "k_fin_pag" not in st.session_state:
-        st.session_state.k_fin_pag = ""
-    if "k_fin_valor" not in st.session_state:
-        st.session_state.k_fin_valor = 0.0
-    if "k_fin_desc" not in st.session_state:
-        st.session_state.k_fin_desc = ""
-    if "k_fin_forn" not in st.session_state:
-        st.session_state.k_fin_forn = ""
+    # Melhoria 6: Inicialização centralizada
+    init_session_state_defaults("k_fin", DEFAULTS_FIN)
 
     with st.expander("Novo Lançamento", expanded=True):
         with st.form("ffin", clear_on_submit=False):
@@ -776,6 +932,10 @@ elif sel == "Financeiro":
             with c_row3_2:
                 dc = st.text_input("Descrição *", value=st.session_state.k_fin_desc, key="k_fin_desc", placeholder="Detalhes do gasto")
 
+            # Melhoria 7: Validação inline
+            if ct == "Material" and not fn:
+                st.caption("⚠️ Fornecedor é obrigatório para categoria 'Material'")
+
             st.write("")
             submitted_fin = st.form_submit_button("Salvar Lançamento", use_container_width=True)
 
@@ -804,7 +964,11 @@ elif sel == "Financeiro":
                     try:
                         conn = get_conn()
                         ws_fin = conn.worksheet("Financeiro")
-                        ensure_financeiro_schema(ws_fin, FIN_COLS)
+
+                        # Melhoria 2: Verificação com flag
+                        if not st.session_state.get("schema_verified"):
+                            ensure_financeiro_schema(ws_fin, FIN_COLS)
+                            st.session_state["schema_verified"] = True
 
                         if not df_fin.empty and "ID" in df_fin.columns:
                             ids_exist = pd.to_numeric(df_fin["ID"], errors="coerce").fillna(0)
@@ -824,13 +988,14 @@ elif sel == "Financeiro":
                             pg.strip()
                         ])
 
-                        if "data_fin" in st.session_state:
-                            del st.session_state["data_fin"]
-                        st.cache_data.clear()
-
+                        clear_data_cache()  # Melhoria 6
                         st.session_state["sucesso_fin"] = True
                         st.rerun()
+                    except gspread.exceptions.GSpreadException as e:  # Melhoria 3
+                        logger.error(f"Erro GSpread ao salvar: {e}")
+                        st.error(f"Erro ao salvar: {e}")
                     except Exception as e:
+                        logger.error(f"Erro ao salvar lançamento: {e}")
                         st.error(f"Erro: {e}")
 
     st.markdown("---")
@@ -851,10 +1016,10 @@ elif sel == "Financeiro":
                 filtro_cat = st.selectbox("Filtrar por Categoria", options=opcoes_filtro_cat)
 
         if filtro_obra != "Todas as Obras":
-            df_view = df_view[df_view["Obra Vinculada"].astype(str) == str(filtro_obra)]
+            df_view = df_view[df_view["Obra Vinculada"].astype(str).str.strip() == str(filtro_obra).strip()]
 
         if filtro_cat != "Todas as Categorias":
-            df_view = df_view[df_view["Categoria"].astype(str) == str(filtro_cat)]
+            df_view = df_view[df_view["Categoria"].astype(str).str.strip() == str(filtro_cat).strip()]
 
         total_filtrado = df_view["Valor"].sum()
         count_filtrado = len(df_view)
@@ -903,7 +1068,7 @@ elif sel == "Financeiro":
             marcados = int(edited_df["Excluir"].astype(bool).sum())
             valor_marcado = float(pd.to_numeric(edited_df.loc[edited_df["Excluir"] == True, "Valor"], errors="coerce").fillna(0.0).sum()) if marcados > 0 else 0.0
             total_pos_excluir = total_atual - valor_marcado
-        except Exception:
+        except (ValueError, TypeError, KeyError):  # Melhoria 3
             total_atual, marcados, valor_marcado, total_pos_excluir = 0.0, 0, 0.0, 0.0
 
         with st.container(border=True):
@@ -932,7 +1097,8 @@ elif sel == "Financeiro":
                 column_config={"Valor": st.column_config.NumberColumn(format="R$ %.2f")}
             )
 
-        def _norm_df(df):
+        def _norm_df(df: pd.DataFrame) -> pd.DataFrame:
+            """Normaliza DataFrame para comparação (Melhoria 5: Type hint)."""
             d = df.copy()
             d["Data"] = d["Data"].astype(str)
             d["Valor"] = pd.to_numeric(d["Valor"], errors="coerce").fillna(0.0).astype(float)
@@ -958,7 +1124,8 @@ elif sel == "Financeiro":
                     pwd_confirm = st.text_input("Senha", type="password", placeholder="Senha ADM", label_visibility="collapsed")
                 with c_btn:
                     if st.button("💾 SALVAR", type="primary", use_container_width=True):
-                        if pwd_confirm != st.secrets["password"]:
+                        # Melhoria 1: Comparação segura
+                        if not check_password(pwd_confirm, st.secrets["password"]):
                             st.toast("Senha incorreta!", icon="⛔")
                         else:
                             erros = []
@@ -995,7 +1162,10 @@ elif sel == "Financeiro":
                                 try:
                                     conn = get_conn()
                                     ws_fin = conn.worksheet("Financeiro")
-                                    ensure_financeiro_schema(ws_fin, FIN_COLS)
+
+                                    if not st.session_state.get("schema_verified"):
+                                        ensure_financeiro_schema(ws_fin, FIN_COLS)
+                                        st.session_state["schema_verified"] = True
 
                                     headers_fin = ws_fin.row_values(1)
                                     col_id = headers_fin.index("ID") + 1
@@ -1011,7 +1181,6 @@ elif sel == "Financeiro":
                                     for rr in sorted(rows_del, reverse=True):
                                         ws_fin.delete_rows(rr)
 
-                                    from gspread.utils import rowcol_to_a1
                                     upd_count = 0
                                     df_upd = edited_df[edited_df["Excluir"] == False].copy()
 
@@ -1044,14 +1213,16 @@ elif sel == "Financeiro":
 
                                         upd_count += 1
 
-                                    if "data_fin" in st.session_state:
-                                        del st.session_state["data_fin"]
-                                    st.cache_data.clear()
+                                    clear_data_cache()  # Melhoria 6
 
                                     st.toast(f"✅ Salvo! {upd_count} atualizações • {len(rows_del)} exclusões", icon="✅")
                                     st.rerun()
 
+                                except gspread.exceptions.GSpreadException as e:  # Melhoria 3
+                                    logger.error(f"Erro GSpread ao salvar Financeiro: {e}")
+                                    st.error(f"Erro ao salvar Financeiro: {e}")
                                 except Exception as e:
+                                    logger.error(f"Erro ao salvar Financeiro: {e}")
                                     st.error(f"Erro ao salvar Financeiro: {e}")
         else:
             st.caption("💡 Edite a tabela acima. Marque 🗑️ para excluir. O botão SALVAR aparece automaticamente.")
@@ -1094,44 +1265,20 @@ elif sel == "Financeiro":
     else:
         st.info("Nenhum lançamento registrado.")
 
+
 # --- OBRAS ---
 elif sel == "Obras":
     st.title("📂 Gestão de Incorporação e Obras")
     st.markdown("---")
 
+    # Melhoria 6: Usando função helper para reset
     if st.session_state.get("sucesso_obra"):
         st.success("✅ Dados atualizados com sucesso!", icon="🏡")
-        st.session_state["k_ob_nome"] = ""
-        st.session_state["k_ob_end"] = ""
-        st.session_state["k_ob_area_c"] = 0.0
-        st.session_state["k_ob_area_t"] = 0.0
-        st.session_state["k_ob_quartos"] = 0
-        st.session_state["k_ob_status"] = "Projeto"
-        st.session_state["k_ob_custo"] = 0.0
-        st.session_state["k_ob_vgv"] = 0.0
-        st.session_state["k_ob_prazo"] = ""
+        reset_form_state("k_ob", DEFAULTS_OBRA)
         st.session_state["sucesso_obra"] = False
 
-    if "k_ob_nome" not in st.session_state:
-        st.session_state.k_ob_nome = ""
-    if "k_ob_end" not in st.session_state:
-        st.session_state.k_ob_end = ""
-    if "k_ob_area_c" not in st.session_state:
-        st.session_state.k_ob_area_c = 0.0
-    if "k_ob_area_t" not in st.session_state:
-        st.session_state.k_ob_area_t = 0.0
-    if "k_ob_quartos" not in st.session_state:
-        st.session_state.k_ob_quartos = 0
-    if "k_ob_status" not in st.session_state:
-        st.session_state.k_ob_status = "Projeto"
-    if "k_ob_custo" not in st.session_state:
-        st.session_state.k_ob_custo = 0.0
-    if "k_ob_vgv" not in st.session_state:
-        st.session_state.k_ob_vgv = 0.0
-    if "k_ob_prazo" not in st.session_state:
-        st.session_state.k_ob_prazo = ""
-    if "k_ob_data" not in st.session_state:
-        st.session_state.k_ob_data = date.today()
+    # Melhoria 6: Inicialização centralizada
+    init_session_state_defaults("k_ob", DEFAULTS_OBRA)
 
     with st.expander("➕ Novo Cadastro (Clique para expandir)", expanded=False):
         with st.form("f_obra_completa", clear_on_submit=False):
@@ -1144,6 +1291,9 @@ elif sel == "Obras":
                     value=st.session_state.k_ob_nome,
                     key="k_ob_nome"
                 )
+                # Melhoria 7: Validação inline
+                if nome_obra and len(nome_obra.strip()) < 3:
+                    st.caption("⚠️ Nome muito curto (mínimo 3 caracteres)")
             with c2:
                 endereco = st.text_input(
                     "Endereço *",
@@ -1181,7 +1331,7 @@ elif sel == "Obras":
             with c7:
                 status = st.selectbox(
                     "Fase Atual",
-                    ["Projeto", "Fundação", "Alvenaria", "Acabamento", "Concluída", "Vendida"],
+                    STATUS_OBRA,  # Melhoria 4: Usando constante
                     key="k_ob_status"
                 )
 
@@ -1215,27 +1365,33 @@ elif sel == "Obras":
                     key="k_ob_prazo"
                 )
 
+            # Melhoria 7: Validação inline com feedback visual
             if valor_venda > 0 and custo_previsto > 0:
                 margem_proj = ((valor_venda - custo_previsto) / custo_previsto) * 100
                 lucro_proj = valor_venda - custo_previsto
-                st.info(f"💰 **Projeção:** Lucro de **{fmt_moeda(lucro_proj)}** (Margem: **{margem_proj:.1f}%**)")
+
+                if margem_proj < 10:
+                    st.warning(f"⚠️ **Atenção:** Margem baixa ({margem_proj:.1f}%). Lucro projetado: {fmt_moeda(lucro_proj)}")
+                elif margem_proj < 20:
+                    st.info(f"💰 **Projeção:** Lucro de **{fmt_moeda(lucro_proj)}** (Margem: **{margem_proj:.1f}%**)")
+                else:
+                    st.success(f"✅ **Boa margem!** Lucro de **{fmt_moeda(lucro_proj)}** (Margem: **{margem_proj:.1f}%**)")
+            elif valor_venda > 0 or custo_previsto > 0:
+                st.caption("ℹ️ Preencha VGV e Custo para ver a projeção de margem")
 
             st.markdown("---")
             st.caption("(*) Campos Obrigatórios")
             submitted = st.form_submit_button("✅ SALVAR PROJETO", use_container_width=True)
 
             if submitted:
-                # OK atualizar essas chaves (não são keys de widgets)
                 st.session_state.k_ob_custo = custo_previsto
                 st.session_state.k_ob_vgv = valor_venda
-
-                # CORREÇÃO DO ERRO:
-                # NÃO escrever em st.session_state.k_ob_area_c / k_ob_area_t aqui,
-                # pois são keys de widgets (k_ob_area_c, k_ob_area_t) já instanciados neste ciclo.
 
                 erros = []
                 if not nome_obra.strip():
                     erros.append("O 'Nome do Empreendimento' é obrigatório.")
+                elif len(nome_obra.strip()) < 3:
+                    erros.append("O 'Nome do Empreendimento' deve ter pelo menos 3 caracteres.")
                 if not endereco.strip():
                     erros.append("O 'Endereço' é obrigatório.")
                 if not prazo_entrega.strip():
@@ -1263,13 +1419,14 @@ elif sel == "Obras":
                             float(area_const), float(area_terr), int(quartos), float(custo_previsto)
                         ])
 
-                        if "data_obras" in st.session_state:
-                            del st.session_state["data_obras"]
-                        st.cache_data.clear()
-
+                        clear_data_cache()  # Melhoria 6
                         st.session_state["sucesso_obra"] = True
                         st.rerun()
+                    except gspread.exceptions.GSpreadException as e:  # Melhoria 3
+                        logger.error(f"Erro GSpread ao salvar obra: {e}")
+                        st.error(f"Erro no Google Sheets: {e}")
                     except Exception as e:
+                        logger.error(f"Erro ao salvar obra: {e}")
                         st.error(f"Erro no Google Sheets: {e}")
 
     st.markdown("### 📋 Carteira de Obras")
@@ -1293,7 +1450,7 @@ elif sel == "Obras":
             column_config={
                 "ID": st.column_config.NumberColumn("#", width=40),
                 "Cliente": st.column_config.TextColumn("Empreendimento", width="large", required=True),
-                "Status": st.column_config.SelectboxColumn("Fase", options=["Projeto", "Fundação", "Alvenaria", "Acabamento", "Concluída", "Vendida"], required=True, width="medium"),
+                "Status": st.column_config.SelectboxColumn("Fase", options=STATUS_OBRA, required=True, width="medium"),  # Melhoria 4
                 "Prazo": st.column_config.TextColumn("Entrega", width="small"),
                 "Valor Total": st.column_config.NumberColumn("VGV", format="R$ %.0f", min_value=0),
                 "Custo Previsto": st.column_config.NumberColumn("Custo", format="R$ %.0f", min_value=0),
@@ -1314,7 +1471,8 @@ elif sel == "Obras":
                     pwd_confirm = st.text_input("Senha", type="password", placeholder="Senha ADM", label_visibility="collapsed")
                 with c_btn:
                     if st.button("💾 SALVAR", type="primary", use_container_width=True):
-                        if pwd_confirm == st.secrets["password"]:
+                        # Melhoria 1: Comparação segura
+                        if check_password(pwd_confirm, st.secrets["password"]):
                             try:
                                 conn = get_conn()
                                 ws = conn.worksheet("Obras")
@@ -1359,15 +1517,14 @@ elif sel == "Obras":
 
                                             ws.update(f"A{found_cell.row}:K{found_cell.row}", [update_values])
 
-                                    if "data_obras" in st.session_state:
-                                        del st.session_state["data_obras"]
-                                    if "data_fin" in st.session_state:
-                                        del st.session_state["data_fin"]
-                                    st.cache_data.clear()
-
+                                    clear_data_cache()  # Melhoria 6
                                     st.session_state["sucesso_obra"] = True
                                     st.rerun()
+                            except gspread.exceptions.GSpreadException as e:  # Melhoria 3
+                                logger.error(f"Erro GSpread ao salvar obras: {e}")
+                                st.error(f"Erro ao salvar: {e}")
                             except Exception as e:
+                                logger.error(f"Erro ao salvar obras: {e}")
                                 st.error(f"Erro ao salvar: {e}")
                         else:
                             st.toast("Senha incorreta!", icon="⛔")
