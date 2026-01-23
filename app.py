@@ -8,7 +8,8 @@ from streamlit_option_menu import option_menu
 import io
 import hmac
 import logging
-from typing import Union, Optional, List, Dict, Any
+import uuid  # Melhoria 9: Para geração de IDs únicos
+from typing import Union, Optional, List, Dict, Any, Tuple
 from gspread.utils import rowcol_to_a1  # Melhoria 2: Import no topo
 
 # Melhoria 2: Imports do ReportLab no topo (lazy loading mantido para performance)
@@ -171,23 +172,51 @@ def reset_form_state(prefix: str, defaults: Dict[str, Any]) -> None:
         st.session_state[f"{prefix}_{key}"] = value
 
 
-def fmt_moeda(valor: Union[float, int, str, None]) -> str:
+def fmt_moeda(valor: Union[float, int, str, None], simbolo: str = "R$") -> str:
     """
-    Formata valor numérico para moeda brasileira (R$) (Melhoria 5).
+    Formata valor numérico para moeda brasileira (R$) (Melhoria 5, 10).
+
+    Implementação robusta sem dependência de locale do sistema.
+    Suporta valores negativos e formata corretamente milhares e decimais.
 
     Args:
         valor: Valor a ser formatado
+        simbolo: Símbolo da moeda (padrão: "R$")
 
     Returns:
         String formatada como moeda brasileira
+
+    Examples:
+        >>> fmt_moeda(1234.56)
+        'R$ 1.234,56'
+        >>> fmt_moeda(-1000)
+        'R$ -1.000,00'
+        >>> fmt_moeda(None)
+        'R$ 0,00'
     """
-    if pd.isna(valor) or valor == "":
-        return "R$ 0,00"
+    if pd.isna(valor) or valor == "" or valor is None:
+        return f"{simbolo} 0,00"
+
     try:
         val = float(valor)
-        return f"R$ {val:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
-    except (ValueError, TypeError):  # Melhoria 3: Exceções específicas
-        return f"R$ {valor}"
+
+        # Trata valores negativos
+        negativo = val < 0
+        val = abs(val)
+
+        # Formata com separadores
+        parte_inteira = int(val)
+        parte_decimal = int(round((val - parte_inteira) * 100))
+
+        # Adiciona pontos como separador de milhares
+        str_inteira = f"{parte_inteira:,}".replace(",", ".")
+
+        # Monta resultado
+        resultado = f"{simbolo} {'-' if negativo else ''}{str_inteira},{parte_decimal:02d}"
+        return resultado
+
+    except (ValueError, TypeError, AttributeError):  # Melhoria 3: Exceções específicas
+        return f"{simbolo} {valor}"
 
 
 def safe_float(x: Union[int, float, str, None]) -> float:
@@ -279,6 +308,132 @@ def clear_data_cache() -> None:
         if key in st.session_state:
             del st.session_state[key]
     st.cache_data.clear()
+
+
+def generate_unique_id(existing_ids: pd.Series) -> int:
+    """
+    Gera um ID único baseado em timestamp para evitar colisões em concorrência (Melhoria 9).
+
+    Em vez de usar max(ID) + 1 que pode colidir se dois usuários adicionarem ao mesmo tempo,
+    usa timestamp em milissegundos que é praticamente único.
+
+    Args:
+        existing_ids: Series com IDs existentes (para fallback)
+
+    Returns:
+        ID único como inteiro
+    """
+    # Usa timestamp em milissegundos (últimos 9 dígitos para manter compatibilidade)
+    timestamp_id = int(datetime.now().timestamp() * 1000) % 1_000_000_000
+
+    # Verifica se já existe (improvável, mas seguro)
+    if not existing_ids.empty:
+        existing_set = set(existing_ids.dropna().astype(int).tolist())
+        while timestamp_id in existing_set:
+            timestamp_id += 1
+
+    return timestamp_id
+
+
+def normalize_string(value: Union[str, None]) -> str:
+    """
+    Normaliza string removendo espaços extras (Melhoria 9).
+
+    Args:
+        value: String a ser normalizada
+
+    Returns:
+        String normalizada ou string vazia se None
+    """
+    if value is None:
+        return ""
+    return str(value).strip()
+
+
+def validate_lancamento(
+    obra: str,
+    categoria: str,
+    tipo: str,
+    descricao: str,
+    valor: float,
+    fornecedor: str = ""
+) -> Tuple[bool, List[str]]:
+    """
+    Valida dados de um lançamento financeiro (Melhoria 10).
+
+    Args:
+        obra: Nome da obra vinculada
+        categoria: Categoria do lançamento
+        tipo: Tipo (Entrada/Saída)
+        descricao: Descrição do lançamento
+        valor: Valor do lançamento
+        fornecedor: Nome do fornecedor (obrigatório se categoria = Material)
+
+    Returns:
+        Tupla com (is_valid: bool, erros: List[str])
+    """
+    erros = []
+
+    if not normalize_string(obra):
+        erros.append("Selecione a Obra Vinculada.")
+    if not normalize_string(categoria):
+        erros.append("Selecione a Categoria.")
+    if not normalize_string(tipo):
+        erros.append("Selecione o Tipo.")
+    if not normalize_string(descricao):
+        erros.append("A Descrição é obrigatória.")
+    if valor <= 0:
+        erros.append("O Valor deve ser maior que zero.")
+    if normalize_string(categoria) == "Material" and not normalize_string(fornecedor):
+        erros.append("Para categoria 'Material', o campo Fornecedor é obrigatório.")
+
+    return (len(erros) == 0, erros)
+
+
+def validate_obra(
+    nome: str,
+    endereco: str,
+    prazo: str,
+    vgv: float,
+    custo: float,
+    area_const: float,
+    area_terr: float
+) -> Tuple[bool, List[str]]:
+    """
+    Valida dados de uma obra (Melhoria 10).
+
+    Args:
+        nome: Nome do empreendimento
+        endereco: Endereço da obra
+        prazo: Prazo de entrega
+        vgv: Valor Geral de Vendas
+        custo: Custo previsto
+        area_const: Área construída
+        area_terr: Área do terreno
+
+    Returns:
+        Tupla com (is_valid: bool, erros: List[str])
+    """
+    erros = []
+
+    nome_norm = normalize_string(nome)
+    if not nome_norm:
+        erros.append("O 'Nome do Empreendimento' é obrigatório.")
+    elif len(nome_norm) < 3:
+        erros.append("O 'Nome do Empreendimento' deve ter pelo menos 3 caracteres.")
+
+    if not normalize_string(endereco):
+        erros.append("O 'Endereço' é obrigatório.")
+    if not normalize_string(prazo):
+        erros.append("O 'Prazo' é obrigatório.")
+    if vgv <= 0:
+        erros.append("O 'Valor de Venda (VGV)' deve ser maior que zero.")
+    if custo <= 0:
+        erros.append("O 'Orçamento Previsto' deve ser maior que zero.")
+    if area_const <= 0 and area_terr <= 0:
+        erros.append("Preencha ao menos a Área Construída ou do Terreno.")
+
+    return (len(erros) == 0, erros)
 
 
 # ==============================================================================
@@ -696,7 +851,7 @@ with st.sidebar:
 
     st.markdown(f"""
         <div style='margin-top: 30px; text-align: center;'>
-            <p style='color: {COR_CINZA_MEDIO}; font-size: 10px;'>v1.5.0 • © 2026 Gestor Pro</p>
+            <p style='color: {COR_CINZA_MEDIO}; font-size: 10px;'>v1.6.0 • © 2026 Gestor Pro</p>
         </div>
     """, unsafe_allow_html=True)
 
@@ -941,20 +1096,20 @@ elif sel == "Financeiro":
 
             if submitted_fin:
                 st.session_state.k_fin_valor = vl
-                erros = []
-                if not ob or ob == "":
-                    erros.append("Selecione a Obra Vinculada.")
-                if not ct or ct == "":
-                    erros.append("Selecione a Categoria.")
+
+                # Melhoria 10: Validação centralizada
+                is_valid, erros = validate_lancamento(
+                    obra=ob,
+                    categoria=ct,
+                    tipo=tp,
+                    descricao=dc,
+                    valor=vl,
+                    fornecedor=fn
+                )
+
+                # Validação adicional: Forma de pagamento
                 if not pg or pg == "":
                     erros.append("Selecione a Forma de Pagamento.")
-                if vl <= 0:
-                    erros.append("O Valor deve ser maior que zero.")
-                if not dc.strip():
-                    erros.append("A Descrição é obrigatória.")
-
-                if ct == "Material" and not fn.strip():
-                    erros.append("Para a categoria 'Material', o campo Fornecedor é obrigatório.")
 
                 if erros:
                     st.error("⚠️ Atenção:")
@@ -970,11 +1125,12 @@ elif sel == "Financeiro":
                             ensure_financeiro_schema(ws_fin, FIN_COLS)
                             st.session_state["schema_verified"] = True
 
+                        # Melhoria 9: Geração de ID único baseado em timestamp
                         if not df_fin.empty and "ID" in df_fin.columns:
                             ids_exist = pd.to_numeric(df_fin["ID"], errors="coerce").fillna(0)
-                            new_id = int(ids_exist.max()) + 1
+                            new_id = generate_unique_id(ids_exist)
                         else:
-                            new_id = 1
+                            new_id = generate_unique_id(pd.Series())
 
                         ws_fin.append_row([
                             new_id,
@@ -1133,26 +1289,27 @@ elif sel == "Financeiro":
                                 if bool(r.get("Excluir")):
                                     continue
 
-                                obra = str(r.get("Obra Vinculada", "")).strip()
-                                cat = str(r.get("Categoria", "")).strip()
-                                desc = str(r.get("Descrição", "")).strip()
-                                tp2 = str(r.get("Tipo", "")).strip()
+                                # Melhoria 10: Validação centralizada
+                                row_id = int(r['ID'])
+                                obra = normalize_string(r.get("Obra Vinculada", ""))
+                                cat = normalize_string(r.get("Categoria", ""))
+                                desc = normalize_string(r.get("Descrição", ""))
+                                tp2 = normalize_string(r.get("Tipo", ""))
                                 val = float(pd.to_numeric(r.get("Valor", 0), errors="coerce") or 0)
+                                forn = normalize_string(r.get("Fornecedor", ""))
 
-                                if not obra:
-                                    erros.append(f"ID {int(r['ID'])}: selecione a Obra.")
-                                if not cat:
-                                    erros.append(f"ID {int(r['ID'])}: selecione a Categoria.")
-                                if not tp2:
-                                    erros.append(f"ID {int(r['ID'])}: selecione o Tipo.")
-                                if not desc:
-                                    erros.append(f"ID {int(r['ID'])}: Descrição é obrigatória.")
-                                if val <= 0:
-                                    erros.append(f"ID {int(r['ID'])}: Valor deve ser > 0.")
+                                is_valid, row_erros = validate_lancamento(
+                                    obra=obra,
+                                    categoria=cat,
+                                    tipo=tp2,
+                                    descricao=desc,
+                                    valor=val,
+                                    fornecedor=forn
+                                )
 
-                                forn = str(r.get("Fornecedor", "")).strip()
-                                if cat == "Material" and not forn:
-                                    erros.append(f"ID {int(r['ID'])}: Fornecedor é obrigatório para 'Material'.")
+                                # Adiciona ID da linha aos erros
+                                for err in row_erros:
+                                    erros.append(f"ID {row_id}: {err}")
 
                             if erros:
                                 st.error("⚠️ Corrija antes de salvar:")
@@ -1387,21 +1544,16 @@ elif sel == "Obras":
                 st.session_state.k_ob_custo = custo_previsto
                 st.session_state.k_ob_vgv = valor_venda
 
-                erros = []
-                if not nome_obra.strip():
-                    erros.append("O 'Nome do Empreendimento' é obrigatório.")
-                elif len(nome_obra.strip()) < 3:
-                    erros.append("O 'Nome do Empreendimento' deve ter pelo menos 3 caracteres.")
-                if not endereco.strip():
-                    erros.append("O 'Endereço' é obrigatório.")
-                if not prazo_entrega.strip():
-                    erros.append("O 'Prazo' é obrigatório.")
-                if valor_venda <= 0:
-                    erros.append("O 'Valor de Venda (VGV)' deve ser maior que zero.")
-                if custo_previsto <= 0:
-                    erros.append("O 'Orçamento Previsto' deve ser maior que zero.")
-                if area_const <= 0 and area_terr <= 0:
-                    erros.append("Preencha ao menos a Área Construída ou do Terreno.")
+                # Melhoria 10: Validação centralizada
+                is_valid, erros = validate_obra(
+                    nome=nome_obra,
+                    endereco=endereco,
+                    prazo=prazo_entrega,
+                    vgv=valor_venda,
+                    custo=custo_previsto,
+                    area_const=area_const,
+                    area_terr=area_terr
+                )
 
                 if erros:
                     st.error("⚠️ Não foi possível salvar. Verifique os campos:")
@@ -1411,8 +1563,9 @@ elif sel == "Obras":
                     try:
                         conn = get_conn()
                         ws = conn.worksheet("Obras")
+                        # Melhoria 9: Geração de ID único baseado em timestamp
                         ids_existentes = pd.to_numeric(df_obras["ID"], errors="coerce").fillna(0)
-                        novo_id = int(ids_existentes.max()) + 1 if not ids_existentes.empty else 1
+                        novo_id = generate_unique_id(ids_existentes)
                         ws.append_row([
                             novo_id, nome_obra.strip(), endereco.strip(), status, float(valor_venda),
                             data_inicio.strftime("%Y-%m-%d"), prazo_entrega.strip(),
