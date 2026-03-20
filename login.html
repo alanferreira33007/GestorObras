@@ -1,0 +1,382 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Login | Gestor Pro</title>
+  <meta name="description" content="Acesso ao sistema de gestão de obras">
+  <meta name="theme-color" content="#071D41">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.88em' font-size='80'>🏗</text></svg>">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      min-height: 100vh;
+      display: flex;
+      background: #F8F9FC;
+      color: #1B1B1F;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* ─── Painel lateral institucional ─── */
+    .login-brand {
+      flex: 1;
+      background: linear-gradient(175deg, #071D41 0%, #0C2D6B 50%, #1351B4 100%);
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      padding: 60px;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .login-brand::before {
+      content: '';
+      position: absolute;
+      top: -120px; right: -120px;
+      width: 400px; height: 400px;
+      border-radius: 50%;
+      background: rgba(255,255,255,0.03);
+    }
+
+    .login-brand::after {
+      content: '';
+      position: absolute;
+      bottom: -80px; left: -80px;
+      width: 300px; height: 300px;
+      border-radius: 50%;
+      background: rgba(255,255,255,0.02);
+    }
+
+    .brand-content {
+      max-width: 380px;
+      text-align: center;
+      position: relative;
+      z-index: 1;
+    }
+
+    .brand-icon {
+      width: 72px; height: 72px;
+      margin: 0 auto 28px;
+      background: rgba(255,255,255,0.1);
+      border: 1px solid rgba(255,255,255,0.15);
+      border-radius: 16px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 36px;
+    }
+
+    .brand-title {
+      font-size: 26px;
+      font-weight: 700;
+      color: #FFFFFF;
+      margin-bottom: 10px;
+      letter-spacing: -0.5px;
+    }
+
+    .brand-subtitle {
+      font-size: 14px;
+      color: rgba(255,255,255,0.7);
+      line-height: 1.7;
+    }
+
+    .brand-features {
+      margin-top: 40px;
+      text-align: left;
+    }
+
+    .brand-features .feature {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 16px;
+      font-size: 13px;
+      color: rgba(255,255,255,0.65);
+    }
+
+    .brand-features .feature-icon {
+      width: 32px; height: 32px;
+      background: rgba(255,255,255,0.08);
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 16px;
+      flex-shrink: 0;
+    }
+
+    .brand-footer {
+      position: absolute;
+      bottom: 28px;
+      font-size: 11px;
+      color: rgba(255,255,255,0.3);
+      z-index: 1;
+      letter-spacing: 0.5px;
+    }
+
+    /* ─── Formulário de login ─── */
+    .login-form-container {
+      width: 480px;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      padding: 60px;
+      background: #FFFFFF;
+      flex-shrink: 0;
+    }
+
+    .form-header { margin-bottom: 36px; }
+
+    .form-label-tag {
+      display: inline-block;
+      font-size: 11px;
+      font-weight: 700;
+      color: #1351B4;
+      text-transform: uppercase;
+      letter-spacing: 2px;
+      margin-bottom: 12px;
+      background: #D4E5FF;
+      padding: 4px 10px;
+      border-radius: 4px;
+    }
+
+    .form-title {
+      font-size: 24px;
+      font-weight: 700;
+      color: #1B1B1F;
+      margin-bottom: 8px;
+    }
+
+    .form-subtitle {
+      font-size: 14px;
+      color: #71747E;
+    }
+
+    .login-form {
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+    }
+
+    .form-group {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .form-group label {
+      font-size: 13px;
+      font-weight: 500;
+      color: #474A57;
+    }
+
+    .form-group input {
+      width: 100%;
+      padding: 12px 16px;
+      font-size: 15px;
+      font-family: inherit;
+      background: #F8F9FC;
+      border: 1.5px solid #E0E3EB;
+      border-radius: 8px;
+      color: #1B1B1F;
+      transition: all 0.2s ease;
+    }
+
+    .form-group input:focus {
+      outline: none;
+      border-color: #1351B4;
+      background: #FFFFFF;
+      box-shadow: 0 0 0 3px rgba(19, 81, 180, 0.12);
+    }
+
+    .form-group input::placeholder { color: #A0A3B1; }
+
+    .form-error {
+      background: #FDE8EA;
+      border: 1px solid #F5B3B8;
+      color: #CC2936;
+      padding: 12px 14px;
+      border-radius: 8px;
+      font-size: 13px;
+      font-weight: 500;
+      display: none;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .form-error.visible {
+      display: flex;
+    }
+
+    .form-error::before { content: '⚠'; flex-shrink: 0; }
+
+    .btn-submit {
+      padding: 14px 24px;
+      font-size: 15px;
+      font-weight: 600;
+      font-family: inherit;
+      background: #1351B4;
+      color: #FFFFFF;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: all 0.15s ease;
+      box-shadow: 0 1px 3px rgba(19, 81, 180, 0.3);
+    }
+
+    .btn-submit:hover {
+      background: #0C326F;
+      box-shadow: 0 2px 6px rgba(19, 81, 180, 0.4);
+      transform: translateY(-1px);
+    }
+
+    .btn-submit:active { transform: translateY(0); }
+
+    .btn-submit:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+      transform: none;
+    }
+
+    .login-footer {
+      margin-top: 40px;
+      text-align: center;
+      font-size: 11px;
+      color: #A0A3B1;
+    }
+
+    /* ─── Mobile ─── */
+    @media (max-width: 768px) {
+      body { flex-direction: column; }
+      .login-brand {
+        padding: 40px 24px;
+        min-height: auto;
+      }
+      .brand-features { display: none; }
+      .login-form-container {
+        width: 100%;
+        padding: 32px 24px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <!-- Painel institucional -->
+  <div class="login-brand">
+    <div class="brand-content">
+      <div class="brand-icon">🏗️</div>
+      <h1 class="brand-title">Gestor Pro</h1>
+      <p class="brand-subtitle">
+        Sistema integrado de gestão de obras para incorporadoras.
+        Controle financeiro, acompanhamento de obras e relatórios em tempo real.
+      </p>
+      <div class="brand-features">
+        <div class="feature">
+          <div class="feature-icon">📊</div>
+          <span>Dashboard com KPIs e gráficos interativos</span>
+        </div>
+        <div class="feature">
+          <div class="feature-icon">💰</div>
+          <span>Gestão financeira com parcelas e categorias</span>
+        </div>
+        <div class="feature">
+          <div class="feature-icon">🏢</div>
+          <span>Carteira de obras com cronograma visual</span>
+        </div>
+        <div class="feature">
+          <div class="feature-icon">📄</div>
+          <span>Relatórios PDF profissionais</span>
+        </div>
+      </div>
+    </div>
+    <div class="brand-footer">v6.0.0 &copy; 2026 Gestor Pro</div>
+  </div>
+
+  <!-- Formulário -->
+  <div class="login-form-container">
+    <div class="form-header">
+      <div class="form-label-tag">INCORPORADORA</div>
+      <h2 class="form-title">Acesse sua conta</h2>
+      <p class="form-subtitle">Entre com suas credenciais para continuar</p>
+    </div>
+
+    <div id="login-error" class="form-error"></div>
+
+    <form class="login-form" id="login-form" onsubmit="handleLogin(event)">
+      <div class="form-group">
+        <label for="username">Usuário</label>
+        <input type="text" id="username" placeholder="seu.usuario" autocomplete="username">
+      </div>
+      <div class="form-group">
+        <label for="password">Senha</label>
+        <input type="password" id="password" placeholder="Digite sua senha" autocomplete="current-password" required>
+      </div>
+      <button type="submit" class="btn-submit" id="btn-login">Entrar</button>
+    </form>
+
+    <div class="login-footer">
+      Sistema protegido &middot; Acesso restrito a usuários autorizados
+    </div>
+  </div>
+
+  <script>
+    // Check if already logged in
+    const token = localStorage.getItem('gp_token');
+    if (token) {
+      window.location.href = '/index.html';
+    }
+
+    async function handleLogin(e) {
+      e.preventDefault();
+      const btn = document.getElementById('btn-login');
+      const errorEl = document.getElementById('login-error');
+      errorEl.classList.remove('visible');
+
+      const username = document.getElementById('username').value.trim();
+      const password = document.getElementById('password').value;
+
+      if (!password) {
+        errorEl.textContent = 'Digite sua senha';
+        errorEl.classList.add('visible');
+        return;
+      }
+
+      btn.disabled = true;
+      btn.textContent = 'Entrando...';
+
+      try {
+        const res = await fetch('/api/auth', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username, password }),
+        });
+
+        const data = await res.json();
+
+        if (!res.ok) {
+          errorEl.textContent = data.error || 'Erro ao autenticar';
+          errorEl.classList.add('visible');
+          btn.disabled = false;
+          btn.textContent = 'Entrar';
+          return;
+        }
+
+        localStorage.setItem('gp_token', data.token);
+        localStorage.setItem('gp_user', JSON.stringify(data.user));
+        window.location.href = '/index.html';
+      } catch (err) {
+        errorEl.textContent = 'Erro de conexão. Tente novamente.';
+        errorEl.classList.add('visible');
+        btn.disabled = false;
+        btn.textContent = 'Entrar';
+      }
+    }
+  </script>
+</body>
+</html>

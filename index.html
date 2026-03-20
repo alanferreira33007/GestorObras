@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="Gestor Pro — Sistema de gestão de obras para incorporadoras">
+<meta name="theme-color" content="#071D41">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>Gestor Pro</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.88em' font-size='80'>🏗</text></svg>">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="src/styles.css">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+</head>
+<body>
+<!-- ═══════════════════════════════════════════
+     SIDEBAR
+════════════════════════════════════════════ -->
+<div class="sidebar-backdrop" id="sidebar-backdrop" onclick="toggleSidebar()"></div>
+<aside class="sidebar" id="sidebar">
+  <div class="logo">
+    <div class="logo-title">Gestor Pro</div>
+    <div class="logo-sub">Incorporação &middot; Obras</div>
+  </div>
+  <nav class="nav">
+    <div class="nav-section">Workspace</div>
+    <button class="nav-btn active" onclick="goView('dashboard',this)">
+      <span class="icon">📊</span> Dashboard
+    </button>
+    <button class="nav-btn" onclick="goView('financeiro',this)">
+      <span class="icon">💰</span> Financeiro
+      <span class="badge" id="bdg-fin" style="display:none">0</span>
+    </button>
+    <button class="nav-btn" onclick="goView('obras',this)">
+      <span class="icon">🏢</span> Obras
+      <span class="badge" id="bdg-obras" style="display:none">0</span>
+    </button>
+
+    <div class="nav-section-group" data-section="admin">
+      <div class="nav-section admin-section" id="admin-section" style="display:none">Administração</div>
+      <button class="nav-btn admin-btn" onclick="goView('auditoria',this)" style="display:none">
+        <span class="icon">🛡️</span> Auditoria
+      </button>
+    </div>
+  </nav>
+  <div class="sidebar-footer">
+    <div class="avatar" id="user-avatar">--</div>
+    <div style="flex:1;min-width:0">
+      <div class="user-name" id="user-name">Carregando...</div>
+      <div class="user-role" id="user-role">...</div>
+    </div>
+    <div class="user-actions">
+      <button class="btn-icon" onclick="logout()" title="Sair">🚪</button>
+    </div>
+  </div>
+</aside>
+
+<!-- ═══════════════════════════════════════════
+     BOTTOM NAVIGATION (MOBILE)
+════════════════════════════════════════════ -->
+<nav class="bottom-nav" id="bottom-nav">
+  <div class="bottom-nav-items">
+    <button class="bottom-nav-item active" onclick="goViewMobile('dashboard',this)">
+      <div class="bnav-icon-wrap"><span class="bnav-icon">📊</span></div>
+      <span class="bnav-label">Dashboard</span>
+    </button>
+    <button class="bottom-nav-item" onclick="goViewMobile('financeiro',this)">
+      <div class="bnav-icon-wrap"><span class="bnav-icon">💰</span></div>
+      <span class="bnav-label">Financeiro</span>
+    </button>
+    <button class="bottom-nav-item" onclick="goViewMobile('obras',this)">
+      <div class="bnav-icon-wrap"><span class="bnav-icon">🏢</span></div>
+      <span class="bnav-label">Obras</span>
+    </button>
+    <button class="bottom-nav-item" onclick="toggleSidebar()">
+      <div class="bnav-icon-wrap"><span class="bnav-icon">☰</span></div>
+      <span class="bnav-label">Menu</span>
+    </button>
+  </div>
+</nav>
+
+<!-- ═══════════════════════════════════════════
+     MAIN CONTENT
+════════════════════════════════════════════ -->
+<div class="main">
+  <!-- Topbar -->
+  <header class="topbar">
+    <div style="display:flex;align-items:center;gap:12px;">
+      <button class="btn-menu" onclick="toggleSidebar()">☰</button>
+      <h1 class="page-title" id="page-title">Dashboard</h1>
+    </div>
+    <div class="topbar-right">
+      <span class="sync-status" id="sync-status">🟢 Conectado</span>
+      <button class="btn-icon" onclick="refreshData()" title="Atualizar">🔄</button>
+    </div>
+  </header>
+
+  <!-- Content area -->
+  <main class="content" id="main-content">
+    <!-- Dashboard View -->
+    <div class="view active" id="view-dashboard"></div>
+
+    <!-- Financeiro View -->
+    <div class="view" id="view-financeiro"></div>
+
+    <!-- Obras View -->
+    <div class="view" id="view-obras"></div>
+
+    <!-- Auditoria View -->
+    <div class="view" id="view-auditoria"></div>
+
+    <!-- Loading overlay -->
+    <div class="loading-overlay" id="loading-overlay">
+      <div class="loading-spinner"></div>
+      <p>Sincronizando dados...</p>
+    </div>
+  </main>
+</div>
+
+<!-- ═══════════════════════════════════════════
+     TOAST
+════════════════════════════════════════════ -->
+<div class="toast-container" id="toast-container"></div>
+
+<!-- ═══════════════════════════════════════════
+     MODAL
+════════════════════════════════════════════ -->
+<div class="modal-backdrop" id="modal-backdrop" onclick="closeModal()"></div>
+<div class="modal" id="modal">
+  <div class="modal-header">
+    <h3 class="modal-title" id="modal-title">Modal</h3>
+    <button class="btn-icon" onclick="closeModal()">✕</button>
+  </div>
+  <div class="modal-body" id="modal-body"></div>
+  <div class="modal-footer" id="modal-footer"></div>
+</div>
+
+<script src="src/modules/api.js"></script>
+<script src="src/modules/utils.js"></script>
+<script src="src/modules/dashboard.js"></script>
+<script src="src/modules/financeiro.js"></script>
+<script src="src/modules/obras.js"></script>
+<script src="src/modules/auditoria.js"></script>
+<script src="src/modules/app.js"></script>
+</body>
+</html>

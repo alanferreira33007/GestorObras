@@ -1,0 +1,17 @@
+{
+  "name": "gestor-pro",
+  "version": "6.0.0",
+  "description": "Sistema Integrado de Gestão de Obras — Incorporadora",
+  "private": true,
+  "scripts": {
+    "dev": "vercel dev",
+    "build": "echo 'Static site - no build needed'"
+  },
+  "dependencies": {
+    "gspread": "^0.0.0",
+    "googleapis": "^140.0.0",
+    "google-auth-library": "^9.0.0",
+    "jsonwebtoken": "^9.0.0",
+    "bcryptjs": "^2.4.3"
+  }
+}
