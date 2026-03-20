@@ -28,7 +28,7 @@ COR_FUNDO_ESCURO = "#1A1C1E"
 COR_CINZA_CLARO = "#e9ecef"
 COR_CINZA_MEDIO = "#adb5bd"
 
-APP_VERSION = "v2.0.0"
+APP_VERSION = "v2.1.0"
 
 STATUS_OBRA = ["Projeto", "Fundação", "Alvenaria", "Acabamento", "Concluída", "Vendida"]
 
@@ -94,7 +94,7 @@ st.set_page_config(
     page_title="GESTOR PRO | Incorporadora",
     layout="wide",
     page_icon="🏗️",
-    initial_sidebar_state="expanded"
+    initial_sidebar_state="collapsed"
 )
 
 st.markdown(f"""
@@ -102,17 +102,19 @@ st.markdown(f"""
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap');
     html, body, [class*="css"] {{ font-family: 'Inter', sans-serif; }}
 
+    /* ---- DESKTOP ---- */
     [data-testid="stMetricValue"] {{ font-size: 1.8rem !important; font-weight: 700; }}
 
     div.stButton > button {{
         background-color: {COR_PRIMARIA};
         color: white;
         border: none;
-        border-radius: 6px;
+        border-radius: 8px;
         padding: 0.75rem 1rem;
         font-weight: 600;
         box-shadow: 0 2px 4px rgba(0,0,0,0.1);
         transition: all 0.2s;
+        min-height: 44px;
     }}
     div.stButton > button:hover {{
         background-color: {COR_PRIMARIA_ESCURA};
@@ -134,7 +136,187 @@ st.markdown(f"""
         padding-top: 2rem;
     }}
 
-    /* Dark mode */
+    /* Cards de métricas */
+    [data-testid="stMetric"] {{
+        background: linear-gradient(135deg, {COR_FUNDO} 0%, white 100%);
+        border: 1px solid {COR_CINZA_CLARO};
+        border-radius: 10px;
+        padding: 12px 16px;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+    }}
+
+    /* Download buttons */
+    [data-testid="stDownloadButton"] > button {{
+        background-color: {COR_PRIMARIA} !important;
+        color: white !important;
+        border-radius: 8px;
+        min-height: 48px;
+        font-weight: 600;
+    }}
+
+    /* Expander headers */
+    [data-testid="stExpander"] summary {{
+        font-weight: 600;
+        font-size: 1rem;
+    }}
+
+    /* Form submit button */
+    [data-testid="stFormSubmitButton"] > button {{
+        min-height: 48px;
+        font-size: 1rem;
+    }}
+
+    /* ---- MOBILE (até 768px) ---- */
+    @media (max-width: 768px) {{
+        /* Layout geral */
+        .main .block-container {{
+            padding: 1rem 0.8rem !important;
+            max-width: 100% !important;
+        }}
+
+        /* Título menor */
+        h1 {{
+            font-size: 1.5rem !important;
+            margin-bottom: 0.5rem !important;
+        }}
+        h2 {{
+            font-size: 1.2rem !important;
+        }}
+        h3 {{
+            font-size: 1.1rem !important;
+        }}
+
+        /* Métricas menores no mobile */
+        [data-testid="stMetricValue"] {{
+            font-size: 1.2rem !important;
+        }}
+        [data-testid="stMetricLabel"] {{
+            font-size: 0.75rem !important;
+        }}
+        [data-testid="stMetric"] {{
+            padding: 8px 10px;
+        }}
+        [data-testid="stMetricDelta"] {{
+            font-size: 0.7rem !important;
+        }}
+
+        /* Botões touch-friendly */
+        div.stButton > button {{
+            min-height: 48px;
+            font-size: 0.9rem;
+            padding: 0.7rem 0.8rem;
+            width: 100%;
+        }}
+
+        /* Colunas empilham no mobile */
+        [data-testid="stHorizontalBlock"] {{
+            flex-wrap: wrap !important;
+            gap: 0.5rem !important;
+        }}
+        [data-testid="stHorizontalBlock"] > div {{
+            flex: 1 1 100% !important;
+            min-width: 100% !important;
+        }}
+
+        /* Métricas em grid 2x2 no mobile */
+        [data-testid="stHorizontalBlock"]:has([data-testid="stMetric"]) > div {{
+            flex: 1 1 45% !important;
+            min-width: 45% !important;
+        }}
+
+        /* Inputs maiores para toque */
+        input, select, textarea {{
+            font-size: 16px !important;
+            min-height: 44px !important;
+        }}
+
+        /* Data editor responsivo */
+        [data-testid="stDataEditor"] {{
+            font-size: 0.8rem !important;
+        }}
+
+        /* Tabelas com scroll horizontal */
+        [data-testid="stDataFrame"],
+        [data-testid="stDataEditor"] {{
+            overflow-x: auto !important;
+            -webkit-overflow-scrolling: touch;
+        }}
+
+        /* Download buttons full width */
+        [data-testid="stDownloadButton"] {{
+            width: 100% !important;
+        }}
+        [data-testid="stDownloadButton"] > button {{
+            width: 100% !important;
+            min-height: 52px;
+            font-size: 0.85rem;
+        }}
+
+        /* Gráficos menores */
+        .js-plotly-plot {{
+            max-height: 250px !important;
+        }}
+
+        /* Container com borda */
+        [data-testid="stVerticalBlockBorderWrapper"] {{
+            padding: 0.5rem !important;
+        }}
+
+        /* Expander */
+        [data-testid="stExpander"] {{
+            border-radius: 8px;
+        }}
+        [data-testid="stExpander"] summary {{
+            font-size: 0.9rem;
+            padding: 0.8rem;
+        }}
+
+        /* Sidebar no mobile */
+        [data-testid="stSidebar"] {{
+            min-width: 280px !important;
+            max-width: 280px !important;
+        }}
+
+        /* Captions mais legíveis */
+        .stCaption {{
+            font-size: 0.8rem !important;
+        }}
+
+        /* Selectbox/input labels */
+        label {{
+            font-size: 0.85rem !important;
+        }}
+
+        /* Form */
+        [data-testid="stFormSubmitButton"] > button {{
+            min-height: 52px;
+            font-size: 1rem;
+        }}
+
+        /* Toast messages */
+        [data-testid="stToast"] {{
+            min-width: 80vw !important;
+        }}
+    }}
+
+    /* ---- TABLET (769px - 1024px) ---- */
+    @media (min-width: 769px) and (max-width: 1024px) {{
+        .main .block-container {{
+            padding: 1.5rem 1.5rem !important;
+        }}
+
+        [data-testid="stMetricValue"] {{
+            font-size: 1.5rem !important;
+        }}
+
+        /* 2 colunas no tablet para métricas */
+        [data-testid="stHorizontalBlock"]:has([data-testid="stMetric"]) > div {{
+            flex: 1 1 45% !important;
+            min-width: 45% !important;
+        }}
+    }}
+
+    /* ---- DARK MODE ---- */
     @media (prefers-color-scheme: dark) {{
         button:disabled {{
             background-color: #333 !important;
@@ -142,6 +324,10 @@ st.markdown(f"""
         }}
         [data-testid="stSidebar"] {{
             border-right: 1px solid #333;
+        }}
+        [data-testid="stMetric"] {{
+            background: linear-gradient(135deg, #1E1E1E 0%, #2A2A2A 100%);
+            border-color: #333;
         }}
     }}
 </style>
@@ -851,9 +1037,9 @@ if sel == "Dashboard":
     import plotly.express as px
     import plotly.graph_objects as go
 
-    c_tit, c_sel, c_btn = st.columns([1.5, 2, 1])
-    with c_tit:
-        st.title("Visão Geral")
+    st.title("Visão Geral")
+
+    c_sel, c_btn = st.columns([3, 1])
     with c_sel:
         if lista_obras:
             opcoes = ["Visão Geral (Todas as Obras)"] + lista_obras
@@ -862,7 +1048,7 @@ if sel == "Dashboard":
             st.warning("Cadastre uma obra.")
             st.stop()
     with c_btn:
-        if st.button("🔄 Atualizar Dados", use_container_width=True):
+        if st.button("🔄 Atualizar", use_container_width=True):
             clear_data_cache()
             st.rerun()
 
@@ -943,37 +1129,42 @@ if sel == "Dashboard":
             st.caption("ℹ️ Para obras **não vendidas**, Lucro e ROI ficam ocultos e só aparecem quando **Status = 'Vendida'**.")
 
     # -------------------------
-    # Gráficos
+    # Gráficos (responsivos)
     # -------------------------
-    g1, g2 = st.columns([2, 1])
+    st.subheader("Evolução de Custos")
+    if not df_show.empty:
+        df_ev = df_show.sort_values("Data_DT")
+        df_ev["Acumulado"] = df_ev["Valor"].cumsum()
+        fig = px.area(df_ev, x="Data_DT", y="Acumulado", color_discrete_sequence=[COR_PRIMARIA])
+        fig.update_layout(
+            plot_bgcolor="white",
+            margin=dict(t=10, l=10, r=10, b=10),
+            height=280,
+            xaxis_title="",
+            yaxis_title="",
+        )
+        st.plotly_chart(fig, use_container_width=True)
+    else:
+        st.info("Sem despesas registradas para o escopo selecionado.")
 
-    with g1:
-        st.subheader("Evolução de Custos")
-        if not df_show.empty:
-            df_ev = df_show.sort_values("Data_DT")
-            df_ev["Acumulado"] = df_ev["Valor"].cumsum()
-            fig = px.area(df_ev, x="Data_DT", y="Acumulado", color_discrete_sequence=[COR_PRIMARIA])
-            fig.update_layout(plot_bgcolor="white", margin=dict(t=10, l=10, r=10, b=10), height=300)
-            st.plotly_chart(fig, use_container_width=True)
-        else:
-            st.info("Sem despesas registradas para o escopo selecionado.")
+    st.subheader("Categorias")
+    if not df_show.empty:
+        df_cat = df_show.groupby("Categoria", as_index=False)["Valor"].sum()
 
-    with g2:
-        st.subheader("Categorias")
-        if not df_show.empty:
-            df_cat = df_show.groupby("Categoria", as_index=False)["Valor"].sum()
+        g_pie, g_table = st.columns([1, 1])
+        with g_pie:
             fig2 = px.pie(df_cat, values="Valor", names="Categoria", hole=0.6, color_discrete_sequence=px.colors.qualitative.Bold)
-            fig2.update_layout(showlegend=False, margin=dict(t=0, l=0, r=0, b=0), height=200)
+            fig2.update_layout(showlegend=False, margin=dict(t=5, l=5, r=5, b=5), height=220)
             st.plotly_chart(fig2, use_container_width=True)
-
+        with g_table:
             st.dataframe(
-                df_cat.sort_values("Valor", ascending=False).head(3),
+                df_cat.sort_values("Valor", ascending=False),
                 use_container_width=True,
                 hide_index=True,
                 column_config={"Valor": st.column_config.NumberColumn(format="R$ %.2f")}
             )
-        else:
-            st.info("Sem dados")
+    else:
+        st.info("Sem dados")
 
     # -------------------------
     # Comparativo Mensal (NOVO)
@@ -1117,30 +1308,27 @@ elif sel == "Financeiro":
         with st.expander("Novo Lançamento", expanded=True):
             with st.form("ffin", clear_on_submit=False):
 
-                c_row1_1, c_row1_2, c_row1_3 = st.columns([1, 1, 1])
-                with c_row1_1:
+                c_r1a, c_r1b = st.columns(2)
+                with c_r1a:
                     dt = st.date_input("Data", value=st.session_state.k_fin_data, key="k_fin_data")
-                with c_row1_2:
-                    tp = st.selectbox("Tipo", ["Saída (Despesa)", "Entrada"], key="k_fin_tipo")
-                with c_row1_3:
+                with c_r1b:
                     vl = st.number_input("Valor R$ *", min_value=0.0, format="%.2f", step=100.0, value=st.session_state.k_fin_valor, key="k_fin_valor_input")
 
-                c_row2_1, c_row2_2, c_row2_3 = st.columns([1, 1, 1])
-                with c_row2_1:
-                    opcoes_obras = [""] + lista_obras
-                    ob = st.selectbox("Obra *", opcoes_obras, key="k_fin_obra")
-                with c_row2_2:
-                    opcoes_cats = [""] + CATS
-                    ct = st.selectbox("Categoria *", opcoes_cats, key="k_fin_cat")
-                with c_row2_3:
-                    opcoes_pag = [""] + PAGAMENTOS
-                    pg = st.selectbox("Forma de Pagamento *", opcoes_pag, key="k_fin_pag")
+                ob = st.selectbox("Obra Vinculada *", [""] + lista_obras, key="k_fin_obra")
 
-                c_row3_1, c_row3_2 = st.columns([1, 1])
-                with c_row3_1:
-                    fn = st.text_input("Fornecedor", value=st.session_state.k_fin_forn, key="k_fin_forn", placeholder="Obrigatório se Categoria = Material")
-                with c_row3_2:
-                    dc = st.text_input("Descrição *", value=st.session_state.k_fin_desc, key="k_fin_desc", placeholder="Detalhes do gasto")
+                c_r2a, c_r2b = st.columns(2)
+                with c_r2a:
+                    tp = st.selectbox("Tipo", ["Saída (Despesa)", "Entrada"], key="k_fin_tipo")
+                with c_r2b:
+                    ct = st.selectbox("Categoria *", [""] + CATS, key="k_fin_cat")
+
+                c_r3a, c_r3b = st.columns(2)
+                with c_r3a:
+                    pg = st.selectbox("Forma de Pagamento *", [""] + PAGAMENTOS, key="k_fin_pag")
+                with c_r3b:
+                    fn = st.text_input("Fornecedor", value=st.session_state.k_fin_forn, key="k_fin_forn", placeholder="Obrigatório se Material")
+
+                dc = st.text_input("Descrição *", value=st.session_state.k_fin_desc, key="k_fin_desc", placeholder="Detalhes do gasto")
 
                 if ct == "Material" and not fn:
                     st.caption("⚠️ Fornecedor é obrigatório para categoria 'Material'")
@@ -1201,36 +1389,32 @@ elif sel == "Financeiro":
 
         # --- FILTROS (expandido com data, texto e tipo) ---
         with st.expander("Filtros de Busca", expanded=True):
-            c_filter1, c_filter2 = st.columns(2)
-            with c_filter1:
-                opcoes_filtro_obra = ["Todas as Obras"] + lista_obras
-                filtro_obra = st.selectbox("Filtrar por Obra", options=opcoes_filtro_obra)
-            with c_filter2:
-                opcoes_filtro_cat = ["Todas as Categorias"] + CATS
-                filtro_cat = st.selectbox("Filtrar por Categoria", options=opcoes_filtro_cat)
+            c_f1, c_f2 = st.columns(2)
+            with c_f1:
+                filtro_obra = st.selectbox("Obra", ["Todas as Obras"] + lista_obras)
+            with c_f2:
+                filtro_cat = st.selectbox("Categoria", ["Todas as Categorias"] + CATS)
 
-            c_filter3, c_filter4, c_filter5 = st.columns([1, 1, 1])
-            with c_filter3:
-                # Filtro por período (NOVO)
-                datas_validas = df_view["Data_DT"].dropna()
-                if not datas_validas.empty:
-                    dt_min_f = datas_validas.min().date()
-                    dt_max_f = datas_validas.max().date()
-                else:
-                    dt_min_f = date.today()
-                    dt_max_f = date.today()
-                filtro_datas = st.date_input(
-                    "Período", value=(dt_min_f, dt_max_f),
-                    min_value=dt_min_f, max_value=dt_max_f, key="filtro_periodo"
-                )
-            with c_filter4:
-                # Busca por texto (NOVO)
-                busca_texto = st.text_input(
-                    "Buscar por texto", placeholder="Descrição ou Fornecedor...", key="busca_texto"
-                )
-            with c_filter5:
-                # Filtro por tipo (NOVO)
+            c_f3, c_f4 = st.columns(2)
+            with c_f3:
                 filtro_tipo = st.selectbox("Tipo", ["Todos", "Saída (Despesa)", "Entrada"])
+            with c_f4:
+                busca_texto = st.text_input(
+                    "Buscar", placeholder="Descrição ou Fornecedor...", key="busca_texto"
+                )
+
+            # Período
+            datas_validas = df_view["Data_DT"].dropna()
+            if not datas_validas.empty:
+                dt_min_f = datas_validas.min().date()
+                dt_max_f = datas_validas.max().date()
+            else:
+                dt_min_f = date.today()
+                dt_max_f = date.today()
+            filtro_datas = st.date_input(
+                "Período", value=(dt_min_f, dt_max_f),
+                min_value=dt_min_f, max_value=dt_max_f, key="filtro_periodo"
+            )
 
         # Aplicar filtros
         if filtro_obra != "Todas as Obras":
@@ -1530,59 +1714,58 @@ elif sel == "Obras":
         with st.expander("➕ Novo Cadastro (Clique para expandir)", expanded=False):
             with st.form("f_obra_completa", clear_on_submit=False):
                 st.markdown("#### 1. Identificação")
-                c1, c2 = st.columns([3, 2])
-                with c1:
-                    nome_obra = st.text_input(
-                        "Nome do Empreendimento *",
-                        placeholder="Ex: Res. Vila Verde - Casa 04",
-                        value=st.session_state.k_ob_nome,
-                        key="k_ob_nome"
-                    )
-                    if nome_obra and len(nome_obra.strip()) < 3:
-                        st.caption("⚠️ Nome muito curto (mínimo 3 caracteres)")
-                with c2:
-                    endereco = st.text_input(
-                        "Endereço *",
-                        placeholder="Rua, Bairro...",
-                        value=st.session_state.k_ob_end,
-                        key="k_ob_end"
-                    )
+                nome_obra = st.text_input(
+                    "Nome do Empreendimento *",
+                    placeholder="Ex: Res. Vila Verde - Casa 04",
+                    value=st.session_state.k_ob_nome,
+                    key="k_ob_nome"
+                )
+                if nome_obra and len(nome_obra.strip()) < 3:
+                    st.caption("⚠️ Nome muito curto (mínimo 3 caracteres)")
+                endereco = st.text_input(
+                    "Endereço *",
+                    placeholder="Rua, Bairro...",
+                    value=st.session_state.k_ob_end,
+                    key="k_ob_end"
+                )
 
-                st.markdown("#### 2. Características Físicas (Produto)")
-                c4, c5, c6, c7 = st.columns(4)
-                with c4:
+                st.markdown("#### 2. Características Físicas")
+                c_a1, c_a2 = st.columns(2)
+                with c_a1:
                     area_const = st.number_input(
                         "Área Construída (m²)", min_value=0.0, format="%.2f",
                         value=st.session_state.k_ob_area_c, key="k_ob_area_c"
                     )
-                with c5:
+                with c_a2:
                     area_terr = st.number_input(
                         "Área Terreno (m²)", min_value=0.0, format="%.2f",
                         value=st.session_state.k_ob_area_t, key="k_ob_area_t"
                     )
-                with c6:
+                c_a3, c_a4 = st.columns(2)
+                with c_a3:
                     quartos = st.number_input(
                         "Qtd. Quartos", min_value=0, step=1,
                         value=st.session_state.k_ob_quartos, key="k_ob_quartos"
                     )
-                with c7:
+                with c_a4:
                     status = st.selectbox("Fase Atual", STATUS_OBRA, key="k_ob_status")
 
-                st.markdown("#### 3. Viabilidade Financeira e Prazos")
-                c8, c9, c10, c11 = st.columns(4)
-                with c8:
+                st.markdown("#### 3. Financeiro e Prazos")
+                c_b1, c_b2 = st.columns(2)
+                with c_b1:
                     custo_previsto = st.number_input(
                         "Orçamento (Custo) *", min_value=0.0, format="%.2f", step=1000.0,
                         value=st.session_state.k_ob_custo, key="k_ob_custo_input"
                     )
-                with c9:
+                with c_b2:
                     valor_venda = st.number_input(
                         "VGV (Venda) *", min_value=0.0, format="%.2f", step=1000.0,
                         value=st.session_state.k_ob_vgv, key="k_ob_vgv_input"
                     )
-                with c10:
+                c_b3, c_b4 = st.columns(2)
+                with c_b3:
                     data_inicio = st.date_input("Início da Obra", value=st.session_state.k_ob_data, key="k_ob_data")
-                with c11:
+                with c_b4:
                     prazo_entrega = st.text_input(
                         "Prazo / Entrega *", placeholder="Ex: dez/2025",
                         value=st.session_state.k_ob_prazo, key="k_ob_prazo"
