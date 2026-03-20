@@ -28,7 +28,7 @@ COR_FUNDO_ESCURO = "#1A1C1E"
 COR_CINZA_CLARO = "#e9ecef"
 COR_CINZA_MEDIO = "#adb5bd"
 
-APP_VERSION = "v2.3.0"
+APP_VERSION = "v3.0.0"
 
 STATUS_OBRA = ["Projeto", "Fundação", "Alvenaria", "Acabamento", "Concluída", "Vendida"]
 
@@ -302,6 +302,7 @@ def clear_data_cache() -> None:
     for key in ["data_obras", "data_fin"]:
         if key in st.session_state:
             del st.session_state[key]
+    st.session_state["last_sync"] = datetime.now()
     st.cache_data.clear()
 
 
@@ -807,10 +808,21 @@ with st.sidebar:
         st.markdown(f"**{user_name}**")
         st.caption(role_labels.get(user_role, user_role))
 
-    # Indicador de conexão
+    # Indicador de conexão e sincronização
     try:
         get_conn()
-        st.caption("🟢 Conectado")
+        last_sync = st.session_state.get("last_sync")
+        if last_sync:
+            delta = datetime.now() - last_sync
+            if delta.seconds < 60:
+                sync_txt = "agora"
+            elif delta.seconds < 3600:
+                sync_txt = f"há {delta.seconds // 60} min"
+            else:
+                sync_txt = last_sync.strftime("%H:%M")
+            st.caption(f"🟢 Sincronizado {sync_txt}")
+        else:
+            st.caption("🟢 Conectado")
     except Exception:
         st.caption("🔴 Sem conexão")
 
@@ -833,6 +845,7 @@ if "data_obras" not in st.session_state or "data_fin" not in st.session_state:
             df_obras, df_fin = fetch_data_from_google()
             st.session_state["data_obras"] = df_obras
             st.session_state["data_fin"] = df_fin
+            st.session_state["last_sync"] = datetime.now()
         except Exception as e:
             logger.error(f"Falha na conexão: {e}")
             st.error(f"Falha na conexão: {e}")
@@ -868,8 +881,56 @@ if sel == "Dashboard":
             clear_data_cache()
             st.rerun()
 
+    # -------------------------
+    # Alertas de Prazo (NOVO)
+    # -------------------------
+    if not df_obras.empty and "Prazo" in df_obras.columns:
+        hoje = date.today()
+        for _, ob_row in df_obras.iterrows():
+            status_ob = str(ob_row.get("Status", "")).strip().lower()
+            if status_ob in ["concluída", "vendida"]:
+                continue
+            prazo_str = str(ob_row.get("Prazo", "")).strip()
+            nome_ob = str(ob_row["Cliente"]).strip()
+            # Tenta parsear prazo como data (formatos comuns)
+            prazo_date = None
+            for fmt in ["%m/%Y", "%b/%Y", "%Y-%m-%d", "%d/%m/%Y"]:
+                try:
+                    prazo_date = datetime.strptime(prazo_str, fmt).date()
+                    break
+                except (ValueError, TypeError):
+                    continue
+            if prazo_date:
+                dias_restantes = (prazo_date - hoje).days
+                if dias_restantes < 0:
+                    st.error(f"🚨 **{nome_ob}** — Prazo vencido há {abs(dias_restantes)} dias! (Prazo: {prazo_str})")
+                elif dias_restantes <= 30:
+                    st.warning(f"⏰ **{nome_ob}** — Prazo em {dias_restantes} dias (Prazo: {prazo_str})")
+                elif dias_restantes <= 60:
+                    st.info(f"📅 **{nome_ob}** — Prazo em {dias_restantes} dias (Prazo: {prazo_str})")
+
+    # -------------------------
+    # Filtro de Período (NOVO)
+    # -------------------------
     # Base: só saídas/despesas
     df_saida_all = df_fin[df_fin["Tipo"].astype(str).str.contains("Saída|Despesa", case=False, na=False)].copy()
+
+    with st.expander("📅 Filtrar por período", expanded=False):
+        datas_dash = df_saida_all["Data_DT"].dropna()
+        if not datas_dash.empty:
+            dash_dt_min = datas_dash.min().date()
+            dash_dt_max = datas_dash.max().date()
+        else:
+            dash_dt_min = date.today() - timedelta(days=365)
+            dash_dt_max = date.today()
+        dash_periodo = st.date_input(
+            "Período", value=(dash_dt_min, dash_dt_max),
+            min_value=dash_dt_min, max_value=dash_dt_max, key="dash_periodo"
+        )
+        if isinstance(dash_periodo, tuple) and len(dash_periodo) == 2:
+            dp_inicio, dp_fim = dash_periodo
+            mask_p = df_saida_all["Data_DT"].notna()
+            df_saida_all = df_saida_all[mask_p & (df_saida_all["Data_DT"].dt.date >= dp_inicio) & (df_saida_all["Data_DT"].dt.date <= dp_fim)]
 
     # -------------------------
     # Escopo
@@ -877,7 +938,6 @@ if sel == "Dashboard":
     if escopo == "Visão Geral (Todas as Obras)":
         vgv_total = float(df_obras["Valor Total"].sum()) if not df_obras.empty else 0.0
         df_show = df_saida_all.copy()
-        label_btn_pdf = "⬇️ BAIXAR PDF (PORTFÓLIO CONSOLIDADO)"
 
         if not df_obras.empty and "Status" in df_obras.columns:
             sold_mask = df_obras["Status"].astype(str).str.strip().str.lower() == "vendida"
@@ -911,7 +971,6 @@ if sel == "Dashboard":
         else:
             k3.metric("Lucro (Vendidas)", "—")
             k4.metric("ROI (Vendidas)", "—")
-            st.caption("ℹ️ Lucro/ROI só aparecem para obras com **Status = 'Vendida'**.")
 
         vgv = vgv_total
         custos = custos_total
@@ -924,7 +983,6 @@ if sel == "Dashboard":
         vgv = float(row["Valor Total"]) if "Valor Total" in row else 0.0
 
         df_show = df_saida_all[df_saida_all["Obra Vinculada"].astype(str) == str(escopo)].copy()
-        label_btn_pdf = f"⬇️ BAIXAR RELATÓRIO PDF: {escopo.upper()}"
 
         custos = float(df_show["Valor"].sum()) if not df_show.empty else 0.0
         lucro = float(vgv - custos)
@@ -944,12 +1002,27 @@ if sel == "Dashboard":
         else:
             k3.metric("Status", status_obra if status_obra else "—")
             k4.metric("Lucro / ROI", "—")
-            st.caption("ℹ️ Para obras **não vendidas**, Lucro e ROI ficam ocultos e só aparecem quando **Status = 'Vendida'**.")
+
+    # -------------------------
+    # Atividade Recente (NOVO)
+    # -------------------------
+    if not df_fin.empty:
+        st.markdown("---")
+        st.subheader("🕐 Atividade Recente")
+        df_recentes = df_fin.sort_values("Data_DT", ascending=False).head(5)
+        for _, rec in df_recentes.iterrows():
+            tipo_icon = "🔴" if "Saída" in str(rec.get("Tipo", "")) or "Despesa" in str(rec.get("Tipo", "")) else "🟢"
+            rec_data = str(rec.get("Data", ""))[:10]
+            rec_desc = str(rec.get("Descrição", ""))[:40]
+            rec_obra = str(rec.get("Obra Vinculada", ""))
+            rec_valor = fmt_moeda(rec.get("Valor", 0))
+            st.caption(f"{tipo_icon} **{rec_data}** — {rec_desc} | {rec_obra} | **{rec_valor}**")
 
     # -------------------------
     # Gráficos
     # -------------------------
-    st.subheader("Evolução de Custos")
+    st.markdown("---")
+    st.subheader("📈 Evolução de Custos")
     if not df_show.empty:
         df_ev = df_show.sort_values("Data_DT")
         df_ev["Acumulado"] = df_ev["Valor"].cumsum()
@@ -967,11 +1040,10 @@ if sel == "Dashboard":
     else:
         st.info("Sem despesas registradas para o escopo selecionado.")
 
-    st.subheader("Categorias")
+    st.subheader("🍩 Categorias")
     if not df_show.empty:
         df_cat = df_show.groupby("Categoria", as_index=False)["Valor"].sum()
 
-        # Pie chart
         fig2 = px.pie(df_cat, values="Valor", names="Categoria", hole=0.6, color_discrete_sequence=px.colors.qualitative.Bold)
         fig2.update_layout(
             showlegend=True,
@@ -982,7 +1054,6 @@ if sel == "Dashboard":
         fig2.update_traces(textinfo="percent", textfont_size=10)
         st.plotly_chart(fig2, use_container_width=True)
 
-        # Tabela de categorias
         df_cat_display = df_cat.sort_values("Valor", ascending=False).copy()
         st.dataframe(
             df_cat_display,
@@ -995,7 +1066,29 @@ if sel == "Dashboard":
         st.info("Sem dados")
 
     # -------------------------
-    # Comparativo Mensal (NOVO)
+    # Top 5 Fornecedores (NOVO)
+    # -------------------------
+    if not df_show.empty and "Fornecedor" in df_show.columns:
+        df_forn = df_show[df_show["Fornecedor"].astype(str).str.strip() != ""].copy()
+        if not df_forn.empty:
+            st.markdown("---")
+            st.subheader("🏢 Top 5 Fornecedores")
+            df_top_forn = df_forn.groupby("Fornecedor", as_index=False)["Valor"].sum()
+            df_top_forn = df_top_forn.sort_values("Valor", ascending=False).head(5)
+
+            fig_forn = px.bar(
+                df_top_forn, x="Valor", y="Fornecedor", orientation="h",
+                color_discrete_sequence=[COR_PRIMARIA],
+            )
+            fig_forn.update_layout(
+                plot_bgcolor="white", margin=dict(t=5, l=5, r=5, b=5),
+                height=200, xaxis_title="", yaxis_title="",
+                yaxis=dict(autorange="reversed"),
+            )
+            st.plotly_chart(fig_forn, use_container_width=True)
+
+    # -------------------------
+    # Comparativo Mensal
     # -------------------------
     if not df_show.empty and pd.notna(df_show["Data_DT"]).any():
         st.markdown("---")
@@ -1010,7 +1103,6 @@ if sel == "Dashboard":
         else:
             mensal_agg["Variação %"] = 0.0
 
-        # Gráfico de barras mensal
         fig_bar = go.Figure()
         fig_bar.add_trace(go.Bar(
             x=mensal_agg["Mês"], y=mensal_agg["Valor"],
@@ -1024,7 +1116,6 @@ if sel == "Dashboard":
         )
         st.plotly_chart(fig_bar, use_container_width=True)
 
-        # Tabela mensal
         df_mensal_display = mensal_agg.copy()
         df_mensal_display["Valor"] = df_mensal_display["Valor"].apply(fmt_moeda)
         df_mensal_display["Variação %"] = df_mensal_display["Variação %"].apply(
@@ -1037,7 +1128,34 @@ if sel == "Dashboard":
         )
 
     # -------------------------
-    # Resumo por Obra (NOVO - só visão geral)
+    # Orçado vs Realizado (NOVO)
+    # -------------------------
+    if escopo == "Visão Geral (Todas as Obras)" and not df_obras.empty:
+        st.markdown("---")
+        st.subheader("📊 Orçado vs Realizado")
+
+        orc_rows = []
+        for _, ob_r in df_obras.iterrows():
+            nome_ob = str(ob_r["Cliente"]).strip()
+            custo_prev_ob = float(ob_r.get("Custo Previsto", 0))
+            gasto_real = float(df_saida_all[df_saida_all["Obra Vinculada"].astype(str) == nome_ob]["Valor"].sum())
+            orc_rows.append({"Obra": nome_ob, "Orçado": custo_prev_ob, "Realizado": gasto_real})
+
+        df_orc = pd.DataFrame(orc_rows)
+        if not df_orc.empty and df_orc["Orçado"].sum() > 0:
+            fig_orc = go.Figure()
+            fig_orc.add_trace(go.Bar(name="Orçado", x=df_orc["Obra"], y=df_orc["Orçado"], marker_color=COR_CINZA_MEDIO))
+            fig_orc.add_trace(go.Bar(name="Realizado", x=df_orc["Obra"], y=df_orc["Realizado"], marker_color=COR_PRIMARIA))
+            fig_orc.update_layout(
+                barmode="group", plot_bgcolor="white",
+                margin=dict(t=5, l=5, r=5, b=5), height=260,
+                xaxis_title="", yaxis_title="",
+                legend=dict(orientation="h", yanchor="top", y=1.1, xanchor="center", x=0.5),
+            )
+            st.plotly_chart(fig_orc, use_container_width=True)
+
+    # -------------------------
+    # Resumo por Obra com Saúde Financeira (MELHORADO)
     # -------------------------
     if escopo == "Visão Geral (Todas as Obras)" and not df_obras.empty:
         st.markdown("---")
@@ -1056,10 +1174,22 @@ if sel == "Dashboard":
             saldo = vgv_obra - gasto
             perc_exec = (gasto / custo_prev * 100) if custo_prev > 0 else 0
 
+            # Saúde financeira
+            if custo_prev > 0:
+                if perc_exec > 100:
+                    saude = "🔴 Estourado"
+                elif perc_exec > 80:
+                    saude = "🟡 Atenção"
+                else:
+                    saude = "🟢 Saudável"
+            else:
+                saude = "⚪ Sem orçamento"
+
             resumo_rows.append({
-                "Obra": nome, "Status": status_r, "VGV": vgv_obra,
-                "Custo Previsto": custo_prev, "Gasto Real": gasto,
-                "Saldo": saldo, "Execução %": perc_exec,
+                "Obra": nome, "Fase": status_r, "Saúde": saude,
+                "VGV": vgv_obra, "Orçamento": custo_prev,
+                "Gasto Real": gasto, "Saldo": saldo,
+                "Execução %": perc_exec,
             })
 
         df_resumo = pd.DataFrame(resumo_rows)
@@ -1067,7 +1197,7 @@ if sel == "Dashboard":
             df_resumo, use_container_width=True, hide_index=True,
             column_config={
                 "VGV": st.column_config.NumberColumn(format="R$ %.0f"),
-                "Custo Previsto": st.column_config.NumberColumn(format="R$ %.0f"),
+                "Orçamento": st.column_config.NumberColumn(format="R$ %.0f"),
                 "Gasto Real": st.column_config.NumberColumn(format="R$ %.0f"),
                 "Saldo": st.column_config.NumberColumn(format="R$ %.0f"),
                 "Execução %": st.column_config.ProgressColumn(min_value=0, max_value=100, format="%.1f%%"),
@@ -1075,7 +1205,7 @@ if sel == "Dashboard":
         )
 
     # -------------------------
-    # PDF + CSV (NOVO: CSV adicionado)
+    # PDF + CSV
     # -------------------------
     st.markdown("---")
 
@@ -1156,6 +1286,14 @@ elif sel == "Financeiro":
 
                 dc = st.text_input("Descrição *", value=st.session_state.k_fin_desc, key="k_fin_desc", placeholder="Detalhes do gasto")
 
+                # Parcelas (NOVO)
+                c_parc1, c_parc2 = st.columns(2)
+                with c_parc1:
+                    num_parcelas = st.number_input("Parcelas", min_value=1, max_value=48, value=1, step=1, key="k_fin_parcelas")
+                with c_parc2:
+                    if num_parcelas > 1 and vl > 0:
+                        st.caption(f"💳 {num_parcelas}x de **{fmt_moeda(vl / num_parcelas)}**")
+
                 if ct == "Material" and not fn:
                     st.caption("⚠️ Fornecedor é obrigatório para categoria 'Material'")
 
@@ -1186,17 +1324,37 @@ elif sel == "Financeiro":
 
                             if not df_fin.empty and "ID" in df_fin.columns:
                                 ids_exist = pd.to_numeric(df_fin["ID"], errors="coerce").fillna(0)
-                                new_id = generate_unique_id(ids_exist)
                             else:
-                                new_id = generate_unique_id(pd.Series())
+                                ids_exist = pd.Series()
 
-                            ws_fin.append_row([
-                                new_id, dt.strftime("%Y-%m-%d"), tp,
-                                ct.strip(), dc.strip(), float(vl),
-                                ob.strip(), fn.strip(), pg.strip()
-                            ])
+                            # Parcelas: divide valor e gera linhas com datas incrementais
+                            n_parc = int(num_parcelas) if num_parcelas > 1 else 1
+                            valor_parcela = round(float(vl) / n_parc, 2)
 
-                            log_action("CRIAR_LANCAMENTO", f"ID={new_id} | {ob} | {ct} | {fmt_moeda(vl)} | {dc[:50]}")
+                            for p in range(n_parc):
+                                new_id = generate_unique_id(ids_exist)
+                                ids_exist = pd.concat([ids_exist, pd.Series([new_id])], ignore_index=True)
+
+                                # Data da parcela: mês a mês
+                                dt_parcela = dt
+                                if p > 0:
+                                    month = dt.month + p
+                                    year = dt.year + (month - 1) // 12
+                                    month = ((month - 1) % 12) + 1
+                                    try:
+                                        dt_parcela = dt.replace(year=year, month=month)
+                                    except ValueError:
+                                        dt_parcela = dt.replace(year=year, month=month, day=28)
+
+                                desc_parc = f"{dc.strip()} ({p+1}/{n_parc})" if n_parc > 1 else dc.strip()
+
+                                ws_fin.append_row([
+                                    new_id, dt_parcela.strftime("%Y-%m-%d"), tp,
+                                    ct.strip(), desc_parc, valor_parcela,
+                                    ob.strip(), fn.strip(), pg.strip()
+                                ])
+
+                            log_action("CRIAR_LANCAMENTO", f"{n_parc}x | {ob} | {ct} | {fmt_moeda(vl)} | {dc[:50]}")
                             clear_data_cache()
                             st.session_state["sucesso_fin"] = True
                             st.rerun()
@@ -1206,6 +1364,24 @@ elif sel == "Financeiro":
                         except Exception as e:
                             logger.error(f"Erro ao salvar lançamento: {e}")
                             st.error(f"Erro: {e}")
+
+    # --- DUPLICAR LANÇAMENTO (NOVO) ---
+    if require_role("editor") and not df_fin.empty:
+        with st.expander("📋 Duplicar Lançamento Existente", expanded=False):
+            opcoes_dup = df_fin.apply(
+                lambda r: f"#{r['ID']} - {r.get('Data', '')[:10]} - {str(r.get('Descrição', ''))[:30]} - {fmt_moeda(r.get('Valor', 0))}",
+                axis=1
+            ).tolist()
+            sel_dup = st.selectbox("Selecione o lançamento", opcoes_dup, key="sel_duplicar")
+            if st.button("Duplicar para o formulário acima", use_container_width=True, key="btn_duplicar"):
+                idx_dup = opcoes_dup.index(sel_dup)
+                row_dup = df_fin.iloc[idx_dup]
+                st.session_state.k_fin_data = date.today()
+                st.session_state.k_fin_valor = float(safe_float(row_dup.get("Valor", 0)))
+                st.session_state.k_fin_desc = str(row_dup.get("Descrição", ""))
+                st.session_state.k_fin_forn = str(row_dup.get("Fornecedor", ""))
+                st.toast("📋 Dados copiados! Edite e salve no formulário acima.", icon="📋")
+                st.rerun()
 
     st.markdown("---")
     st.markdown("### 🔍 Consultar Lançamentos")
@@ -1549,6 +1725,11 @@ elif sel == "Obras":
                     value=st.session_state.k_ob_end,
                     key="k_ob_end"
                 )
+                foto_url = st.text_input(
+                    "Link da Foto (opcional)",
+                    placeholder="https://drive.google.com/... ou URL da imagem",
+                    key="k_ob_foto"
+                )
 
                 st.markdown("#### 2. Características Físicas")
                 c_a1, c_a2 = st.columns(2)
@@ -1752,6 +1933,36 @@ elif sel == "Obras":
             st.caption("💡 Edite diretamente na tabela acima. O botão de salvar aparecerá automaticamente.")
     else:
         st.info("Nenhuma obra cadastrada.")
+
+    # -------------------------
+    # Cronograma Visual (NOVO)
+    # -------------------------
+    if not df_obras.empty:
+        st.markdown("---")
+        st.subheader("📊 Cronograma de Fases")
+
+        for _, ob_row in df_obras.iterrows():
+            nome_ob = str(ob_row["Cliente"]).strip()
+            status_ob = str(ob_row.get("Status", "Projeto")).strip()
+            prazo_ob = str(ob_row.get("Prazo", "")).strip()
+
+            # Calcula progresso baseado na posição do status
+            if status_ob in STATUS_OBRA:
+                idx_status = STATUS_OBRA.index(status_ob)
+                progresso = int((idx_status / (len(STATUS_OBRA) - 1)) * 100)
+            else:
+                progresso = 0
+
+            # Cor baseada no progresso
+            if status_ob.lower() in ["concluída", "vendida"]:
+                status_label = f"✅ {status_ob}"
+            elif progresso >= 50:
+                status_label = f"🔨 {status_ob}"
+            else:
+                status_label = f"📐 {status_ob}"
+
+            st.caption(f"**{nome_ob}** — {status_label} | Prazo: {prazo_ob if prazo_ob else '—'}")
+            st.progress(progresso / 100, text=f"{progresso}%")
 
 
 # --- AUDITORIA (NOVO) ---
