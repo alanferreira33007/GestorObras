@@ -1,8 +1,7 @@
-
-streamlit
+streamlit>=1.36.0
 pandas
 plotly
-gspread
-oauth2client
+gspread>=6.0.0
+google-auth>=2.0.0
 reportlab
 streamlit-option-menu
