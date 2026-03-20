@@ -28,7 +28,7 @@ COR_FUNDO_ESCURO = "#1A1C1E"
 COR_CINZA_CLARO = "#e9ecef"
 COR_CINZA_MEDIO = "#adb5bd"
 
-APP_VERSION = "v2.1.0"
+APP_VERSION = "v2.2.0"
 
 STATUS_OBRA = ["Projeto", "Fundação", "Alvenaria", "Acabamento", "Concluída", "Vendida"]
 
@@ -168,50 +168,59 @@ st.markdown(f"""
 
     /* ---- MOBILE (até 768px) ---- */
     @media (max-width: 768px) {{
-        /* Layout geral */
+        /* Layout geral - mais compacto */
         .main .block-container {{
-            padding: 1rem 0.8rem !important;
+            padding: 0.5rem 0.5rem !important;
             max-width: 100% !important;
         }}
 
-        /* Título menor */
+        /* Títulos compactos */
         h1 {{
-            font-size: 1.5rem !important;
-            margin-bottom: 0.5rem !important;
+            font-size: 1.3rem !important;
+            margin-bottom: 0.3rem !important;
+            margin-top: 0.3rem !important;
         }}
         h2 {{
-            font-size: 1.2rem !important;
+            font-size: 1.1rem !important;
+            margin-bottom: 0.3rem !important;
         }}
         h3 {{
-            font-size: 1.1rem !important;
+            font-size: 1rem !important;
+            margin-bottom: 0.2rem !important;
+        }}
+        h4 {{
+            font-size: 0.95rem !important;
         }}
 
-        /* Métricas menores no mobile */
+        /* Métricas compactas */
         [data-testid="stMetricValue"] {{
-            font-size: 1.2rem !important;
+            font-size: 1.05rem !important;
+            line-height: 1.2 !important;
         }}
         [data-testid="stMetricLabel"] {{
-            font-size: 0.75rem !important;
+            font-size: 0.7rem !important;
+            line-height: 1.2 !important;
         }}
         [data-testid="stMetric"] {{
-            padding: 8px 10px;
+            padding: 6px 8px !important;
+            border-radius: 8px;
         }}
         [data-testid="stMetricDelta"] {{
-            font-size: 0.7rem !important;
+            font-size: 0.65rem !important;
         }}
 
         /* Botões touch-friendly */
         div.stButton > button {{
             min-height: 48px;
             font-size: 0.9rem;
-            padding: 0.7rem 0.8rem;
+            padding: 0.6rem 0.8rem;
             width: 100%;
         }}
 
-        /* Colunas empilham no mobile */
+        /* TODAS as colunas empilham no mobile */
         [data-testid="stHorizontalBlock"] {{
             flex-wrap: wrap !important;
-            gap: 0.5rem !important;
+            gap: 0.3rem !important;
         }}
         [data-testid="stHorizontalBlock"] > div {{
             flex: 1 1 100% !important;
@@ -219,23 +228,36 @@ st.markdown(f"""
         }}
 
         /* Métricas em grid 2x2 no mobile */
+        [data-testid="stHorizontalBlock"]:has([data-testid="stMetric"]) {{
+            gap: 0.4rem !important;
+        }}
         [data-testid="stHorizontalBlock"]:has([data-testid="stMetric"]) > div {{
-            flex: 1 1 45% !important;
-            min-width: 45% !important;
+            flex: 1 1 47% !important;
+            min-width: 47% !important;
+            max-width: 49% !important;
         }}
 
-        /* Inputs maiores para toque */
+        /* Inputs maiores para toque - previne zoom iOS */
         input, select, textarea {{
             font-size: 16px !important;
             min-height: 44px !important;
         }}
+        [data-testid="stSelectbox"] {{
+            margin-bottom: 0.3rem !important;
+        }}
+        [data-testid="stNumberInput"] {{
+            margin-bottom: 0.3rem !important;
+        }}
+        [data-testid="stTextInput"] {{
+            margin-bottom: 0.3rem !important;
+        }}
 
         /* Data editor responsivo */
         [data-testid="stDataEditor"] {{
-            font-size: 0.8rem !important;
+            font-size: 0.75rem !important;
         }}
 
-        /* Tabelas com scroll horizontal */
+        /* Tabelas com scroll horizontal suave */
         [data-testid="stDataFrame"],
         [data-testid="stDataEditor"] {{
             overflow-x: auto !important;
@@ -252,14 +274,9 @@ st.markdown(f"""
             font-size: 0.85rem;
         }}
 
-        /* Gráficos menores */
-        .js-plotly-plot {{
-            max-height: 250px !important;
-        }}
-
-        /* Container com borda */
+        /* Container com borda mais compacto */
         [data-testid="stVerticalBlockBorderWrapper"] {{
-            padding: 0.5rem !important;
+            padding: 0.4rem !important;
         }}
 
         /* Expander */
@@ -268,48 +285,82 @@ st.markdown(f"""
         }}
         [data-testid="stExpander"] summary {{
             font-size: 0.9rem;
-            padding: 0.8rem;
+            padding: 0.6rem;
         }}
 
         /* Sidebar no mobile */
         [data-testid="stSidebar"] {{
-            min-width: 280px !important;
-            max-width: 280px !important;
+            min-width: 260px !important;
+            max-width: 260px !important;
         }}
 
-        /* Captions mais legíveis */
+        /* Menos espaço vertical entre elementos */
+        [data-testid="stVerticalBlock"] > div {{
+            margin-bottom: 0 !important;
+        }}
+
+        /* Separadores mais discretos */
+        hr {{
+            margin: 0.5rem 0 !important;
+        }}
+
+        /* Captions legíveis */
         .stCaption {{
-            font-size: 0.8rem !important;
+            font-size: 0.78rem !important;
         }}
 
-        /* Selectbox/input labels */
+        /* Labels compactos */
         label {{
-            font-size: 0.85rem !important;
+            font-size: 0.82rem !important;
+            margin-bottom: 0.1rem !important;
         }}
 
-        /* Form */
+        /* Form submit */
         [data-testid="stFormSubmitButton"] > button {{
             min-height: 52px;
             font-size: 1rem;
         }}
 
-        /* Toast messages */
+        /* Toast no mobile */
         [data-testid="stToast"] {{
-            min-width: 80vw !important;
+            min-width: 85vw !important;
+            font-size: 0.85rem !important;
+        }}
+
+        /* Alertas mais compactos */
+        [data-testid="stAlert"] {{
+            padding: 0.5rem 0.8rem !important;
+            font-size: 0.82rem !important;
+        }}
+
+        /* Info/Warning/Error compactos */
+        .stAlert p {{
+            font-size: 0.82rem !important;
+            margin: 0 !important;
+        }}
+
+        /* Plotly charts */
+        .js-plotly-plot {{
+            margin: 0 -0.3rem !important;
+        }}
+
+        /* Subheader com menos margin */
+        [data-testid="stSubheader"] {{
+            margin-top: 0.3rem !important;
+            margin-bottom: 0.2rem !important;
         }}
     }}
 
     /* ---- TABLET (769px - 1024px) ---- */
     @media (min-width: 769px) and (max-width: 1024px) {{
         .main .block-container {{
-            padding: 1.5rem 1.5rem !important;
+            padding: 1rem 1.2rem !important;
         }}
 
         [data-testid="stMetricValue"] {{
-            font-size: 1.5rem !important;
+            font-size: 1.4rem !important;
         }}
 
-        /* 2 colunas no tablet para métricas */
         [data-testid="stHorizontalBlock"]:has([data-testid="stMetric"]) > div {{
             flex: 1 1 45% !important;
             min-width: 45% !important;
@@ -910,9 +961,16 @@ def logout() -> None:
 
 
 if not st.session_state.auth:
-    _, c2, _ = st.columns([1, 1, 1])
-    with c2:
-        st.markdown(f"<br><h2 style='text-align:center; color:{COR_PRIMARIA}'>GESTOR PRO</h2>", unsafe_allow_html=True)
+    st.markdown(f"""
+        <div style='text-align:center; padding: 2rem 0 1rem 0;'>
+            <h1 style='color:{COR_PRIMARIA}; font-size: 2rem; margin-bottom: 0.2rem;'>GESTOR PRO</h1>
+            <p style='color: gray; font-size: 0.9rem;'>Incorporação & Obras</p>
+        </div>
+    """, unsafe_allow_html=True)
+
+    # Container centralizado que funciona bem no mobile
+    login_left, login_center, login_right = st.columns([1, 2, 1])
+    with login_center:
         if st.session_state.get("login_error"):
             st.error(st.session_state["login_error"])
 
@@ -924,6 +982,7 @@ if not st.session_state.auth:
 
         login_pwd = st.text_input("Senha", type="password", key="login_password")
 
+        st.write("")
         if st.button("ENTRAR", use_container_width=True):
             user = authenticate_user(login_user, login_pwd)
             if user:
@@ -943,6 +1002,12 @@ if not st.session_state.auth:
             else:
                 st.session_state.login_error = "Credenciais incorretas"
                 st.rerun()
+
+        st.markdown(f"""
+            <p style='text-align:center; color:{COR_CINZA_MEDIO}; font-size: 0.75rem; margin-top: 2rem;'>
+                {APP_VERSION} © 2026 Gestor Pro
+            </p>
+        """, unsafe_allow_html=True)
     st.stop()
 
 
@@ -1129,7 +1194,7 @@ if sel == "Dashboard":
             st.caption("ℹ️ Para obras **não vendidas**, Lucro e ROI ficam ocultos e só aparecem quando **Status = 'Vendida'**.")
 
     # -------------------------
-    # Gráficos (responsivos)
+    # Gráficos
     # -------------------------
     st.subheader("Evolução de Custos")
     if not df_show.empty:
@@ -1138,10 +1203,12 @@ if sel == "Dashboard":
         fig = px.area(df_ev, x="Data_DT", y="Acumulado", color_discrete_sequence=[COR_PRIMARIA])
         fig.update_layout(
             plot_bgcolor="white",
-            margin=dict(t=10, l=10, r=10, b=10),
-            height=280,
+            margin=dict(t=5, l=5, r=5, b=5),
+            height=250,
             xaxis_title="",
             yaxis_title="",
+            xaxis=dict(tickfont=dict(size=10)),
+            yaxis=dict(tickfont=dict(size=10)),
         )
         st.plotly_chart(fig, use_container_width=True)
     else:
@@ -1151,18 +1218,26 @@ if sel == "Dashboard":
     if not df_show.empty:
         df_cat = df_show.groupby("Categoria", as_index=False)["Valor"].sum()
 
-        g_pie, g_table = st.columns([1, 1])
-        with g_pie:
-            fig2 = px.pie(df_cat, values="Valor", names="Categoria", hole=0.6, color_discrete_sequence=px.colors.qualitative.Bold)
-            fig2.update_layout(showlegend=False, margin=dict(t=5, l=5, r=5, b=5), height=220)
-            st.plotly_chart(fig2, use_container_width=True)
-        with g_table:
-            st.dataframe(
-                df_cat.sort_values("Valor", ascending=False),
-                use_container_width=True,
-                hide_index=True,
-                column_config={"Valor": st.column_config.NumberColumn(format="R$ %.2f")}
-            )
+        # Pie chart
+        fig2 = px.pie(df_cat, values="Valor", names="Categoria", hole=0.6, color_discrete_sequence=px.colors.qualitative.Bold)
+        fig2.update_layout(
+            showlegend=True,
+            legend=dict(orientation="h", yanchor="top", y=-0.05, xanchor="center", x=0.5, font=dict(size=10)),
+            margin=dict(t=5, l=5, r=5, b=5),
+            height=250,
+        )
+        fig2.update_traces(textinfo="percent", textfont_size=10)
+        st.plotly_chart(fig2, use_container_width=True)
+
+        # Tabela de categorias
+        df_cat_display = df_cat.sort_values("Valor", ascending=False).copy()
+        st.dataframe(
+            df_cat_display,
+            use_container_width=True,
+            hide_index=True,
+            height=min(len(df_cat_display) * 35 + 40, 250),
+            column_config={"Valor": st.column_config.NumberColumn(format="R$ %.2f")}
+        )
     else:
         st.info("Sem dados")
 
@@ -1182,30 +1257,31 @@ if sel == "Dashboard":
         else:
             mensal_agg["Variação %"] = 0.0
 
-        col_chart, col_table = st.columns([2, 1])
+        # Gráfico de barras mensal
+        fig_bar = go.Figure()
+        fig_bar.add_trace(go.Bar(
+            x=mensal_agg["Mês"], y=mensal_agg["Valor"],
+            marker_color=COR_PRIMARIA, name="Custo Mensal",
+        ))
+        fig_bar.update_layout(
+            plot_bgcolor="white", margin=dict(t=5, l=5, r=5, b=5),
+            height=230, xaxis_title="", yaxis_title="",
+            xaxis=dict(tickfont=dict(size=10)),
+            yaxis=dict(tickfont=dict(size=10)),
+        )
+        st.plotly_chart(fig_bar, use_container_width=True)
 
-        with col_chart:
-            fig_bar = go.Figure()
-            fig_bar.add_trace(go.Bar(
-                x=mensal_agg["Mês"], y=mensal_agg["Valor"],
-                marker_color=COR_PRIMARIA, name="Custo Mensal",
-            ))
-            fig_bar.update_layout(
-                plot_bgcolor="white", margin=dict(t=10, l=10, r=10, b=10),
-                height=280, xaxis_title="", yaxis_title="Valor (R$)",
-            )
-            st.plotly_chart(fig_bar, use_container_width=True)
-
-        with col_table:
-            df_mensal_display = mensal_agg.copy()
-            df_mensal_display["Valor"] = df_mensal_display["Valor"].apply(fmt_moeda)
-            df_mensal_display["Variação %"] = df_mensal_display["Variação %"].apply(
-                lambda x: f"{x:+.1f}%" if pd.notna(x) else "—"
-            )
-            st.dataframe(
-                df_mensal_display[["Mês", "Valor", "Variação %"]],
-                use_container_width=True, hide_index=True,
-            )
+        # Tabela mensal
+        df_mensal_display = mensal_agg.copy()
+        df_mensal_display["Valor"] = df_mensal_display["Valor"].apply(fmt_moeda)
+        df_mensal_display["Variação %"] = df_mensal_display["Variação %"].apply(
+            lambda x: f"{x:+.1f}%" if pd.notna(x) else "—"
+        )
+        st.dataframe(
+            df_mensal_display[["Mês", "Valor", "Variação %"]],
+            use_container_width=True, hide_index=True,
+            height=min(len(df_mensal_display) * 35 + 40, 200),
+        )
 
     # -------------------------
     # Resumo por Obra (NOVO - só visão geral)
@@ -1269,25 +1345,22 @@ if sel == "Dashboard":
             df_cat_pdf, df_pdf
         )
 
-        col_pdf, col_csv = st.columns(2)
-        with col_pdf:
-            st.download_button(
-                label=label_btn_pdf,
-                data=pdf_data,
-                file_name=f"Relatorio_{escopo}_{date.today()}.pdf",
-                mime="application/pdf",
-                use_container_width=True
-            )
-        with col_csv:
-            csv_buffer = io.StringIO()
-            df_show.to_csv(csv_buffer, index=False, sep=";", decimal=",")
-            st.download_button(
-                label="📊 EXPORTAR CSV",
-                data=csv_buffer.getvalue(),
-                file_name=f"Dados_{escopo}_{date.today()}.csv",
-                mime="text/csv",
-                use_container_width=True
-            )
+        st.download_button(
+            label="⬇️ BAIXAR RELATÓRIO PDF",
+            data=pdf_data,
+            file_name=f"Relatorio_{escopo}_{date.today()}.pdf",
+            mime="application/pdf",
+            use_container_width=True
+        )
+        csv_buffer = io.StringIO()
+        df_show.to_csv(csv_buffer, index=False, sep=";", decimal=",")
+        st.download_button(
+            label="📊 EXPORTAR CSV",
+            data=csv_buffer.getvalue(),
+            file_name=f"Dados_{escopo}_{date.today()}.csv",
+            mime="text/csv",
+            use_container_width=True
+        )
     else:
         st.info("Sem lançamentos no escopo para gerar relatório.")
 
@@ -1476,18 +1549,18 @@ elif sel == "Financeiro":
             hide_index=True,
             num_rows="fixed",
             disabled=disabled_cols,
-            height=360,
+            height=320,
             column_config={
-                "ID": st.column_config.NumberColumn("#", width=55),
-                **({"Excluir": st.column_config.CheckboxColumn("🗑️ Excluir?", help="Marque para excluir e clique em SALVAR", width=90)} if can_delete else {}),
-                "Data": st.column_config.DateColumn("Data", format="DD/MM/YYYY", required=True, width=110),
-                "Tipo": st.column_config.SelectboxColumn("Tipo", options=["Saída (Despesa)", "Entrada"], required=True, width=140),
-                "Forma Pagamento": st.column_config.SelectboxColumn("Pagamento", options=[""] + PAGAMENTOS, required=False, width=160),
-                "Obra Vinculada": st.column_config.SelectboxColumn("Obra", options=[""] + lista_obras, required=True, width=220),
-                "Categoria": st.column_config.SelectboxColumn("Categoria", options=[""] + CATS, required=True, width=170),
-                "Fornecedor": st.column_config.TextColumn("Fornecedor", width=160),
-                "Descrição": st.column_config.TextColumn("Descrição", width="large", required=True),
-                "Valor": st.column_config.NumberColumn("Valor", format="R$ %.2f", min_value=0, width=120),
+                "ID": st.column_config.NumberColumn("#", width="small"),
+                **({"Excluir": st.column_config.CheckboxColumn("🗑️", help="Marque para excluir", width="small")} if can_delete else {}),
+                "Data": st.column_config.DateColumn("Data", format="DD/MM/YYYY", required=True),
+                "Tipo": st.column_config.SelectboxColumn("Tipo", options=["Saída (Despesa)", "Entrada"], required=True),
+                "Forma Pagamento": st.column_config.SelectboxColumn("Pgto", options=[""] + PAGAMENTOS, required=False),
+                "Obra Vinculada": st.column_config.SelectboxColumn("Obra", options=[""] + lista_obras, required=True),
+                "Categoria": st.column_config.SelectboxColumn("Categ.", options=[""] + CATS, required=True),
+                "Fornecedor": st.column_config.TextColumn("Forn."),
+                "Descrição": st.column_config.TextColumn("Descrição", required=True),
+                "Valor": st.column_config.NumberColumn("Valor", format="R$ %.2f", min_value=0),
             }
         )
 
@@ -1505,12 +1578,14 @@ elif sel == "Financeiro":
             total_atual, marcados, valor_marcado, total_pos_excluir = 0.0, 0, 0.0, 0.0
 
         with st.container(border=True):
-            st.markdown("#### 📌 Resumo da tabela (antes de salvar)")
-            m1, m2, m3, m4 = st.columns(4)
+            st.caption("📌 Resumo da tabela")
+            m1, m2 = st.columns(2)
             m1.metric("Total (Filtro)", fmt_moeda(total_atual))
-            m2.metric("Marcados p/ excluir", f"{marcados}")
-            m3.metric("Valor a excluir", fmt_moeda(valor_marcado))
-            m4.metric("Total após excluir", fmt_moeda(total_pos_excluir))
+            m2.metric("Após exclusões", fmt_moeda(total_pos_excluir))
+            if marcados > 0:
+                m3, m4 = st.columns(2)
+                m3.metric("Marcados", f"{marcados}")
+                m4.metric("Valor a excluir", fmt_moeda(valor_marcado))
 
         if marcados > 0:
             st.warning(f"🗑️ Você marcou **{marcados}** lançamento(s) para exclusão. Ao salvar, eles serão removidos.", icon="⚠️")
@@ -1546,100 +1621,96 @@ elif sel == "Financeiro":
         st.write("")
         if has_changes and can_edit:
             with st.container(border=True):
-                c_alert, c_pwd, c_btn = st.columns([2, 1.5, 1])
-                with c_alert:
-                    st.warning("⚠️ Alterações pendentes (edição/exclusão). Confirme para salvar.", icon="⚠️")
-                with c_pwd:
-                    pwd_confirm = st.text_input("Senha", type="password", placeholder="Senha ADM", label_visibility="collapsed")
-                with c_btn:
-                    if st.button("💾 SALVAR", type="primary", use_container_width=True):
-                        if not verify_admin_password(pwd_confirm):
-                            st.toast("Senha incorreta!", icon="⛔")
+                st.warning("⚠️ Alterações pendentes. Confirme com senha para salvar.")
+                pwd_confirm = st.text_input("Senha de confirmação", type="password", placeholder="Digite sua senha", label_visibility="collapsed")
+                if st.button("💾 SALVAR ALTERAÇÕES", type="primary", use_container_width=True):
+                    if not verify_admin_password(pwd_confirm):
+                        st.toast("Senha incorreta!", icon="⛔")
+                    else:
+                        erros = []
+                        for _, r in edited_df.iterrows():
+                            if can_delete and bool(r.get("Excluir")):
+                                continue
+
+                            row_id = int(r['ID'])
+                            obra = normalize_string(r.get("Obra Vinculada", ""))
+                            cat = normalize_string(r.get("Categoria", ""))
+                            desc = normalize_string(r.get("Descrição", ""))
+                            tp2 = normalize_string(r.get("Tipo", ""))
+                            val = float(pd.to_numeric(r.get("Valor", 0), errors="coerce") or 0)
+                            forn = normalize_string(r.get("Fornecedor", ""))
+
+                            is_valid, row_erros = validate_lancamento(
+                                obra=obra, categoria=cat, tipo=tp2,
+                                descricao=desc, valor=val, fornecedor=forn
+                            )
+
+                            for err in row_erros:
+                                erros.append(f"ID {row_id}: {err}")
+
+                        if erros:
+                            st.error("⚠️ Corrija antes de salvar:")
+                            for e in erros:
+                                st.caption(f"- {e}")
                         else:
-                            erros = []
-                            for _, r in edited_df.iterrows():
-                                if can_delete and bool(r.get("Excluir")):
-                                    continue
+                            try:
+                                conn = get_conn()
+                                ws_fin = conn.worksheet("Financeiro")
 
-                                row_id = int(r['ID'])
-                                obra = normalize_string(r.get("Obra Vinculada", ""))
-                                cat = normalize_string(r.get("Categoria", ""))
-                                desc = normalize_string(r.get("Descrição", ""))
-                                tp2 = normalize_string(r.get("Tipo", ""))
-                                val = float(pd.to_numeric(r.get("Valor", 0), errors="coerce") or 0)
-                                forn = normalize_string(r.get("Fornecedor", ""))
+                                if not st.session_state.get("schema_verified"):
+                                    ensure_financeiro_schema(ws_fin, FIN_COLS)
+                                    st.session_state["schema_verified"] = True
 
-                                is_valid, row_erros = validate_lancamento(
-                                    obra=obra, categoria=cat, tipo=tp2,
-                                    descricao=desc, valor=val, fornecedor=forn
-                                )
+                                headers_fin = ws_fin.row_values(1)
+                                col_id = headers_fin.index("ID") + 1
 
-                                for err in row_erros:
-                                    erros.append(f"ID {row_id}: {err}")
-
-                            if erros:
-                                st.error("⚠️ Corrija antes de salvar:")
-                                for e in erros:
-                                    st.caption(f"- {e}")
-                            else:
-                                try:
-                                    conn = get_conn()
-                                    ws_fin = conn.worksheet("Financeiro")
-
-                                    if not st.session_state.get("schema_verified"):
-                                        ensure_financeiro_schema(ws_fin, FIN_COLS)
-                                        st.session_state["schema_verified"] = True
-
-                                    headers_fin = ws_fin.row_values(1)
-                                    col_id = headers_fin.index("ID") + 1
-
-                                    # Exclusões
-                                    rows_del = []
-                                    if can_delete and "Excluir" in edited_df.columns:
-                                        df_del = edited_df[edited_df["Excluir"] == True].copy()
-                                        for _, rr in df_del.iterrows():
-                                            idv = int(rr["ID"])
-                                            cell = ws_fin.find(str(idv), in_column=col_id)
-                                            if cell:
-                                                rows_del.append(cell.row)
-                                            log_action("EXCLUIR_LANCAMENTO", f"ID={idv} | {rr.get('Obra Vinculada', '')} | {fmt_moeda(rr.get('Valor', 0))}")
-
-                                    for rr in sorted(rows_del, reverse=True):
-                                        ws_fin.delete_rows(rr)
-
-                                    # Atualizações (usando build_row_values)
-                                    upd_count = 0
-                                    if can_delete and "Excluir" in edited_df.columns:
-                                        df_upd = edited_df[edited_df["Excluir"] == False].copy()
-                                    else:
-                                        df_upd = edited_df.copy()
-
-                                    for _, rr in df_upd.iterrows():
+                                # Exclusões
+                                rows_del = []
+                                if can_delete and "Excluir" in edited_df.columns:
+                                    df_del = edited_df[edited_df["Excluir"] == True].copy()
+                                    for _, rr in df_del.iterrows():
                                         idv = int(rr["ID"])
                                         cell = ws_fin.find(str(idv), in_column=col_id)
-                                        if not cell:
-                                            continue
+                                        if cell:
+                                            rows_del.append(cell.row)
+                                        log_action("EXCLUIR_LANCAMENTO", f"ID={idv} | {rr.get('Obra Vinculada', '')} | {fmt_moeda(rr.get('Valor', 0))}")
 
-                                        update_values = build_row_values(rr, headers_fin)
+                                for rr in sorted(rows_del, reverse=True):
+                                    ws_fin.delete_rows(rr)
 
-                                        start = rowcol_to_a1(cell.row, 1)
-                                        end = rowcol_to_a1(cell.row, len(headers_fin))
-                                        ws_fin.update(f"{start}:{end}", [update_values])
+                                # Atualizações
+                                upd_count = 0
+                                if can_delete and "Excluir" in edited_df.columns:
+                                    df_upd = edited_df[edited_df["Excluir"] == False].copy()
+                                else:
+                                    df_upd = edited_df.copy()
 
-                                        upd_count += 1
+                                for _, rr in df_upd.iterrows():
+                                    idv = int(rr["ID"])
+                                    cell = ws_fin.find(str(idv), in_column=col_id)
+                                    if not cell:
+                                        continue
 
-                                    log_action("SALVAR_FINANCEIRO", f"{upd_count} atualizações, {len(rows_del)} exclusões")
-                                    clear_data_cache()
+                                    update_values = build_row_values(rr, headers_fin)
 
-                                    st.toast(f"✅ Salvo! {upd_count} atualizações • {len(rows_del)} exclusões", icon="✅")
-                                    st.rerun()
+                                    start = rowcol_to_a1(cell.row, 1)
+                                    end = rowcol_to_a1(cell.row, len(headers_fin))
+                                    ws_fin.update(f"{start}:{end}", [update_values])
 
-                                except gspread.exceptions.GSpreadException as e:
-                                    logger.error(f"Erro GSpread ao salvar Financeiro: {e}")
-                                    st.error(f"Erro ao salvar Financeiro: {e}")
-                                except Exception as e:
-                                    logger.error(f"Erro ao salvar Financeiro: {e}")
-                                    st.error(f"Erro ao salvar Financeiro: {e}")
+                                    upd_count += 1
+
+                                log_action("SALVAR_FINANCEIRO", f"{upd_count} atualizações, {len(rows_del)} exclusões")
+                                clear_data_cache()
+
+                                st.toast(f"✅ Salvo! {upd_count} atualizações • {len(rows_del)} exclusões", icon="✅")
+                                st.rerun()
+
+                            except gspread.exceptions.GSpreadException as e:
+                                logger.error(f"Erro GSpread ao salvar Financeiro: {e}")
+                                st.error(f"Erro ao salvar Financeiro: {e}")
+                            except Exception as e:
+                                logger.error(f"Erro ao salvar Financeiro: {e}")
+                                st.error(f"Erro ao salvar Financeiro: {e}")
         elif not can_edit:
             st.caption("🔒 Modo visualização. Sem permissão para editar.")
         else:
@@ -1674,25 +1745,22 @@ elif sel == "Financeiro":
                 pd.DataFrame(), df_pdf
             )
 
-            col_pdf, col_csv = st.columns(2)
-            with col_pdf:
-                st.download_button(
-                    label="⬇️ BAIXAR RELATÓRIO DA CONSULTA (PDF)",
-                    data=pdf_data,
-                    file_name=f"Extrato_{date.today()}.pdf",
-                    mime="application/pdf",
-                    use_container_width=True
-                )
-            with col_csv:
-                csv_buf = io.StringIO()
-                df_view.to_csv(csv_buf, index=False, sep=";", decimal=",")
-                st.download_button(
-                    label="📊 EXPORTAR CSV",
-                    data=csv_buf.getvalue(),
-                    file_name=f"Financeiro_{date.today()}.csv",
-                    mime="text/csv",
-                    use_container_width=True
-                )
+            st.download_button(
+                label="⬇️ BAIXAR RELATÓRIO PDF",
+                data=pdf_data,
+                file_name=f"Extrato_{date.today()}.pdf",
+                mime="application/pdf",
+                use_container_width=True
+            )
+            csv_buf = io.StringIO()
+            df_view.to_csv(csv_buf, index=False, sep=";", decimal=",")
+            st.download_button(
+                label="📊 EXPORTAR CSV",
+                data=csv_buf.getvalue(),
+                file_name=f"Financeiro_{date.today()}.csv",
+                mime="text/csv",
+                use_container_width=True
+            )
 
     else:
         st.info("Nenhum lançamento registrado.")
@@ -1846,15 +1914,16 @@ elif sel == "Obras":
             hide_index=True,
             num_rows="fixed",
             disabled=disabled_cols_obras,
+            height=280,
             column_config={
-                "ID": st.column_config.NumberColumn("#", width=40),
-                "Cliente": st.column_config.TextColumn("Empreendimento", width="large", required=True),
-                "Status": st.column_config.SelectboxColumn("Fase", options=STATUS_OBRA, required=True, width="medium"),
-                "Prazo": st.column_config.TextColumn("Entrega", width="small"),
+                "ID": st.column_config.NumberColumn("#", width="small"),
+                "Cliente": st.column_config.TextColumn("Empreendimento", required=True),
+                "Status": st.column_config.SelectboxColumn("Fase", options=STATUS_OBRA, required=True),
+                "Prazo": st.column_config.TextColumn("Entrega"),
                 "Valor Total": st.column_config.NumberColumn("VGV", format="R$ %.0f", min_value=0),
                 "Custo Previsto": st.column_config.NumberColumn("Custo", format="R$ %.0f", min_value=0),
-                "Area Construida": st.column_config.NumberColumn("Área", format="%.0f m²"),
-                "Area Terreno": st.column_config.NumberColumn("Terr.", format="%.0f m²"),
+                "Area Construida": st.column_config.NumberColumn("Área m²", format="%.0f"),
+                "Area Terreno": st.column_config.NumberColumn("Terr. m²", format="%.0f"),
                 "Quartos": st.column_config.NumberColumn("Qts", min_value=0, step=1, width="small"),
             }
         )
@@ -1863,71 +1932,67 @@ elif sel == "Obras":
         has_changes = not edited_df.equals(df_to_edit)
         if has_changes and can_edit_obras:
             with st.container(border=True):
-                c_alert, c_pwd, c_btn = st.columns([2, 1.5, 1])
-                with c_alert:
-                    st.warning("⚠️ Alterações pendentes. Confirme para salvar.", icon="⚠️")
-                with c_pwd:
-                    pwd_confirm = st.text_input("Senha", type="password", placeholder="Senha ADM", label_visibility="collapsed")
-                with c_btn:
-                    if st.button("💾 SALVAR", type="primary", use_container_width=True):
-                        if verify_admin_password(pwd_confirm):
-                            try:
-                                conn = get_conn()
-                                ws = conn.worksheet("Obras")
-                                ws_fin = conn.worksheet("Financeiro")
+                st.warning("⚠️ Alterações pendentes. Confirme com senha para salvar.")
+                pwd_confirm = st.text_input("Senha de confirmação", type="password", placeholder="Digite sua senha", label_visibility="collapsed", key="pwd_obras")
+                if st.button("💾 SALVAR ALTERAÇÕES", type="primary", use_container_width=True, key="btn_salvar_obras"):
+                    if not verify_admin_password(pwd_confirm):
+                        st.toast("Senha incorreta!", icon="⛔")
+                    else:
+                        try:
+                            conn = get_conn()
+                            ws = conn.worksheet("Obras")
+                            ws_fin = conn.worksheet("Financeiro")
 
-                                with st.spinner("Salvando alterações e sincronizando Financeiro..."):
-                                    for index, row in edited_df.iterrows():
-                                        id_obra = row["ID"]
-                                        found_cell = ws.find(str(id_obra), in_column=1)
+                            with st.spinner("Salvando alterações..."):
+                                for index, row in edited_df.iterrows():
+                                    id_obra = row["ID"]
+                                    found_cell = ws.find(str(id_obra), in_column=1)
 
-                                        if found_cell:
-                                            original_row = df_obras[df_obras["ID"] == id_obra].iloc[0]
-                                            old_name = str(original_row["Cliente"]).strip()
-                                            new_name = str(row["Cliente"]).strip()
+                                    if found_cell:
+                                        original_row = df_obras[df_obras["ID"] == id_obra].iloc[0]
+                                        old_name = str(original_row["Cliente"]).strip()
+                                        new_name = str(row["Cliente"]).strip()
 
-                                            if old_name != new_name and old_name != "":
-                                                headers_fin = ws_fin.row_values(1)
-                                                try:
-                                                    col_idx_fin = headers_fin.index("Obra Vinculada") + 1
-                                                except ValueError:
-                                                    col_idx_fin = 6
+                                        if old_name != new_name and old_name != "":
+                                            headers_fin = ws_fin.row_values(1)
+                                            try:
+                                                col_idx_fin = headers_fin.index("Obra Vinculada") + 1
+                                            except ValueError:
+                                                col_idx_fin = 6
 
-                                                cells_to_update = ws_fin.findall(old_name, in_column=col_idx_fin)
-                                                for cell in cells_to_update:
-                                                    cell.value = new_name
-                                                if cells_to_update:
-                                                    ws_fin.update_cells(cells_to_update)
-                                                    st.toast(f"♻️ Atualizados {len(cells_to_update)} lançamentos para '{new_name}'")
-                                                    log_action("RENOMEAR_OBRA", f"'{old_name}' -> '{new_name}' | {len(cells_to_update)} lançamentos")
+                                            cells_to_update = ws_fin.findall(old_name, in_column=col_idx_fin)
+                                            for cell in cells_to_update:
+                                                cell.value = new_name
+                                            if cells_to_update:
+                                                ws_fin.update_cells(cells_to_update)
+                                                st.toast(f"♻️ Atualizados {len(cells_to_update)} lançamentos para '{new_name}'")
+                                                log_action("RENOMEAR_OBRA", f"'{old_name}' -> '{new_name}' | {len(cells_to_update)} lançamentos")
 
-                                            update_values = []
-                                            for col in OBRAS_COLS:
-                                                if col in row:
-                                                    val = row[col]
-                                                else:
-                                                    val = original_row[col]
+                                        update_values = []
+                                        for col in OBRAS_COLS:
+                                            if col in row:
+                                                val = row[col]
+                                            else:
+                                                val = original_row[col]
 
-                                                if isinstance(val, (pd.Timestamp, date, datetime)):
-                                                    val = val.strftime("%Y-%m-%d")
-                                                elif pd.isna(val):
-                                                    val = ""
-                                                update_values.append(val)
+                                            if isinstance(val, (pd.Timestamp, date, datetime)):
+                                                val = val.strftime("%Y-%m-%d")
+                                            elif pd.isna(val):
+                                                val = ""
+                                            update_values.append(val)
 
-                                            ws.update(f"A{found_cell.row}:K{found_cell.row}", [update_values])
+                                        ws.update(f"A{found_cell.row}:K{found_cell.row}", [update_values])
 
-                                    log_action("SALVAR_OBRAS", f"{len(edited_df)} obras atualizadas")
-                                    clear_data_cache()
-                                    st.session_state["sucesso_obra"] = True
-                                    st.rerun()
-                            except gspread.exceptions.GSpreadException as e:
-                                logger.error(f"Erro GSpread ao salvar obras: {e}")
-                                st.error(f"Erro ao salvar: {e}")
-                            except Exception as e:
-                                logger.error(f"Erro ao salvar obras: {e}")
-                                st.error(f"Erro ao salvar: {e}")
-                        else:
-                            st.toast("Senha incorreta!", icon="⛔")
+                                log_action("SALVAR_OBRAS", f"{len(edited_df)} obras atualizadas")
+                                clear_data_cache()
+                                st.session_state["sucesso_obra"] = True
+                                st.rerun()
+                        except gspread.exceptions.GSpreadException as e:
+                            logger.error(f"Erro GSpread ao salvar obras: {e}")
+                            st.error(f"Erro ao salvar: {e}")
+                        except Exception as e:
+                            logger.error(f"Erro ao salvar obras: {e}")
+                            st.error(f"Erro ao salvar: {e}")
         elif not can_edit_obras:
             st.caption("🔒 Modo visualização. Sem permissão para editar.")
         else:
