@@ -1,6 +1,7 @@
 """
-GESTOR PRO v4.0 — Sistema Integrado de Gestão de Obras
-Design moderno com navegação nativa do Streamlit.
+GESTOR PRO v5.0 — Sistema Integrado de Gestão de Obras
+Design institucional inspirado no Gestor Extrajudicial MPCE.
+Paleta navy blue, sidebar escura, cards KPI, fonte Inter.
 """
 
 import streamlit as st
@@ -12,7 +13,7 @@ from datetime import date, datetime, timedelta
 import io
 import hmac
 import logging
-from typing import Union, Optional, List, Dict, Any, Tuple
+from typing import Optional, Dict, Any
 from gspread.utils import rowcol_to_a1
 
 # ==============================================================================
@@ -21,13 +22,28 @@ from gspread.utils import rowcol_to_a1
 logging.basicConfig(level=logging.WARNING)
 logger = logging.getLogger(__name__)
 
-APP_VERSION = "v4.0.0"
+APP_VERSION = "v5.0.0"
 
-COR = "#0F4C75"
-COR2 = "#1B262C"
-COR_OK = "#27AE60"
-COR_WARN = "#F39C12"
-COR_ERR = "#E74C3C"
+# Paleta institucional — Navy Blue (igual Gestor Extrajudicial)
+COR_900 = "#071D41"
+COR_800 = "#0C326F"
+COR_700 = "#1351B4"
+COR_600 = "#2670E8"
+COR_500 = "#5992ED"
+COR_100 = "#D4E5FF"
+COR_50  = "#EDF5FF"
+
+BG_PRIMARY   = "#FFFFFF"
+BG_SECONDARY = "#F8F9FC"
+BG_TERTIARY  = "#F0F2F5"
+
+TXT_PRIMARY   = "#1B1B1F"
+TXT_SECONDARY = "#474A57"
+TXT_MUTED     = "#71747E"
+
+STATUS_OK   = "#168821"
+STATUS_WARN = "#C05E10"
+STATUS_ERR  = "#CC2936"
 
 STATUS_OBRA = ["Projeto", "Fundação", "Alvenaria", "Acabamento", "Concluída", "Vendida"]
 
@@ -46,73 +62,244 @@ PAGAMENTOS = ["PIX", "Cartão de Crédito", "Cartão de Débito", "Dinheiro", "T
 DEFAULTS_FIN = {"data": date.today(), "tipo": "Saída (Despesa)", "cat": "", "obra": "", "pag": "", "valor": 0.0, "desc": "", "forn": ""}
 DEFAULTS_OBRA = {"nome": "", "end": "", "area_c": 0.0, "area_t": 0.0, "quartos": 0, "status": "Projeto", "custo": 0.0, "vgv": 0.0, "prazo": "", "data": date.today()}
 
+
 # ==============================================================================
-# PAGE CONFIG + CSS
+# PAGE CONFIG + CSS INSTITUCIONAL
 # ==============================================================================
 st.set_page_config(
-    page_title="Gestor Pro",
+    page_title="GESTOR PRO | Incorporadora",
     layout="wide",
     page_icon="🏗️",
-    initial_sidebar_state="collapsed"
+    initial_sidebar_state="expanded"
 )
 
-st.markdown("""
+st.markdown(f"""
 <style>
-    /* Reset padding */
-    .main .block-container { padding-top: 1rem; }
+    /* ═══ Google Fonts — Inter ═══ */
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
 
-    /* Buttons */
-    div.stButton > button {
-        background: linear-gradient(135deg, #0F4C75, #1B262C);
+    /* ═══ Global ═══ */
+    html, body, [class*="css"] {{
+        font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        -webkit-font-smoothing: antialiased;
+    }}
+
+    /* ═══ Main area ═══ */
+    .main .block-container {{
+        padding-top: 1.5rem;
+        padding-bottom: 2rem;
+        max-width: 1200px;
+    }}
+    .main {{
+        background-color: {BG_SECONDARY};
+    }}
+
+    /* ═══ Sidebar — Dark Navy ═══ */
+    [data-testid="stSidebar"] {{
+        background: {COR_900} !important;
+        border-right: none !important;
+        box-shadow: 2px 0 8px rgba(0,0,0,0.15);
+    }}
+    [data-testid="stSidebar"] * {{
+        color: rgba(255,255,255,0.85) !important;
+    }}
+    [data-testid="stSidebar"] hr {{
+        border-color: rgba(255,255,255,0.1) !important;
+    }}
+    [data-testid="stSidebar"] .stCaption,
+    [data-testid="stSidebar"] small {{
+        color: rgba(255,255,255,0.5) !important;
+    }}
+    [data-testid="stSidebar"] .stMarkdown h1,
+    [data-testid="stSidebar"] .stMarkdown h2,
+    [data-testid="stSidebar"] .stMarkdown h3 {{
+        color: #FFFFFF !important;
+    }}
+
+    /* Sidebar buttons */
+    [data-testid="stSidebar"] div.stButton > button {{
+        background: rgba(255,255,255,0.08) !important;
+        color: rgba(255,255,255,0.85) !important;
+        border: 1px solid rgba(255,255,255,0.12) !important;
+        border-radius: 8px;
+        font-weight: 500;
+        transition: all 0.15s ease;
+    }}
+    [data-testid="stSidebar"] div.stButton > button:hover {{
+        background: rgba(255,255,255,0.15) !important;
+        color: #FFFFFF !important;
+        border-color: rgba(255,255,255,0.2) !important;
+    }}
+
+    /* ═══ Option Menu styling ═══ */
+    [data-testid="stSidebar"] .nav-link {{
+        color: rgba(255,255,255,0.7) !important;
+        font-size: 14px !important;
+        font-weight: 500 !important;
+        border-radius: 8px !important;
+        padding: 10px 14px !important;
+        margin-bottom: 2px !important;
+        transition: all 80ms ease-out !important;
+    }}
+    [data-testid="stSidebar"] .nav-link:hover {{
+        background: rgba(255,255,255,0.08) !important;
+        color: #FFFFFF !important;
+    }}
+    [data-testid="stSidebar"] .nav-link-selected {{
+        background: rgba(255,255,255,0.15) !important;
+        color: #FFFFFF !important;
+        font-weight: 600 !important;
+    }}
+
+    /* ═══ Primary Buttons ═══ */
+    div.stButton > button {{
+        background: {COR_700};
         color: white;
         border: none;
-        border-radius: 10px;
-        padding: 0.6rem 1.2rem;
+        border-radius: 8px;
+        padding: 0.55rem 1.2rem;
         font-weight: 600;
-        min-height: 44px;
-        transition: opacity 0.2s;
-    }
-    div.stButton > button:hover { opacity: 0.85; }
+        font-family: 'Inter', sans-serif;
+        font-size: 14px;
+        min-height: 40px;
+        box-shadow: 0 1px 2px rgba(19,81,180,0.2);
+        transition: all 80ms ease-out;
+    }}
+    div.stButton > button:hover {{
+        background: {COR_800};
+        box-shadow: 0 2px 4px rgba(19,81,180,0.3);
+        transform: translateY(-1px);
+    }}
+    div.stButton > button:active {{
+        transform: translateY(0);
+    }}
 
     /* Download buttons */
-    [data-testid="stDownloadButton"] > button {
-        background: linear-gradient(135deg, #0F4C75, #1B262C) !important;
+    [data-testid="stDownloadButton"] > button {{
+        background: {COR_700} !important;
         color: white !important;
-        border-radius: 10px;
-        min-height: 44px;
+        border: none !important;
+        border-radius: 8px;
+        min-height: 40px;
         font-weight: 600;
-    }
+        box-shadow: 0 1px 2px rgba(19,81,180,0.2);
+    }}
+    [data-testid="stDownloadButton"] > button:hover {{
+        background: {COR_800} !important;
+    }}
 
     /* Form submit */
-    [data-testid="stFormSubmitButton"] > button {
-        min-height: 48px;
-        font-size: 1rem;
-    }
+    [data-testid="stFormSubmitButton"] > button {{
+        min-height: 44px;
+        font-size: 15px;
+    }}
 
-    /* Tabs styling */
-    [data-testid="stTabs"] button {
+    /* ═══ Tabs ═══ */
+    [data-testid="stTabs"] button {{
         font-weight: 600;
-        font-size: 0.9rem;
-    }
-    [data-testid="stTabs"] button[aria-selected="true"] {
-        border-bottom-color: #0F4C75 !important;
-        color: #0F4C75 !important;
-    }
+        font-size: 14px;
+        font-family: 'Inter', sans-serif;
+        color: {TXT_MUTED};
+        border-bottom-width: 3px !important;
+    }}
+    [data-testid="stTabs"] button[aria-selected="true"] {{
+        border-bottom-color: {COR_700} !important;
+        color: {COR_700} !important;
+    }}
+    [data-testid="stTabs"] button:hover {{
+        color: {COR_800} !important;
+    }}
 
-    /* Metric cards */
-    [data-testid="stMetric"] {
-        background: white;
-        border: 1px solid #E8ECF0;
+    /* ═══ Metric Cards ═══ */
+    [data-testid="stMetric"] {{
+        background: {BG_PRIMARY};
+        border: 1px solid #E8EBF0;
         border-radius: 12px;
-        padding: 12px 16px;
-        box-shadow: 0 1px 4px rgba(0,0,0,0.04);
-    }
+        padding: 16px 20px;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04);
+    }}
+    [data-testid="stMetric"] label {{
+        color: {TXT_MUTED} !important;
+        font-size: 12px !important;
+        font-weight: 600 !important;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+    }}
+    [data-testid="stMetric"] [data-testid="stMetricValue"] {{
+        color: {TXT_PRIMARY} !important;
+        font-weight: 700 !important;
+    }}
 
-    /* iOS zoom prevention */
-    input, select, textarea { font-size: 16px !important; }
+    /* ═══ Inputs ═══ */
+    input, select, textarea {{
+        font-size: 16px !important;
+        font-family: 'Inter', sans-serif !important;
+    }}
+    [data-testid="stTextInput"] input,
+    [data-testid="stNumberInput"] input,
+    [data-testid="stDateInput"] input {{
+        border-radius: 8px !important;
+        border: 1.5px solid #D1D5DB !important;
+        transition: all 0.2s ease;
+    }}
+    [data-testid="stTextInput"] input:focus,
+    [data-testid="stNumberInput"] input:focus,
+    [data-testid="stDateInput"] input:focus {{
+        border-color: {COR_700} !important;
+        box-shadow: 0 0 0 3px rgba(19,81,180,0.12) !important;
+    }}
 
-    /* Divider */
-    hr { margin: 0.8rem 0 !important; border-color: #E8ECF0 !important; }
+    /* ═══ Data editor ═══ */
+    [data-testid="stDataFrame"] {{
+        border-radius: 12px;
+        overflow: hidden;
+        border: 1px solid #E8EBF0;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+    }}
+
+    /* ═══ Expander ═══ */
+    [data-testid="stExpander"] {{
+        border: 1px solid #E8EBF0 !important;
+        border-radius: 12px !important;
+        background: {BG_PRIMARY} !important;
+        box-shadow: 0 1px 2px rgba(0,0,0,0.04) !important;
+    }}
+
+    /* ═══ Alerts ═══ */
+    [data-testid="stAlert"] {{
+        border-radius: 8px !important;
+        font-size: 13px !important;
+    }}
+
+    /* ═══ Divider ═══ */
+    hr {{
+        margin: 1rem 0 !important;
+        border-color: #E8EBF0 !important;
+    }}
+
+    /* ═══ Progress bar ═══ */
+    [data-testid="stProgress"] > div > div > div {{
+        background: {COR_700} !important;
+    }}
+
+    /* ═══ Toast ═══ */
+    [data-testid="stToast"] {{
+        border-radius: 8px !important;
+    }}
+
+    /* ═══ Form container ═══ */
+    [data-testid="stForm"] {{
+        border: 1px solid #E8EBF0 !important;
+        border-radius: 12px !important;
+        padding: 24px !important;
+        background: {BG_PRIMARY} !important;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.06) !important;
+    }}
+
+    /* ═══ Selectbox ═══ */
+    [data-testid="stSelectbox"] > div > div {{
+        border-radius: 8px !important;
+    }}
 </style>
 """, unsafe_allow_html=True)
 
@@ -259,6 +446,38 @@ def log_action(action: str, details: str = "") -> None:
         logger.warning(f"Falha auditoria: {e}")
 
 
+# KPI Card HTML
+def kpi_card(icon: str, label: str, value: str, icon_bg: str = COR_100, icon_color: str = COR_700):
+    st.markdown(f"""
+    <div style="
+        background: {BG_PRIMARY};
+        border: 1px solid #E8EBF0;
+        border-radius: 12px;
+        padding: 20px;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04);
+        display: flex;
+        align-items: center;
+        gap: 16px;
+    ">
+        <div style="
+            width: 48px; height: 48px;
+            background: {icon_bg};
+            color: {icon_color};
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 22px;
+            flex-shrink: 0;
+        ">{icon}</div>
+        <div>
+            <div style="font-size: 11px; font-weight: 600; color: {TXT_MUTED}; text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 4px;">{label}</div>
+            <div style="font-size: 20px; font-weight: 700; color: {TXT_PRIMARY}; letter-spacing: -0.02em;">{value}</div>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+
+
 # ==============================================================================
 # SCHEMA MIGRATION
 # ==============================================================================
@@ -301,9 +520,8 @@ def ensure_audit_sheet(db):
 def gerar_pdf_empresarial(escopo, periodo, vgv, custos, lucro, roi, df_cat, df_lanc):
     from reportlab.lib.pagesizes import A4
     from reportlab.lib import colors
-    from reportlab.lib.enums import TA_RIGHT
     from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-    from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, KeepTogether
+    from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
     from reportlab.pdfgen import canvas
     from reportlab.lib.units import cm
 
@@ -334,11 +552,11 @@ def gerar_pdf_empresarial(escopo, periodo, vgv, custos, lucro, roi, df_cat, df_l
     styles = getSampleStyleSheet()
     h_title = ParagraphStyle('HT', parent=styles['Normal'], fontSize=14, leading=16, textColor=colors.white, fontName='Helvetica-Bold')
     h_sub = ParagraphStyle('HS', parent=styles['Normal'], fontSize=9, leading=11, textColor=colors.whitesmoke)
-    h2 = ParagraphStyle('H2', parent=styles['Heading2'], fontSize=11, textColor=colors.HexColor(COR2), spaceBefore=15, spaceAfter=8, fontName='Helvetica-Bold')
+    h2 = ParagraphStyle('H2', parent=styles['Heading2'], fontSize=11, textColor=colors.HexColor(COR_900), spaceBefore=15, spaceAfter=8, fontName='Helvetica-Bold')
 
     titulo = "RELATÓRIO DE PORTFÓLIO (CONSOLIDADO)" if "Visão Geral" in str(escopo) else f"RELATÓRIO: {str(escopo).upper()}"
     hdr = Table([[Paragraph(titulo, h_title), Paragraph(f"PERÍODO:<br/>{periodo}", h_sub)]], colWidths=[12*cm, 5*cm])
-    hdr.setStyle(TableStyle([('BACKGROUND', (0,0), (-1,-1), colors.HexColor(COR)), ('PADDING', (0,0), (-1,-1), 15), ('VALIGN', (0,0), (-1,-1), 'MIDDLE'), ('ALIGN', (1,0), (1,0), 'RIGHT'), ('ROUNDEDCORNERS', [4,4,4,4])]))
+    hdr.setStyle(TableStyle([('BACKGROUND', (0,0), (-1,-1), colors.HexColor(COR_700)), ('PADDING', (0,0), (-1,-1), 15), ('VALIGN', (0,0), (-1,-1), 'MIDDLE'), ('ALIGN', (1,0), (1,0), 'RIGHT'), ('ROUNDEDCORNERS', [4,4,4,4])]))
     story.append(hdr); story.append(Spacer(1, 15))
 
     story.append(Paragraph("RESUMO FINANCEIRO", h2))
@@ -355,7 +573,7 @@ def gerar_pdf_empresarial(escopo, periodo, vgv, custos, lucro, roi, df_cat, df_l
         dc["%"] = (df_cat["Valor"] / custos * 100).apply(lambda x: f"{x:.1f}%") if custos > 0 else "0%"
         cd = [["CATEGORIA", "VALOR", "%"]] + dc[["Categoria", "Valor", "%"]].values.tolist()
         tc = Table(cd, colWidths=[10*cm, 4*cm, 3*cm], hAlign='LEFT')
-        tc.setStyle(TableStyle([('FONTNAME',(0,0),(-1,0),'Helvetica-Bold'), ('FONTSIZE',(0,0),(-1,0),8), ('TEXTCOLOR',(0,0),(-1,0),colors.white), ('BACKGROUND',(0,0),(-1,0),colors.HexColor(COR_OK)), ('ALIGN',(1,0),(-1,-1),'RIGHT'), ('GRID',(0,0),(-1,-1),0.25,colors.lightgrey), ('ROWBACKGROUNDS',(0,1),(-1,-1),[colors.white, colors.whitesmoke]), ('PADDING',(0,0),(-1,-1),6)]))
+        tc.setStyle(TableStyle([('FONTNAME',(0,0),(-1,0),'Helvetica-Bold'), ('FONTSIZE',(0,0),(-1,0),8), ('TEXTCOLOR',(0,0),(-1,0),colors.white), ('BACKGROUND',(0,0),(-1,0),colors.HexColor(STATUS_OK)), ('ALIGN',(1,0),(-1,-1),'RIGHT'), ('GRID',(0,0),(-1,-1),0.25,colors.lightgrey), ('ROWBACKGROUNDS',(0,1),(-1,-1),[colors.white, colors.whitesmoke]), ('PADDING',(0,0),(-1,-1),6)]))
         story.append(tc); story.append(Spacer(1, 15))
 
     story.append(Paragraph("EXTRATO DE LANÇAMENTOS", h2))
@@ -367,7 +585,7 @@ def gerar_pdf_empresarial(escopo, periodo, vgv, custos, lucro, roi, df_cat, df_l
         dd = [["Data", "Categoria", "Descrição", "Valor"]] + dl[["Data", "Categoria", "Descrição", "Valor"]].values.tolist()
         dd.append(["", "", "SUBTOTAL:", fmt_moeda(custos)])
         tl = Table(dd, colWidths=[2.5*cm, 3.5*cm, 8*cm, 3*cm])
-        tl.setStyle(TableStyle([('FONTNAME',(0,0),(-1,0),'Helvetica-Bold'), ('FONTSIZE',(0,0),(-1,0),8), ('TEXTCOLOR',(0,0),(-1,0),colors.white), ('BACKGROUND',(0,0),(-1,0),colors.HexColor(COR)), ('FONTSIZE',(0,1),(-1,-1),8), ('ALIGN',(-1,0),(-1,-1),'RIGHT'), ('GRID',(0,0),(-1,-2),0.25,colors.lightgrey), ('ROWBACKGROUNDS',(0,1),(-1,-2),[colors.white, colors.whitesmoke]), ('FONTNAME',(0,-1),(-1,-1),'Helvetica-Bold'), ('BACKGROUND',(0,-1),(-1,-1),colors.HexColor('#e9ecef')), ('LINEABOVE',(0,-1),(-1,-1),1,colors.black)]))
+        tl.setStyle(TableStyle([('FONTNAME',(0,0),(-1,0),'Helvetica-Bold'), ('FONTSIZE',(0,0),(-1,0),8), ('TEXTCOLOR',(0,0),(-1,0),colors.white), ('BACKGROUND',(0,0),(-1,0),colors.HexColor(COR_700)), ('FONTSIZE',(0,1),(-1,-1),8), ('ALIGN',(-1,0),(-1,-1),'RIGHT'), ('GRID',(0,0),(-1,-2),0.25,colors.lightgrey), ('ROWBACKGROUNDS',(0,1),(-1,-2),[colors.white, colors.whitesmoke]), ('FONTNAME',(0,-1),(-1,-1),'Helvetica-Bold'), ('BACKGROUND',(0,-1),(-1,-1),colors.HexColor('#e9ecef')), ('LINEABOVE',(0,-1),(-1,-1),1,colors.black)]))
         story.append(tl)
     else:
         story.append(Paragraph("Nenhum lançamento no período.", styles['Normal']))
@@ -460,22 +678,46 @@ def logout():
     clear_data_cache()
 
 if not st.session_state.auth:
-    st.markdown("""
-        <div style='text-align:center; padding: 4rem 0 1.5rem 0;'>
-            <h1 style='font-size: 2.5rem; font-weight: 800; margin-bottom: 0.2rem;'>
-                <span style='color: #0F4C75;'>GESTOR</span> <span style='color: #1B262C;'>PRO</span>
-            </h1>
-            <p style='color: #888; font-size: 0.95rem; letter-spacing: 2px;'>INCORPORAÇÃO & OBRAS</p>
-        </div>
+    # Login page — estilo institucional
+    st.markdown(f"""
+    <div style="display: flex; flex-direction: column; align-items: center; padding: 3rem 1rem 1rem;">
+        <div style="
+            width: 64px; height: 64px;
+            background: {COR_100};
+            border-radius: 16px;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 30px;
+            margin-bottom: 24px;
+            border: 1px solid {COR_500}33;
+        ">🏗️</div>
+        <div style="
+            display: inline-block;
+            font-size: 11px; font-weight: 700; color: {COR_700};
+            text-transform: uppercase; letter-spacing: 2px;
+            background: {COR_100}; padding: 4px 12px; border-radius: 4px;
+            margin-bottom: 16px;
+        ">INCORPORADORA</div>
+        <h1 style="
+            font-size: 28px; font-weight: 700; color: {TXT_PRIMARY};
+            margin: 0 0 8px 0; letter-spacing: -0.5px;
+        ">Gestor Pro</h1>
+        <p style="
+            font-size: 14px; color: {TXT_MUTED};
+            margin: 0 0 32px 0;
+        ">Sistema Integrado de Gestão de Obras</p>
+    </div>
     """, unsafe_allow_html=True)
 
-    _, lc, _ = st.columns([1, 2, 1])
+    _, lc, _ = st.columns([1.2, 1.6, 1.2])
     with lc:
         if st.session_state.get("login_error"):
             st.error(st.session_state["login_error"])
         has_multi = "users" in st.secrets
-        login_user = st.text_input("Usuário", key="lu", placeholder="seu.usuario") if has_multi else ""
-        login_pwd = st.text_input("Senha", type="password", key="lp")
+        if has_multi:
+            login_user = st.text_input("Usuário", key="lu", placeholder="seu.usuario")
+        else:
+            login_user = ""
+        login_pwd = st.text_input("Senha", type="password", key="lp", placeholder="Digite sua senha")
         st.write("")
         if st.button("Entrar", use_container_width=True):
             user = authenticate_user(login_user, login_pwd)
@@ -495,28 +737,93 @@ if not st.session_state.auth:
             else:
                 st.session_state.login_error = "Credenciais incorretas"
                 st.rerun()
-        st.caption(f"<p style='text-align:center; margin-top:2rem; color:#aaa;'>{APP_VERSION}</p>", unsafe_allow_html=True)
+
+    st.markdown(f"""
+    <div style="text-align: center; margin-top: 3rem;">
+        <p style="font-size: 11px; color: {TXT_MUTED};">{APP_VERSION} &copy; 2026 Gestor Pro</p>
+    </div>
+    """, unsafe_allow_html=True)
     st.stop()
 
 
 # ==============================================================================
-# SIDEBAR
+# SIDEBAR — Dark Navy (estilo Notion/Extrajudicial)
 # ==============================================================================
+from streamlit_option_menu import option_menu
+
 with st.sidebar:
+    # Logo
     st.markdown(f"""
-        <div style='margin-bottom: 16px;'>
-            <h2 style='margin:0; font-weight:800;'><span style='color:{COR};'>GESTOR</span> PRO</h2>
-            <p style='color:#888; font-size:11px; margin:0; letter-spacing:1px;'>INCORPORAÇÃO & OBRAS</p>
+    <div style="padding: 4px 0 12px 0; border-bottom: 1px solid rgba(255,255,255,0.1); margin-bottom: 12px;">
+        <div style="font-size: 18px; font-weight: 700; color: #FFFFFF; letter-spacing: -0.01em;">
+            Gestor Pro
         </div>
+        <div style="font-size: 12px; color: rgba(255,255,255,0.5); margin-top: 3px; font-weight: 500;">
+            Incorporação &middot; Obras
+        </div>
+    </div>
     """, unsafe_allow_html=True)
+
+    # Navigation
+    menu_options = ["Dashboard", "Financeiro", "Obras"]
+    menu_icons = ["bar-chart-fill", "wallet2", "building"]
+
+    if require_role("admin"):
+        menu_options.append("Auditoria")
+        menu_icons.append("shield-check")
+
+    sel = option_menu(
+        menu_title=None,
+        options=menu_options,
+        icons=menu_icons,
+        default_index=0,
+        styles={
+            "container": {"padding": "0", "background-color": "transparent"},
+            "icon": {"color": "rgba(255,255,255,0.7)", "font-size": "16px"},
+            "nav-link": {
+                "font-size": "14px",
+                "font-weight": "500",
+                "text-align": "left",
+                "margin": "2px 0",
+                "padding": "10px 14px",
+                "border-radius": "8px",
+                "color": "rgba(255,255,255,0.7)",
+                "--hover-color": "rgba(255,255,255,0.08)",
+            },
+            "nav-link-selected": {
+                "background-color": "rgba(255,255,255,0.15)",
+                "color": "white",
+                "font-weight": "600",
+            },
+        },
+    )
 
     st.markdown("---")
 
+    # User info — estilo footer sidebar
     user_name = get_current_user()
     user_role = st.session_state.get("user_role", "admin")
     role_map = {"admin": "Administrador", "editor": "Editor", "viewer": "Visualizador"}
-    st.markdown(f"👤 **{user_name}** — {role_map.get(user_role, user_role)}")
+    initials = "".join([w[0].upper() for w in user_name.split()[:2]]) if user_name else "--"
 
+    st.markdown(f"""
+    <div style="display: flex; align-items: center; gap: 12px; padding: 4px 0;">
+        <div style="
+            width: 36px; height: 36px;
+            background: rgba(255,255,255,0.15);
+            color: #FFFFFF;
+            border-radius: 50%;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 13px; font-weight: 700; flex-shrink: 0;
+        ">{initials}</div>
+        <div>
+            <div style="font-size: 13px; font-weight: 600; color: #FFFFFF; line-height: 1.3;">{user_name}</div>
+            <div style="font-size: 11px; color: rgba(255,255,255,0.5); margin-top: 2px;">{role_map.get(user_role, user_role)}</div>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+
+    # Sync status
     last_sync = st.session_state.get("last_sync")
     if last_sync:
         d = (datetime.now() - last_sync).seconds
@@ -525,16 +832,21 @@ with st.sidebar:
     else:
         st.caption("🟢 Conectado")
 
-    st.markdown("---")
-    st.button("Sair", on_click=logout, use_container_width=True)
-    st.caption(f"<p style='text-align:center; color:#aaa; font-size:10px; margin-top:20px;'>{APP_VERSION} © 2026</p>", unsafe_allow_html=True)
+    st.markdown("")
+    st.button("Sair do Sistema", on_click=logout, use_container_width=True)
+
+    st.markdown(f"""
+    <div style="text-align: center; margin-top: 24px;">
+        <p style="font-size: 10px; color: rgba(255,255,255,0.3);">{APP_VERSION} &copy; 2026</p>
+    </div>
+    """, unsafe_allow_html=True)
 
 
 # ==============================================================================
 # DATA
 # ==============================================================================
 if "data_obras" not in st.session_state or "data_fin" not in st.session_state:
-    with st.spinner("Sincronizando..."):
+    with st.spinner("Sincronizando base de dados..."):
         try:
             df_obras, df_fin = fetch_data()
             st.session_state["data_obras"] = df_obras
@@ -551,22 +863,21 @@ lista_obras = sorted(df_obras["Cliente"].unique().tolist()) if not df_obras.empt
 
 
 # ==============================================================================
-# NAVIGATION — Tabs no topo
-# ==============================================================================
-menu_tabs = ["Dashboard", "Financeiro", "Obras"]
-if require_role("admin"):
-    menu_tabs.append("Auditoria")
-
-sel = st.radio("Navegação", menu_tabs, horizontal=True, label_visibility="collapsed")
-st.markdown("---")
-
-
-# ==============================================================================
 # DASHBOARD
 # ==============================================================================
 if sel == "Dashboard":
     import plotly.express as px
     import plotly.graph_objects as go
+
+    # Topbar
+    st.markdown(f"""
+    <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px;">
+        <div>
+            <h2 style="margin: 0; font-size: 22px; font-weight: 700; color: {TXT_PRIMARY}; letter-spacing: -0.02em;">Dashboard</h2>
+            <p style="margin: 4px 0 0 0; font-size: 13px; color: {TXT_MUTED};">Visão geral do portfólio</p>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
 
     c1, c2 = st.columns([3, 1])
     with c1:
@@ -631,11 +942,16 @@ if sel == "Dashboard":
         perc_total = (custos_total / vgv_total * 100) if vgv_total > 0 else 0.0
 
         k1, k2 = st.columns(2)
-        k1.metric("VGV Total", fmt_moeda(vgv_total))
-        k2.metric("Custos", fmt_moeda(custos_total), delta=f"{perc_total:.1f}%", delta_color="inverse")
+        with k1:
+            kpi_card("💰", "VGV TOTAL", fmt_moeda(vgv_total), COR_100, COR_700)
+        with k2:
+            kpi_card("📉", "CUSTOS", fmt_moeda(custos_total), "#FFF0E0", STATUS_WARN)
         k3, k4 = st.columns(2)
-        k3.metric("Lucro (Vendidas)", fmt_moeda(lucro_sold) if sold_names else "—")
-        k4.metric("ROI (Vendidas)", f"{roi_sold:.1f}%" if sold_names else "—")
+        with k3:
+            kpi_card("📊", "LUCRO (VENDIDAS)", fmt_moeda(lucro_sold) if sold_names else "—", "#E4F7E8", STATUS_OK)
+        with k4:
+            kpi_card("🎯", "ROI (VENDIDAS)", f"{roi_sold:.1f}%" if sold_names else "—", "#EDE4F7", "#6940A5")
+
         vgv, custos, lucro = vgv_total, custos_total, vgv_total - custos_total
         roi = (lucro / custos * 100) if custos > 0 else 0.0
     else:
@@ -649,42 +965,51 @@ if sel == "Dashboard":
         perc = (custos / vgv * 100) if vgv > 0 else 0.0
 
         k1, k2 = st.columns(2)
-        k1.metric("VGV", fmt_moeda(vgv))
-        k2.metric("Custos", fmt_moeda(custos), delta=f"{perc:.1f}%", delta_color="inverse")
+        with k1:
+            kpi_card("💰", "VGV", fmt_moeda(vgv), COR_100, COR_700)
+        with k2:
+            kpi_card("📉", "CUSTOS", fmt_moeda(custos), "#FFF0E0", STATUS_WARN)
         k3, k4 = st.columns(2)
-        if status_obra.lower() == "vendida":
-            k3.metric("Lucro", fmt_moeda(lucro))
-            k4.metric("ROI", f"{roi:.1f}%")
-        else:
-            k3.metric("Fase", status_obra or "—")
-            k4.metric("Saldo", fmt_moeda(lucro))
+        with k3:
+            if status_obra.lower() == "vendida":
+                kpi_card("📊", "LUCRO", fmt_moeda(lucro), "#E4F7E8", STATUS_OK)
+            else:
+                kpi_card("🔨", "FASE", status_obra or "—", BG_TERTIARY, TXT_SECONDARY)
+        with k4:
+            if status_obra.lower() == "vendida":
+                kpi_card("🎯", "ROI", f"{roi:.1f}%", "#EDE4F7", "#6940A5")
+            else:
+                kpi_card("💵", "SALDO", fmt_moeda(lucro), "#E4F7E8", STATUS_OK)
+
+    st.markdown("")
 
     # Tabs do Dashboard
     tab_charts, tab_fornec, tab_obras_resumo = st.tabs(["📈 Gráficos", "🏢 Fornecedores", "📋 Resumo Obras"])
 
     with tab_charts:
         if not df_show.empty:
-            # Evolução
             df_ev = df_show.sort_values("Data_DT").copy()
             df_ev["Acumulado"] = df_ev["Valor"].cumsum()
-            fig = px.area(df_ev, x="Data_DT", y="Acumulado", color_discrete_sequence=[COR])
-            fig.update_layout(plot_bgcolor="white", margin=dict(t=5,l=5,r=5,b=5), height=250, xaxis_title="", yaxis_title="")
+            fig = px.area(df_ev, x="Data_DT", y="Acumulado", color_discrete_sequence=[COR_700])
+            fig.update_layout(plot_bgcolor="white", paper_bgcolor="white", margin=dict(t=10,l=10,r=10,b=10), height=260, xaxis_title="", yaxis_title="", font=dict(family="Inter"))
+            fig.update_xaxes(gridcolor="#F0F2F5")
+            fig.update_yaxes(gridcolor="#F0F2F5")
             st.plotly_chart(fig, use_container_width=True)
 
-            # Categorias
             df_cat = df_show.groupby("Categoria", as_index=False)["Valor"].sum()
-            fig2 = px.pie(df_cat, values="Valor", names="Categoria", hole=0.6, color_discrete_sequence=px.colors.qualitative.Bold)
-            fig2.update_layout(showlegend=True, legend=dict(orientation="h", y=-0.1, x=0.5, xanchor="center", font=dict(size=10)), margin=dict(t=5,l=5,r=5,b=5), height=250)
-            fig2.update_traces(textinfo="percent", textfont_size=10)
+            fig2 = px.pie(df_cat, values="Valor", names="Categoria", hole=0.65, color_discrete_sequence=["#1351B4", "#168821", "#C05E10", "#CC2936", "#6940A5", "#0A6E5C", "#71747E"])
+            fig2.update_layout(showlegend=True, legend=dict(orientation="h", y=-0.15, x=0.5, xanchor="center", font=dict(size=11, family="Inter")), margin=dict(t=10,l=10,r=10,b=10), height=260, paper_bgcolor="white")
+            fig2.update_traces(textinfo="percent", textfont_size=11)
             st.plotly_chart(fig2, use_container_width=True)
 
-            # Mensal
             if pd.notna(df_show["Data_DT"]).any():
                 dm = df_show.copy()
                 dm["Mês"] = dm["Data_DT"].dt.to_period("M").astype(str)
                 ma = dm.groupby("Mês", as_index=False)["Valor"].sum().sort_values("Mês")
-                fig3 = px.bar(ma, x="Mês", y="Valor", color_discrete_sequence=[COR])
-                fig3.update_layout(plot_bgcolor="white", margin=dict(t=5,l=5,r=5,b=5), height=220, xaxis_title="", yaxis_title="")
+                fig3 = px.bar(ma, x="Mês", y="Valor", color_discrete_sequence=[COR_700])
+                fig3.update_layout(plot_bgcolor="white", paper_bgcolor="white", margin=dict(t=10,l=10,r=10,b=10), height=230, xaxis_title="", yaxis_title="", font=dict(family="Inter"))
+                fig3.update_xaxes(gridcolor="#F0F2F5")
+                fig3.update_yaxes(gridcolor="#F0F2F5")
                 st.plotly_chart(fig3, use_container_width=True)
         else:
             st.info("Sem dados no período selecionado.")
@@ -694,8 +1019,9 @@ if sel == "Dashboard":
             df_f = df_show[df_show["Fornecedor"].astype(str).str.strip() != ""]
             if not df_f.empty:
                 df_top = df_f.groupby("Fornecedor", as_index=False)["Valor"].sum().sort_values("Valor", ascending=False).head(10)
-                fig_f = px.bar(df_top, x="Valor", y="Fornecedor", orientation="h", color_discrete_sequence=[COR])
-                fig_f.update_layout(plot_bgcolor="white", margin=dict(t=5,l=5,r=5,b=5), height=300, xaxis_title="", yaxis_title="", yaxis=dict(autorange="reversed"))
+                fig_f = px.bar(df_top, x="Valor", y="Fornecedor", orientation="h", color_discrete_sequence=[COR_700])
+                fig_f.update_layout(plot_bgcolor="white", paper_bgcolor="white", margin=dict(t=10,l=10,r=10,b=10), height=300, xaxis_title="", yaxis_title="", yaxis=dict(autorange="reversed"), font=dict(family="Inter"))
+                fig_f.update_xaxes(gridcolor="#F0F2F5")
                 st.plotly_chart(fig_f, use_container_width=True)
             else:
                 st.info("Nenhum fornecedor registrado.")
@@ -704,7 +1030,6 @@ if sel == "Dashboard":
 
     with tab_obras_resumo:
         if escopo == "Todas as Obras" and not df_obras.empty:
-            # Orçado vs Realizado
             orc = []
             for _, r in df_obras.iterrows():
                 n = str(r["Cliente"]).strip()
@@ -719,14 +1044,13 @@ if sel == "Dashboard":
 
             df_r = pd.DataFrame(orc)
 
-            # Chart
             fig_o = go.Figure()
-            fig_o.add_trace(go.Bar(name="Orçado", x=df_r["Obra"], y=df_r["Orçado"], marker_color="#BBE1FA"))
-            fig_o.add_trace(go.Bar(name="Realizado", x=df_r["Obra"], y=df_r["Realizado"], marker_color=COR))
-            fig_o.update_layout(barmode="group", plot_bgcolor="white", margin=dict(t=5,l=5,r=5,b=5), height=250, xaxis_title="", yaxis_title="", legend=dict(orientation="h", y=1.1, x=0.5, xanchor="center"))
+            fig_o.add_trace(go.Bar(name="Orçado", x=df_r["Obra"], y=df_r["Orçado"], marker_color=COR_100))
+            fig_o.add_trace(go.Bar(name="Realizado", x=df_r["Obra"], y=df_r["Realizado"], marker_color=COR_700))
+            fig_o.update_layout(barmode="group", plot_bgcolor="white", paper_bgcolor="white", margin=dict(t=10,l=10,r=10,b=10), height=260, xaxis_title="", yaxis_title="", legend=dict(orientation="h", y=1.12, x=0.5, xanchor="center"), font=dict(family="Inter"))
+            fig_o.update_yaxes(gridcolor="#F0F2F5")
             st.plotly_chart(fig_o, use_container_width=True)
 
-            # Table
             st.dataframe(df_r, use_container_width=True, hide_index=True, column_config={
                 "Orçado": st.column_config.NumberColumn(format="R$ %.0f"),
                 "Realizado": st.column_config.NumberColumn(format="R$ %.0f"),
@@ -739,10 +1063,10 @@ if sel == "Dashboard":
     # Atividade recente
     if not df_fin.empty:
         st.markdown("---")
-        st.caption("**Atividade recente**")
+        st.markdown(f"<p style='font-size: 11px; font-weight: 600; color: {TXT_MUTED}; text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 8px;'>Atividade Recente</p>", unsafe_allow_html=True)
         for _, rec in df_fin.sort_values("Data_DT", ascending=False).head(5).iterrows():
             icon = "🔴" if "Saída" in str(rec.get("Tipo", "")) or "Despesa" in str(rec.get("Tipo", "")) else "🟢"
-            st.caption(f"{icon} {str(rec.get('Data',''))[:10]} — {str(rec.get('Descrição',''))[:35]} | **{fmt_moeda(rec.get('Valor',0))}**")
+            st.caption(f"{icon} {str(rec.get('Data',''))[:10]} — {str(rec.get('Descrição',''))[:40]} | **{fmt_moeda(rec.get('Valor',0))}**")
 
     # Downloads
     st.markdown("---")
@@ -760,19 +1084,26 @@ if sel == "Dashboard":
 
         c_dl1, c_dl2 = st.columns(2)
         with c_dl1:
-            st.download_button("⬇️ PDF", data=pdf_data, file_name=f"Relatorio_{date.today()}.pdf", mime="application/pdf", use_container_width=True)
+            st.download_button("⬇️ Relatório PDF", data=pdf_data, file_name=f"Relatorio_{date.today()}.pdf", mime="application/pdf", use_container_width=True)
         with c_dl2:
             csv_buf = io.StringIO()
             df_show.to_csv(csv_buf, index=False, sep=";", decimal=",")
-            st.download_button("📊 CSV", data=csv_buf.getvalue(), file_name=f"Dados_{date.today()}.csv", mime="text/csv", use_container_width=True)
+            st.download_button("📊 Exportar CSV", data=csv_buf.getvalue(), file_name=f"Dados_{date.today()}.csv", mime="text/csv", use_container_width=True)
 
 
 # ==============================================================================
 # FINANCEIRO
 # ==============================================================================
 elif sel == "Financeiro":
+    st.markdown(f"""
+    <div style="margin-bottom: 16px;">
+        <h2 style="margin: 0; font-size: 22px; font-weight: 700; color: {TXT_PRIMARY}; letter-spacing: -0.02em;">Financeiro</h2>
+        <p style="margin: 4px 0 0 0; font-size: 13px; color: {TXT_MUTED};">Lançamentos e consultas financeiras</p>
+    </div>
+    """, unsafe_allow_html=True)
+
     if st.session_state.get("sucesso_fin"):
-        st.success("✅ Lançamento salvo!")
+        st.success("Lançamento salvo com sucesso!")
         reset_form_state("k_fin", DEFAULTS_FIN)
         st.session_state["sucesso_fin"] = False
 
@@ -814,7 +1145,7 @@ elif sel == "Financeiro":
                     if num_parcelas > 1 and vl > 0:
                         st.caption(f"💳 {num_parcelas}x de **{fmt_moeda(vl / num_parcelas)}**")
 
-                submitted = st.form_submit_button("Salvar", use_container_width=True)
+                submitted = st.form_submit_button("Salvar Lançamento", use_container_width=True)
 
                 if submitted:
                     st.session_state.k_fin_valor = vl
@@ -865,7 +1196,7 @@ elif sel == "Financeiro":
                         st.session_state.k_fin_valor = float(safe_float(rd.get("Valor", 0)))
                         st.session_state.k_fin_desc = str(rd.get("Descrição", ""))
                         st.session_state.k_fin_forn = str(rd.get("Fornecedor", ""))
-                        st.toast("📋 Dados copiados!", icon="📋")
+                        st.toast("Dados copiados!", icon="📋")
                         st.rerun()
 
     with tab_consulta:
@@ -918,7 +1249,7 @@ elif sel == "Financeiro":
             if can_del:
                 df_te.insert(1, "Excluir", False)
 
-            edited = st.data_editor(df_te, use_container_width=True, hide_index=True, num_rows="fixed", height=320, disabled=["ID"] if can_edit else list(cols_order), column_config={
+            edited = st.data_editor(df_te, use_container_width=True, hide_index=True, num_rows="fixed", height=340, disabled=["ID"] if can_edit else list(cols_order), column_config={
                 "ID": st.column_config.NumberColumn("#", width="small"),
                 **({"Excluir": st.column_config.CheckboxColumn("🗑️", width="small")} if can_del else {}),
                 "Data": st.column_config.DateColumn("Data", format="DD/MM/YYYY"),
@@ -931,7 +1262,6 @@ elif sel == "Financeiro":
                 "Valor": st.column_config.NumberColumn("Valor", format="R$ %.2f", min_value=0),
             })
 
-            # Resumo
             try:
                 total_ed = float(pd.to_numeric(edited["Valor"], errors="coerce").fillna(0).sum())
                 marcados = int(edited["Excluir"].astype(bool).sum()) if can_del and "Excluir" in edited.columns else 0
@@ -941,7 +1271,6 @@ elif sel == "Financeiro":
             if marcados > 0:
                 st.warning(f"🗑️ {marcados} marcado(s) para exclusão")
 
-            # Comparação
             def _norm(df):
                 d = df.copy()
                 d["Data"] = d["Data"].astype(str)
@@ -987,7 +1316,7 @@ elif sel == "Financeiro":
                                 upd += 1
                             log_action("SALVAR_FINANCEIRO", f"{upd} atualizações, {len(rows_del)} exclusões")
                             clear_data_cache()
-                            st.toast(f"✅ {upd} atualizados, {len(rows_del)} excluídos", icon="✅")
+                            st.toast(f"{upd} atualizados, {len(rows_del)} excluídos", icon="✅")
                             st.rerun()
                         except Exception as e:
                             st.error(f"Erro: {e}")
@@ -1006,11 +1335,11 @@ elif sel == "Financeiro":
                         if c not in df_pdf.columns: df_pdf[c] = ""
                     df_pdf = df_pdf[cols_p].sort_values("Data", ascending=False)
                     pdf = gerar_pdf_empresarial(fo if fo != "Todas" else "Visão Geral", per, 0, float(df_pdf["Valor"].apply(safe_float).sum()), 0, 0, pd.DataFrame(), df_pdf)
-                    st.download_button("⬇️ PDF", data=pdf, file_name=f"Extrato_{date.today()}.pdf", mime="application/pdf", use_container_width=True)
+                    st.download_button("⬇️ Relatório PDF", data=pdf, file_name=f"Extrato_{date.today()}.pdf", mime="application/pdf", use_container_width=True)
                 with c_d2:
                     buf = io.StringIO()
                     df_view.to_csv(buf, index=False, sep=";", decimal=",")
-                    st.download_button("📊 CSV", data=buf.getvalue(), file_name=f"Financeiro_{date.today()}.csv", mime="text/csv", use_container_width=True)
+                    st.download_button("📊 Exportar CSV", data=buf.getvalue(), file_name=f"Financeiro_{date.today()}.csv", mime="text/csv", use_container_width=True)
         else:
             st.info("Nenhum lançamento registrado.")
 
@@ -1019,8 +1348,15 @@ elif sel == "Financeiro":
 # OBRAS
 # ==============================================================================
 elif sel == "Obras":
+    st.markdown(f"""
+    <div style="margin-bottom: 16px;">
+        <h2 style="margin: 0; font-size: 22px; font-weight: 700; color: {TXT_PRIMARY}; letter-spacing: -0.02em;">Obras</h2>
+        <p style="margin: 4px 0 0 0; font-size: 13px; color: {TXT_MUTED};">Cadastro e gestão de empreendimentos</p>
+    </div>
+    """, unsafe_allow_html=True)
+
     if st.session_state.get("sucesso_obra"):
-        st.success("✅ Obra salva!")
+        st.success("Obra salva com sucesso!")
         reset_form_state("k_ob", DEFAULTS_OBRA)
         st.session_state["sucesso_obra"] = False
 
@@ -1033,11 +1369,11 @@ elif sel == "Obras":
             st.caption("🔒 Sem permissão.")
         else:
             with st.form("f_obra", clear_on_submit=False):
-                st.markdown("**Identificação**")
+                st.markdown(f"<p style='font-size: 11px; font-weight: 600; color: {TXT_MUTED}; text-transform: uppercase; letter-spacing: 0.08em;'>Identificação</p>", unsafe_allow_html=True)
                 nome_obra = st.text_input("Nome do Empreendimento", value=st.session_state.k_ob_nome, key="k_ob_nome", placeholder="Ex: Res. Vila Verde")
                 endereco = st.text_input("Endereço", value=st.session_state.k_ob_end, key="k_ob_end", placeholder="Rua, Bairro...")
 
-                st.markdown("**Características**")
+                st.markdown(f"<p style='font-size: 11px; font-weight: 600; color: {TXT_MUTED}; text-transform: uppercase; letter-spacing: 0.08em; margin-top: 8px;'>Características</p>", unsafe_allow_html=True)
                 ca1, ca2 = st.columns(2)
                 with ca1:
                     area_const = st.number_input("Área Construída m²", min_value=0.0, format="%.2f", value=st.session_state.k_ob_area_c, key="k_ob_area_c")
@@ -1049,7 +1385,7 @@ elif sel == "Obras":
                 with ca4:
                     status = st.selectbox("Fase", STATUS_OBRA, key="k_ob_status")
 
-                st.markdown("**Financeiro e Prazos**")
+                st.markdown(f"<p style='font-size: 11px; font-weight: 600; color: {TXT_MUTED}; text-transform: uppercase; letter-spacing: 0.08em; margin-top: 8px;'>Financeiro e Prazos</p>", unsafe_allow_html=True)
                 cb1, cb2 = st.columns(2)
                 with cb1:
                     custo_previsto = st.number_input("Orçamento (Custo)", min_value=0.0, format="%.2f", step=1000.0, value=st.session_state.k_ob_custo, key="k_ob_custo_input")
@@ -1103,7 +1439,7 @@ elif sel == "Obras":
                     df_te[c] = df_te[c].fillna("")
 
             can_edit_o = require_role("editor")
-            edited = st.data_editor(df_te, use_container_width=True, hide_index=True, num_rows="fixed", height=280, disabled=["ID"] if can_edit_o else list(valid_c), column_config={
+            edited = st.data_editor(df_te, use_container_width=True, hide_index=True, num_rows="fixed", height=300, disabled=["ID"] if can_edit_o else list(valid_c), column_config={
                 "ID": st.column_config.NumberColumn("#", width="small"),
                 "Cliente": st.column_config.TextColumn("Empreendimento"),
                 "Status": st.column_config.SelectboxColumn("Fase", options=STATUS_OBRA),
@@ -1172,8 +1508,39 @@ elif sel == "Obras":
                 idx = STATUS_OBRA.index(stat) if stat in STATUS_OBRA else 0
                 prog = int((idx / (len(STATUS_OBRA) - 1)) * 100)
 
-                icon = "✅" if stat.lower() in ["concluída", "vendida"] else ("🔨" if prog >= 50 else "📐")
-                st.markdown(f"**{nome}** — {icon} {stat} | Prazo: {prazo or '—'}")
+                # Status color
+                if stat.lower() in ["concluída", "vendida"]:
+                    s_color = STATUS_OK
+                    s_icon = "✅"
+                elif prog >= 50:
+                    s_color = COR_700
+                    s_icon = "🔨"
+                else:
+                    s_color = STATUS_WARN
+                    s_icon = "📐"
+
+                st.markdown(f"""
+                <div style="
+                    background: {BG_PRIMARY};
+                    border: 1px solid #E8EBF0;
+                    border-radius: 12px;
+                    padding: 16px 20px;
+                    margin-bottom: 12px;
+                    box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+                ">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                        <div style="font-size: 15px; font-weight: 600; color: {TXT_PRIMARY};">{s_icon} {nome}</div>
+                        <div style="
+                            font-size: 11px; font-weight: 600;
+                            background: {s_color}18;
+                            color: {s_color};
+                            padding: 3px 10px;
+                            border-radius: 20px;
+                        ">{stat}</div>
+                    </div>
+                    <div style="font-size: 12px; color: {TXT_MUTED}; margin-bottom: 8px;">Prazo: {prazo or '—'}</div>
+                </div>
+                """, unsafe_allow_html=True)
                 st.progress(prog / 100)
                 st.caption(f"Etapas: {' → '.join(STATUS_OBRA[:idx+1])}")
                 st.markdown("")
@@ -1185,7 +1552,13 @@ elif sel == "Obras":
 # AUDITORIA
 # ==============================================================================
 elif sel == "Auditoria":
-    st.subheader("🛡️ Log de Auditoria")
+    st.markdown(f"""
+    <div style="margin-bottom: 16px;">
+        <h2 style="margin: 0; font-size: 22px; font-weight: 700; color: {TXT_PRIMARY}; letter-spacing: -0.02em;">Auditoria</h2>
+        <p style="margin: 4px 0 0 0; font-size: 13px; color: {TXT_MUTED};">Registro de todas as ações do sistema</p>
+    </div>
+    """, unsafe_allow_html=True)
+
     try:
         records = get_conn().worksheet("Auditoria").get_all_records()
         if not records:
@@ -1200,7 +1573,12 @@ elif sel == "Auditoria":
             df_d = df_a.copy()
             if fa != "Todas": df_d = df_d[df_d["Ação"] == fa]
             if fu != "Todos": df_d = df_d[df_d["Usuário"] == fu]
-            st.dataframe(df_d, use_container_width=True, hide_index=True)
+            st.dataframe(df_d, use_container_width=True, hide_index=True, column_config={
+                "Timestamp": st.column_config.TextColumn("Data/Hora", width=160),
+                "Usuário": st.column_config.TextColumn("Usuário", width=180),
+                "Ação": st.column_config.TextColumn("Ação", width=180),
+                "Detalhes": st.column_config.TextColumn("Detalhes", width="large"),
+            })
             st.caption(f"{len(df_d)} de {len(df_a)} registros")
     except Exception as e:
         st.error(f"Erro: {e}")
