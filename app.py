@@ -1261,7 +1261,7 @@ elif sel == "Financeiro":
 
     # --- NOVO LANÇAMENTO ---
     if require_role("editor"):
-        with st.expander("Novo Lançamento", expanded=True):
+        with st.expander("➕ Novo Lançamento (clique para abrir/fechar)", expanded=False):
             with st.form("ffin", clear_on_submit=False):
 
                 c_r1a, c_r1b = st.columns(2)
@@ -1390,7 +1390,7 @@ elif sel == "Financeiro":
         df_view = df_fin.copy()
 
         # --- FILTROS (expandido com data, texto e tipo) ---
-        with st.expander("Filtros de Busca", expanded=True):
+        with st.expander("🔍 Filtros de Busca (clique para abrir/fechar)", expanded=False):
             c_f1, c_f2 = st.columns(2)
             with c_f1:
                 filtro_obra = st.selectbox("Obra", ["Todas as Obras"] + lista_obras)
