@@ -28,7 +28,7 @@ COR_FUNDO_ESCURO = "#1A1C1E"
 COR_CINZA_CLARO = "#e9ecef"
 COR_CINZA_MEDIO = "#adb5bd"
 
-APP_VERSION = "v2.2.0"
+APP_VERSION = "v2.3.0"
 
 STATUS_OBRA = ["Projeto", "Fundação", "Alvenaria", "Acabamento", "Concluída", "Vendida"]
 
@@ -99,287 +99,38 @@ st.set_page_config(
 
 st.markdown(f"""
 <style>
-    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap');
-    html, body, [class*="css"] {{ font-family: 'Inter', sans-serif; }}
-
-    /* ---- DESKTOP ---- */
-    [data-testid="stMetricValue"] {{ font-size: 1.8rem !important; font-weight: 700; }}
-
+    /* ---- GERAL ---- */
     div.stButton > button {{
         background-color: {COR_PRIMARIA};
         color: white;
         border: none;
         border-radius: 8px;
-        padding: 0.75rem 1rem;
+        padding: 0.6rem 1rem;
         font-weight: 600;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-        transition: all 0.2s;
         min-height: 44px;
     }}
     div.stButton > button:hover {{
         background-color: {COR_PRIMARIA_ESCURA};
-        transform: translateY(-1px);
-        box-shadow: 0 4px 8px rgba(0,0,0,0.2);
     }}
-
-    button:disabled {{
-        background-color: {COR_CINZA_CLARO} !important;
-        color: {COR_CINZA_MEDIO} !important;
-        cursor: not-allowed;
-    }}
-
-    [data-testid="stSidebar"] {{
-        border-right: 1px solid {COR_CINZA_CLARO};
-    }}
-
-    [data-testid="stSidebarUserContent"] {{
-        padding-top: 2rem;
-    }}
-
-    /* Cards de métricas */
     [data-testid="stMetric"] {{
-        background: linear-gradient(135deg, {COR_FUNDO} 0%, white 100%);
+        background: {COR_FUNDO};
         border: 1px solid {COR_CINZA_CLARO};
-        border-radius: 10px;
-        padding: 12px 16px;
-        box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+        border-radius: 8px;
+        padding: 10px 14px;
     }}
-
-    /* Download buttons */
     [data-testid="stDownloadButton"] > button {{
         background-color: {COR_PRIMARIA} !important;
         color: white !important;
         border-radius: 8px;
-        min-height: 48px;
+        min-height: 44px;
         font-weight: 600;
     }}
-
-    /* Expander headers */
-    [data-testid="stExpander"] summary {{
-        font-weight: 600;
-        font-size: 1rem;
-    }}
-
-    /* Form submit button */
     [data-testid="stFormSubmitButton"] > button {{
         min-height: 48px;
-        font-size: 1rem;
     }}
-
-    /* ---- MOBILE (até 768px) ---- */
-    @media (max-width: 768px) {{
-        /* Layout geral - mais compacto */
-        .main .block-container {{
-            padding: 0.5rem 0.5rem !important;
-            max-width: 100% !important;
-        }}
-
-        /* Títulos compactos */
-        h1 {{
-            font-size: 1.3rem !important;
-            margin-bottom: 0.3rem !important;
-            margin-top: 0.3rem !important;
-        }}
-        h2 {{
-            font-size: 1.1rem !important;
-            margin-bottom: 0.3rem !important;
-        }}
-        h3 {{
-            font-size: 1rem !important;
-            margin-bottom: 0.2rem !important;
-        }}
-        h4 {{
-            font-size: 0.95rem !important;
-        }}
-
-        /* Métricas compactas */
-        [data-testid="stMetricValue"] {{
-            font-size: 1.05rem !important;
-            line-height: 1.2 !important;
-        }}
-        [data-testid="stMetricLabel"] {{
-            font-size: 0.7rem !important;
-            line-height: 1.2 !important;
-        }}
-        [data-testid="stMetric"] {{
-            padding: 6px 8px !important;
-            border-radius: 8px;
-        }}
-        [data-testid="stMetricDelta"] {{
-            font-size: 0.65rem !important;
-        }}
-
-        /* Botões touch-friendly */
-        div.stButton > button {{
-            min-height: 48px;
-            font-size: 0.9rem;
-            padding: 0.6rem 0.8rem;
-            width: 100%;
-        }}
-
-        /* TODAS as colunas empilham no mobile */
-        [data-testid="stHorizontalBlock"] {{
-            flex-wrap: wrap !important;
-            gap: 0.3rem !important;
-        }}
-        [data-testid="stHorizontalBlock"] > div {{
-            flex: 1 1 100% !important;
-            min-width: 100% !important;
-        }}
-
-        /* Métricas em grid 2x2 no mobile */
-        [data-testid="stHorizontalBlock"]:has([data-testid="stMetric"]) {{
-            gap: 0.4rem !important;
-        }}
-        [data-testid="stHorizontalBlock"]:has([data-testid="stMetric"]) > div {{
-            flex: 1 1 47% !important;
-            min-width: 47% !important;
-            max-width: 49% !important;
-        }}
-
-        /* Inputs maiores para toque - previne zoom iOS */
-        input, select, textarea {{
-            font-size: 16px !important;
-            min-height: 44px !important;
-        }}
-        [data-testid="stSelectbox"] {{
-            margin-bottom: 0.3rem !important;
-        }}
-        [data-testid="stNumberInput"] {{
-            margin-bottom: 0.3rem !important;
-        }}
-        [data-testid="stTextInput"] {{
-            margin-bottom: 0.3rem !important;
-        }}
-
-        /* Data editor responsivo */
-        [data-testid="stDataEditor"] {{
-            font-size: 0.75rem !important;
-        }}
-
-        /* Tabelas com scroll horizontal suave */
-        [data-testid="stDataFrame"],
-        [data-testid="stDataEditor"] {{
-            overflow-x: auto !important;
-            -webkit-overflow-scrolling: touch;
-        }}
-
-        /* Download buttons full width */
-        [data-testid="stDownloadButton"] {{
-            width: 100% !important;
-        }}
-        [data-testid="stDownloadButton"] > button {{
-            width: 100% !important;
-            min-height: 52px;
-            font-size: 0.85rem;
-        }}
-
-        /* Container com borda mais compacto */
-        [data-testid="stVerticalBlockBorderWrapper"] {{
-            padding: 0.4rem !important;
-        }}
-
-        /* Expander */
-        [data-testid="stExpander"] {{
-            border-radius: 8px;
-        }}
-        [data-testid="stExpander"] summary {{
-            font-size: 0.9rem;
-            padding: 0.6rem;
-        }}
-
-        /* Sidebar no mobile */
-        [data-testid="stSidebar"] {{
-            min-width: 260px !important;
-            max-width: 260px !important;
-        }}
-
-        /* Menos espaço vertical entre elementos */
-        [data-testid="stVerticalBlock"] > div {{
-            margin-bottom: 0 !important;
-        }}
-
-        /* Separadores mais discretos */
-        hr {{
-            margin: 0.5rem 0 !important;
-        }}
-
-        /* Captions legíveis */
-        .stCaption {{
-            font-size: 0.78rem !important;
-        }}
-
-        /* Labels compactos */
-        label {{
-            font-size: 0.82rem !important;
-            margin-bottom: 0.1rem !important;
-        }}
-
-        /* Form submit */
-        [data-testid="stFormSubmitButton"] > button {{
-            min-height: 52px;
-            font-size: 1rem;
-        }}
-
-        /* Toast no mobile */
-        [data-testid="stToast"] {{
-            min-width: 85vw !important;
-            font-size: 0.85rem !important;
-        }}
-
-        /* Alertas mais compactos */
-        [data-testid="stAlert"] {{
-            padding: 0.5rem 0.8rem !important;
-            font-size: 0.82rem !important;
-        }}
-
-        /* Info/Warning/Error compactos */
-        .stAlert p {{
-            font-size: 0.82rem !important;
-            margin: 0 !important;
-        }}
-
-        /* Plotly charts */
-        .js-plotly-plot {{
-            margin: 0 -0.3rem !important;
-        }}
-
-        /* Subheader com menos margin */
-        [data-testid="stSubheader"] {{
-            margin-top: 0.3rem !important;
-            margin-bottom: 0.2rem !important;
-        }}
-    }}
-
-    /* ---- TABLET (769px - 1024px) ---- */
-    @media (min-width: 769px) and (max-width: 1024px) {{
-        .main .block-container {{
-            padding: 1rem 1.2rem !important;
-        }}
-
-        [data-testid="stMetricValue"] {{
-            font-size: 1.4rem !important;
-        }}
-
-        [data-testid="stHorizontalBlock"]:has([data-testid="stMetric"]) > div {{
-            flex: 1 1 45% !important;
-            min-width: 45% !important;
-        }}
-    }}
-
-    /* ---- DARK MODE ---- */
-    @media (prefers-color-scheme: dark) {{
-        button:disabled {{
-            background-color: #333 !important;
-            color: #666 !important;
-        }}
-        [data-testid="stSidebar"] {{
-            border-right: 1px solid #333;
-        }}
-        [data-testid="stMetric"] {{
-            background: linear-gradient(135deg, #1E1E1E 0%, #2A2A2A 100%);
-            border-color: #333;
-        }}
+    /* Previne zoom no iOS */
+    input, select, textarea {{
+        font-size: 16px !important;
     }}
 </style>
 """, unsafe_allow_html=True)
@@ -1149,10 +900,11 @@ if sel == "Dashboard":
 
         perc_total = (custos_total / vgv_total * 100) if vgv_total > 0 else 0.0
 
-        k1, k2, k3, k4 = st.columns(4)
+        k1, k2 = st.columns(2)
         k1.metric("VGV Total", fmt_moeda(vgv_total))
         k2.metric("Custos Totais", fmt_moeda(custos_total), delta=f"{perc_total:.1f}%", delta_color="inverse")
 
+        k3, k4 = st.columns(2)
         if sold_names:
             k3.metric("Lucro (Vendidas)", fmt_moeda(lucro_sold))
             k4.metric("ROI (Vendidas)", f"{roi_sold:.1f}%")
@@ -1181,10 +933,11 @@ if sel == "Dashboard":
 
         is_vendida = status_obra.lower() == "vendida"
 
-        k1, k2, k3, k4 = st.columns(4)
+        k1, k2 = st.columns(2)
         k1.metric("VGV", fmt_moeda(vgv))
         k2.metric("Custos", fmt_moeda(custos), delta=f"{perc:.1f}%", delta_color="inverse")
 
+        k3, k4 = st.columns(2)
         if is_vendida:
             k3.metric("Lucro", fmt_moeda(lucro))
             k4.metric("ROI", f"{roi:.1f}%")
