@@ -48,6 +48,10 @@ const API = {
     return this.request('/api/sheets?action=audit');
   },
 
+  async fetchQuotes(force = false) {
+    return this.request(`/api/quotes${force ? '?force=1' : ''}`);
+  },
+
   async appendFin(values) {
     return this.request('/api/sheets', {
       method: 'POST',

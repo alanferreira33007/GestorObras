@@ -96,13 +96,14 @@ function goView(view, btn) {
   if (target) target.classList.add('active');
 
   // Update title
-  const titles = { dashboard: 'Dashboard', financeiro: 'Financeiro', obras: 'Obras', auditoria: 'Auditoria' };
+  const titles = { dashboard: 'Dashboard', financeiro: 'Financeiro', obras: 'Obras', investimentos: 'Investimentos', auditoria: 'Auditoria' };
   document.getElementById('page-title').textContent = titles[view] || view;
 
   // Render content
   if (view === 'dashboard') renderDashboard();
   else if (view === 'financeiro') { renderFinanceiro(); setTimeout(() => applyFinFilters(), 100); }
   else if (view === 'obras') renderObras();
+  else if (view === 'investimentos') loadInvestimentos();
   else if (view === 'auditoria') renderAuditoria();
 
   // Close mobile sidebar
